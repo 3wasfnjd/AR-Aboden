@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no" />
+  <meta name="theme-color" content="#05070b" />
+  <title>AR Aboden Lab</title>
+  <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@ar-js-org/ar.js@3.4.8/aframe/build/aframe-ar.js"></script>
+  <style>
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body { width:100%; height:100%; margin:0; overflow:hidden; background:#05070b; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Tahoma,Arial,sans-serif; }
+    .hud { position:fixed; inset:0; z-index:20; pointer-events:none; color:#fff; }
+    .topbar { position:absolute; top:max(14px,env(safe-area-inset-top)); left:14px; right:14px; display:flex; justify-content:space-between; align-items:center; gap:10px; }
+    .brand, .status { backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px); background:rgba(10,14,22,.62); border:1px solid rgba(255,255,255,.14); box-shadow:0 10px 35px rgba(0,0,0,.22); }
+    .brand { padding:10px 13px; border-radius:16px; font-weight:800; letter-spacing:.5px; }
+    .status { padding:9px 12px; border-radius:999px; font-size:13px; display:flex; align-items:center; gap:7px; }
+    .dot { width:8px; height:8px; border-radius:50%; background:#f5b942; box-shadow:0 0 14px currentColor; }
+    .status.found .dot { background:#64f08c; }
+    .guide { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:min(72vw,320px); aspect-ratio:1; border:2px dashed rgba(255,255,255,.72); border-radius:28px; display:grid; place-items:center; transition:.25s ease; }
+    .guide::after { content:"وجّه الكاميرا إلى علامة HIRO"; background:rgba(0,0,0,.55); border:1px solid rgba(255,255,255,.15); padding:9px 12px; border-radius:999px; font-size:13px; }
+    .guide.hidden { opacity:0; transform:translate(-50%,-50%) scale(.9); }
+    .bottom { position:absolute; left:14px; right:14px; bottom:max(18px,env(safe-area-inset-bottom)); display:flex; gap:10px; pointer-events:auto; }
+    .btn { flex:1; border:0; border-radius:18px; min-height:52px; font-size:15px; font-weight:800; color:#fff; background:rgba(10,14,22,.74); border:1px solid rgba(255,255,255,.16); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px); }
+    .btn.primary { background:#fff; color:#0b0f17; }
+    .hint { position:absolute; left:18px; right:18px; bottom:calc(max(18px,env(safe-area-inset-bottom)) + 66px); text-align:center; font-size:12px; opacity:.78; }
+    .toast { position:absolute; left:50%; top:24%; transform:translateX(-50%) translateY(-8px); opacity:0; transition:.25s; background:rgba(6,10,16,.76); border:1px solid rgba(255,255,255,.15); padding:10px 14px; border-radius:999px; white-space:nowrap; font-size:13px; }
+    .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+    a-scene { position:fixed !important; inset:0 !important; }
+  </style>
+</head>
+<body>
+  <div class="hud">
+    <div class="topbar">
+      <div class="brand">ABODEN AR</div>
+      <div class="status" id="status"><span class="dot"></span><span id="statusText">ابحث عن العلامة</span></div>
+    </div>
+    <div class="guide" id="guide"></div>
+    <div class="toast" id="toast">تم رصد العلامة</div>
+    <div class="hint">التجربة الأولى: تتبع علامة AR وتشغيل جسم ثلاثي الأبعاد حي</div>
+    <div class="bottom">
+      <button class="btn" id="markerBtn">عرض العلامة</button>
+      <button class="btn primary" id="pulseBtn">فعّل الطاقة</button>
+    </div>
+  </div>
+
+  <a-scene
+    embedded
+    vr-mode-ui="enabled:false"
+    renderer="antialias:true; alpha:true; colorManagement:true;"
+    arjs="sourceType:webcam; debugUIEnabled:false; detectionMode:mono; trackingMethod:best;"
+  >
+    <a-marker
+      id="hiroMarker"
+      preset="hiro"
+      emitevents="true"
+      smooth="true"
+      smooth-count="8"
+      smooth-tolerance="0.01"
+      smooth-threshold="3"
+    >
+      <a-entity id="portal" position="0 0 0">
+        <a-torus
+          position="0 0.02 0"
+          rotation="-90 0 0"
+          radius="0.62"
+          radius-tubular="0.055"
+          segments-radial="20"
+          segments-tubular="60"
+          material="color:#60a5fa; emissive:#2563eb; emissiveIntensity:1.1; metalness:.35; roughness:.25;"
+          animation="property:rotation; to:-90 360 0; loop:true; dur:6500; easing:linear"
+        ></a-torus>
+
+        <a-torus
+          position="0 0.035 0"
+          rotation="-90 0 0"
+          radius="0.47"
+          radius-tubular="0.018"
+          material="color:#ffffff; emissive:#7dd3fc; emissiveIntensity:1.5; opacity:.85; transparent:true;"
+          animation="property:rotation; to:-90 -360 0; loop:true; dur:4200; easing:linear"
+        ></a-torus>
+
+        <a-cylinder
+          position="0 0.015 0"
+          radius="0.43"
+          height="0.02"
+          material="color:#102341; emissive:#0b4f8a; emissiveIntensity:.8; opacity:.82; transparent:true;"
+        ></a-cylinder>
+
+        <a-icosahedron
+          id="core"
+          position="0 0.55 0"
+          radius="0.17"
+          material="color:#e0f2fe; emissive:#38bdf8; emissiveIntensity:1.5; metalness:.35; roughness:.15;"
+          animation__float="property:position; dir:alternate; dur:1100; easing:easeInOutSine; loop:true; to:0 0.72 0"
+          animation__spin="property:rotation; to:0 360 360; loop:true; dur:5200; easing:linear"
+        ></a-icosahedron>
+
+        <a-ring
+          position="0 0.16 0"
+          rotation="-90 0 0"
+          radius-inner="0.21"
+          radius-outer="0.24"
+          material="color:#7dd3fc; opacity:.65; transparent:true;"
+          animation="property:scale; from:.4 .4 .4; to:2.2 2.2 2.2; dur:1400; loop:true; easing:easeOutQuad"
+        ></a-ring>
+      </a-entity>
+    </a-marker>
+
+    <a-entity camera></a-entity>
+  </a-scene>
+
+  <script>
+    const marker = document.getElementById('hiroMarker');
+    const status = document.getElementById('status');
+    const statusText = document.getElementById('statusText');
+    const guide = document.getElementById('guide');
+    const toast = document.getElementById('toast');
+    const core = document.getElementById('core');
+    const portal = document.getElementById('portal');
+
+    const notify = (msg) => {
+      toast.textContent = msg;
+      toast.classList.add('show');
+      clearTimeout(window.__toastTimer);
+      window.__toastTimer = setTimeout(() => toast.classList.remove('show'), 1400);
+    };
+
+    marker.addEventListener('markerFound', () => {
+      status.classList.add('found');
+      statusText.textContent = 'تم التتبع';
+      guide.classList.add('hidden');
+      notify('تم رصد العلامة');
+    });
+
+    marker.addEventListener('markerLost', () => {
+      status.classList.remove('found');
+      statusText.textContent = 'ابحث عن العلامة';
+      guide.classList.remove('hidden');
+    });
+
+    document.getElementById('markerBtn').addEventListener('click', () => {
+      window.location.href = './marker.html';
+    });
+
+    document.getElementById('pulseBtn').addEventListener('click', () => {
+      if (!marker.object3D.visible) {
+        notify('وجّه الكاميرا إلى علامة HIRO أولاً');
+        return;
+      }
+      portal.setAttribute('animation__pulse', {
+        property: 'scale',
+        from: '1 1 1',
+        to: '1.28 1.28 1.28',
+        dir: 'alternate',
+        dur: 260,
+        loop: 3,
+        easing: 'easeOutQuad'
+      });
+      core.setAttribute('material', 'emissiveIntensity', 2.6);
+      setTimeout(() => core.setAttribute('material', 'emissiveIntensity', 1.5), 1000);
+      notify('تم تفعيل طاقة البوابة');
+      if (navigator.vibrate) navigator.vibrate([35, 30, 55]);
+    });
+  </script>
+</body>
+</html>
