@@ -1,166 +1,514 @@
 <!doctype html>
 <html lang="ar" dir="rtl">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no" />
-  <meta name="theme-color" content="#05070b" />
-  <title>AR Aboden Lab</title>
-  <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@ar-js-org/ar.js@3.4.8/aframe/build/aframe-ar.js"></script>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+  <meta name="theme-color" content="#05070b">
+  <title>AR Aboden — Mobile Control Lab</title>
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.164.1/build/three.module.js"
+    }
+  }
+  </script>
   <style>
-    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-    html, body { width:100%; height:100%; margin:0; overflow:hidden; background:#05070b; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Tahoma,Arial,sans-serif; }
-    .hud { position:fixed; inset:0; z-index:20; pointer-events:none; color:#fff; }
-    .topbar { position:absolute; top:max(14px,env(safe-area-inset-top)); left:14px; right:14px; display:flex; justify-content:space-between; align-items:center; gap:10px; }
-    .brand, .status { backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px); background:rgba(10,14,22,.62); border:1px solid rgba(255,255,255,.14); box-shadow:0 10px 35px rgba(0,0,0,.22); }
-    .brand { padding:10px 13px; border-radius:16px; font-weight:800; letter-spacing:.5px; }
-    .status { padding:9px 12px; border-radius:999px; font-size:13px; display:flex; align-items:center; gap:7px; }
-    .dot { width:8px; height:8px; border-radius:50%; background:#f5b942; box-shadow:0 0 14px currentColor; }
-    .status.found .dot { background:#64f08c; }
-    .guide { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:min(72vw,320px); aspect-ratio:1; border:2px dashed rgba(255,255,255,.72); border-radius:28px; display:grid; place-items:center; transition:.25s ease; }
-    .guide::after { content:"وجّه الكاميرا إلى علامة HIRO"; background:rgba(0,0,0,.55); border:1px solid rgba(255,255,255,.15); padding:9px 12px; border-radius:999px; font-size:13px; }
-    .guide.hidden { opacity:0; transform:translate(-50%,-50%) scale(.9); }
-    .bottom { position:absolute; left:14px; right:14px; bottom:max(18px,env(safe-area-inset-bottom)); display:flex; gap:10px; pointer-events:auto; }
-    .btn { flex:1; border:0; border-radius:18px; min-height:52px; font-size:15px; font-weight:800; color:#fff; background:rgba(10,14,22,.74); border:1px solid rgba(255,255,255,.16); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px); }
-    .btn.primary { background:#fff; color:#0b0f17; }
-    .hint { position:absolute; left:18px; right:18px; bottom:calc(max(18px,env(safe-area-inset-bottom)) + 66px); text-align:center; font-size:12px; opacity:.78; }
-    .toast { position:absolute; left:50%; top:24%; transform:translateX(-50%) translateY(-8px); opacity:0; transition:.25s; background:rgba(6,10,16,.76); border:1px solid rgba(255,255,255,.15); padding:10px 14px; border-radius:999px; white-space:nowrap; font-size:13px; }
-    .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
-    a-scene { position:fixed !important; inset:0 !important; }
+    *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+    html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#03060b;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Tahoma,Arial,sans-serif;touch-action:none}
+    #cameraFeed{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;background:#000;display:none}
+    #stage{position:fixed;inset:0;width:100%;height:100%;z-index:2}
+    .ui{position:fixed;inset:0;z-index:10;color:#fff;pointer-events:none}
+    .top{position:absolute;top:max(14px,env(safe-area-inset-top));left:14px;right:14px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+    .pill{background:rgba(5,10,17,.62);border:1px solid rgba(255,255,255,.14);backdrop-filter:blur(15px);-webkit-backdrop-filter:blur(15px);box-shadow:0 10px 30px rgba(0,0,0,.18);border-radius:999px;padding:9px 12px;font-size:12px}
+    .brand{font-weight:900;letter-spacing:.6px;font-size:14px}
+    .status{display:flex;align-items:center;gap:7px}
+    .dot{width:8px;height:8px;border-radius:50%;background:#f6c453;box-shadow:0 0 12px currentColor}
+    .status.ready .dot{background:#62ec8e}
+    #centerTarget{position:absolute;left:50%;top:54%;width:62px;height:62px;transform:translate(-50%,-50%);border:2px solid rgba(255,255,255,.8);border-radius:50%;display:none}
+    #centerTarget:before,#centerTarget:after{content:"";position:absolute;background:rgba(255,255,255,.85);left:50%;top:50%;transform:translate(-50%,-50%)}
+    #centerTarget:before{width:18px;height:2px}
+    #centerTarget:after{width:2px;height:18px}
+    #guide{position:absolute;left:50%;top:43%;transform:translate(-50%,-50%);width:min(80vw,360px);text-align:center;font-size:14px;line-height:1.8;text-shadow:0 2px 12px #000}
+    #guide b{display:block;font-size:18px;margin-bottom:4px}
+    #toast{position:absolute;left:50%;top:18%;transform:translate(-50%,-8px);opacity:0;transition:.22s;background:rgba(5,10,17,.78);border:1px solid rgba(255,255,255,.14);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-radius:999px;padding:10px 15px;font-size:13px;white-space:nowrap}
+    #toast.show{opacity:1;transform:translate(-50%,0)}
+    .controls{position:absolute;left:0;right:0;bottom:max(20px,env(safe-area-inset-bottom));height:170px;pointer-events:none}
+    .joyBase{position:absolute;left:24px;bottom:6px;width:122px;height:122px;border-radius:50%;background:rgba(6,12,20,.54);border:1px solid rgba(255,255,255,.18);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);pointer-events:auto;touch-action:none}
+    .joyBase:before{content:"";position:absolute;inset:23px;border:1px dashed rgba(255,255,255,.22);border-radius:50%}
+    .joyKnob{position:absolute;left:50%;top:50%;width:54px;height:54px;margin:-27px 0 0 -27px;border-radius:50%;background:rgba(255,255,255,.9);box-shadow:0 6px 20px rgba(0,0,0,.25);transform:translate(0,0)}
+    .actions{position:absolute;right:18px;bottom:4px;display:grid;grid-template-columns:72px 72px;gap:10px;pointer-events:auto}
+    .action{height:58px;border:1px solid rgba(255,255,255,.16);border-radius:18px;color:#fff;background:rgba(6,12,20,.7);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);font-weight:900;font-size:13px}
+    .action.primary{grid-column:1/3;background:#fff;color:#0c111a}
+    .action:active{transform:scale(.96)}
+    #intro{position:fixed;inset:0;z-index:30;background:radial-gradient(circle at 50% 35%,#17273f 0,#080d16 45%,#03060b 100%);display:flex;align-items:flex-end;justify-content:center;padding:24px 20px max(30px,env(safe-area-inset-bottom));color:#fff}
+    .introCard{width:min(100%,520px);background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);border-radius:28px;padding:24px;backdrop-filter:blur(15px);-webkit-backdrop-filter:blur(15px)}
+    .introCard h1{font-size:29px;margin:0 0 10px}.introCard p{font-size:14px;line-height:1.85;margin:0 0 18px;color:#d3d9e4}
+    .start{width:100%;height:58px;border:0;border-radius:18px;background:#fff;color:#0a1018;font-size:16px;font-weight:900}
+    .tiny{margin-top:11px!important;font-size:11px!important;color:#9fa9b8!important;text-align:center}
+    #errorBox{display:none;margin-top:12px;color:#ffc3c3;font-size:12px;line-height:1.6}
+    .modeNote{position:absolute;left:18px;right:18px;bottom:190px;text-align:center;font-size:11px;opacity:.72}
+    @media (max-width:360px){.joyBase{width:108px;height:108px}.actions{grid-template-columns:66px 66px}.action{height:54px}}
   </style>
 </head>
 <body>
-  <div class="hud">
-    <div class="topbar">
-      <div class="brand">ABODEN AR</div>
-      <div class="status" id="status"><span class="dot"></span><span id="statusText">ابحث عن العلامة</span></div>
+  <video id="cameraFeed" autoplay muted playsinline></video>
+  <div id="stage"></div>
+
+  <div class="ui">
+    <div class="top">
+      <div class="pill brand">ABODEN AR</div>
+      <div class="pill status" id="status"><span class="dot"></span><span id="statusText">جاهز</span></div>
     </div>
-    <div class="guide" id="guide"></div>
-    <div class="toast" id="toast">تم رصد العلامة</div>
-    <div class="hint">التجربة الأولى: تتبع علامة AR وتشغيل جسم ثلاثي الأبعاد حي</div>
-    <div class="bottom">
-      <button class="btn" id="markerBtn">عرض العلامة</button>
-      <button class="btn primary" id="pulseBtn">فعّل الطاقة</button>
+
+    <div id="guide"><b>ضع الروبوت أمامك</b>وجّه الجوال للمكان المطلوب ثم اضغط «وضع».</div>
+    <div id="centerTarget"></div>
+    <div id="toast"></div>
+
+    <div class="modeNote" id="modeNote"></div>
+
+    <div class="controls" id="controls">
+      <div class="joyBase" id="joyBase"><div class="joyKnob" id="joyKnob"></div></div>
+      <div class="actions">
+        <button class="action primary" id="placeBtn">وضع الروبوت</button>
+        <button class="action" id="jumpBtn">قفز</button>
+        <button class="action" id="resetBtn">إعادة</button>
+      </div>
     </div>
   </div>
 
-  <a-scene
-    embedded
-    vr-mode-ui="enabled:false"
-    renderer="antialias:true; alpha:true; colorManagement:true;"
-    arjs="sourceType:webcam; debugUIEnabled:false; detectionMode:mono; trackingMethod:best;"
-  >
-    <a-marker
-      id="hiroMarker"
-      preset="hiro"
-      emitevents="true"
-      smooth="true"
-      smooth-count="8"
-      smooth-tolerance="0.01"
-      smooth-threshold="3"
-    >
-      <a-entity id="portal" position="0 0 0">
-        <a-torus
-          position="0 0.02 0"
-          rotation="-90 0 0"
-          radius="0.62"
-          radius-tubular="0.055"
-          segments-radial="20"
-          segments-tubular="60"
-          material="color:#60a5fa; emissive:#2563eb; emissiveIntensity:1.1; metalness:.35; roughness:.25;"
-          animation="property:rotation; to:-90 360 0; loop:true; dur:6500; easing:linear"
-        ></a-torus>
+  <div id="intro">
+    <div class="introCard">
+      <h1>تجربة AR متحركة</h1>
+      <p>افتح الكاميرا، ضع الروبوت أمامك، وبعدها حرّكه بالجويستك واقفز به. لا توجد علامة HIRO ولا تحتاج شاشة ثانية.</p>
+      <button class="start" id="startBtn">ابدأ التجربة</button>
+      <div id="errorBox"></div>
+      <p class="tiny">على الأجهزة التي تدعم WebXR سيُثبت الروبوت فعليًا في المكان. على iPhone تعمل نسخة كاميرا تفاعلية لاختبار التحكم.</p>
+    </div>
+  </div>
 
-        <a-torus
-          position="0 0.035 0"
-          rotation="-90 0 0"
-          radius="0.47"
-          radius-tubular="0.018"
-          material="color:#ffffff; emissive:#7dd3fc; emissiveIntensity:1.5; opacity:.85; transparent:true;"
-          animation="property:rotation; to:-90 -360 0; loop:true; dur:4200; easing:linear"
-        ></a-torus>
+  <script type="module">
+    import * as THREE from 'three';
 
-        <a-cylinder
-          position="0 0.015 0"
-          radius="0.43"
-          height="0.02"
-          material="color:#102341; emissive:#0b4f8a; emissiveIntensity:.8; opacity:.82; transparent:true;"
-        ></a-cylinder>
-
-        <a-icosahedron
-          id="core"
-          position="0 0.55 0"
-          radius="0.17"
-          material="color:#e0f2fe; emissive:#38bdf8; emissiveIntensity:1.5; metalness:.35; roughness:.15;"
-          animation__float="property:position; dir:alternate; dur:1100; easing:easeInOutSine; loop:true; to:0 0.72 0"
-          animation__spin="property:rotation; to:0 360 360; loop:true; dur:5200; easing:linear"
-        ></a-icosahedron>
-
-        <a-ring
-          position="0 0.16 0"
-          rotation="-90 0 0"
-          radius-inner="0.21"
-          radius-outer="0.24"
-          material="color:#7dd3fc; opacity:.65; transparent:true;"
-          animation="property:scale; from:.4 .4 .4; to:2.2 2.2 2.2; dur:1400; loop:true; easing:easeOutQuad"
-        ></a-ring>
-      </a-entity>
-    </a-marker>
-
-    <a-entity camera></a-entity>
-  </a-scene>
-
-  <script>
-    const marker = document.getElementById('hiroMarker');
+    const stage = document.getElementById('stage');
+    const video = document.getElementById('cameraFeed');
+    const intro = document.getElementById('intro');
+    const startBtn = document.getElementById('startBtn');
+    const errorBox = document.getElementById('errorBox');
     const status = document.getElementById('status');
     const statusText = document.getElementById('statusText');
     const guide = document.getElementById('guide');
+    const target = document.getElementById('centerTarget');
     const toast = document.getElementById('toast');
-    const core = document.getElementById('core');
-    const portal = document.getElementById('portal');
+    const modeNote = document.getElementById('modeNote');
+    const placeBtn = document.getElementById('placeBtn');
+    const jumpBtn = document.getElementById('jumpBtn');
+    const resetBtn = document.getElementById('resetBtn');
+    const joyBase = document.getElementById('joyBase');
+    const joyKnob = document.getElementById('joyKnob');
 
-    const notify = (msg) => {
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(58, innerWidth / innerHeight, 0.01, 100);
+    camera.position.set(0, 1.55, 0);
+
+    const renderer = new THREE.WebGLRenderer({alpha:true, antialias:true, powerPreference:'high-performance'});
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    renderer.setSize(innerWidth, innerHeight);
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.shadowMap.enabled = true;
+    renderer.xr.enabled = true;
+    renderer.domElement.id = 'arCanvas';
+    stage.appendChild(renderer.domElement);
+
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x53657b, 2.0));
+    const key = new THREE.DirectionalLight(0xffffff, 2.2);
+    key.position.set(2, 5, 2);
+    scene.add(key);
+
+    function makeRobot(){
+      const root = new THREE.Group();
+      root.visible = false;
+
+      const visual = new THREE.Group();
+      root.add(visual);
+      root.userData.visual = visual;
+
+      const bodyMat = new THREE.MeshStandardMaterial({color:0x2b78ff, roughness:.32, metalness:.2});
+      const darkMat = new THREE.MeshStandardMaterial({color:0x111827, roughness:.5});
+      const lightMat = new THREE.MeshStandardMaterial({color:0xeaf6ff, emissive:0x39a7ff, emissiveIntensity:1.5});
+
+      const shadow = new THREE.Mesh(
+        new THREE.CircleGeometry(.36, 32),
+        new THREE.MeshBasicMaterial({color:0x000000, transparent:true, opacity:.25, depthWrite:false})
+      );
+      shadow.rotation.x = -Math.PI/2;
+      shadow.position.y = .012;
+      root.add(shadow);
+
+      const body = new THREE.Mesh(new THREE.BoxGeometry(.46,.56,.32), bodyMat);
+      body.position.y = .55;
+      body.castShadow = true;
+      visual.add(body);
+
+      const chest = new THREE.Mesh(new THREE.BoxGeometry(.23,.12,.035), lightMat);
+      chest.position.set(0,.58,.18);
+      visual.add(chest);
+
+      const head = new THREE.Mesh(new THREE.SphereGeometry(.24,24,16), bodyMat);
+      head.scale.set(1,.82,.92);
+      head.position.y = .98;
+      visual.add(head);
+
+      const visor = new THREE.Mesh(new THREE.BoxGeometry(.29,.09,.045), darkMat);
+      visor.position.set(0,.99,.215);
+      visual.add(visor);
+
+      const eyeL = new THREE.Mesh(new THREE.SphereGeometry(.025,12,8), lightMat);
+      const eyeR = eyeL.clone();
+      eyeL.position.set(-.07,1.0,.245);
+      eyeR.position.set(.07,1.0,.245);
+      visual.add(eyeL,eyeR);
+
+      const armGeo = new THREE.CylinderGeometry(.055,.065,.44,12);
+      const armL = new THREE.Mesh(armGeo, bodyMat);
+      const armR = armL.clone();
+      armL.position.set(-.31,.58,0); armR.position.set(.31,.58,0);
+      visual.add(armL,armR);
+
+      const legGeo = new THREE.CylinderGeometry(.07,.08,.35,12);
+      const legL = new THREE.Mesh(legGeo, darkMat);
+      const legR = legL.clone();
+      legL.position.set(-.12,.18,0); legR.position.set(.12,.18,0);
+      visual.add(legL,legR);
+
+      const ring = new THREE.Mesh(
+        new THREE.TorusGeometry(.34,.018,10,42),
+        new THREE.MeshBasicMaterial({color:0x67c7ff, transparent:true, opacity:.75})
+      );
+      ring.rotation.x = Math.PI/2;
+      ring.position.y = .04;
+      visual.add(ring);
+      root.userData.ring = ring;
+
+      root.scale.setScalar(.75);
+      return root;
+    }
+
+    const robot = makeRobot();
+    scene.add(robot);
+
+    const reticle = new THREE.Mesh(
+      new THREE.RingGeometry(.09,.12,32).rotateX(-Math.PI/2),
+      new THREE.MeshBasicMaterial({color:0xffffff})
+    );
+    reticle.matrixAutoUpdate = false;
+    reticle.visible = false;
+    scene.add(reticle);
+
+    let xrActive = false;
+    let fallbackActive = false;
+    let hitTestSource = null;
+    let hitTestSourceRequested = false;
+    let placed = false;
+    let joyX = 0;
+    let joyY = 0;
+    let jumping = false;
+    let jumpStart = 0;
+    let lastTime = performance.now();
+    let orientationEnabled = false;
+    let lastOrientation = null;
+
+    const tempForward = new THREE.Vector3();
+    const tempRight = new THREE.Vector3();
+    const tempMove = new THREE.Vector3();
+    const tempPos = new THREE.Vector3();
+    const zee = new THREE.Vector3(0,0,1);
+    const orientEuler = new THREE.Euler();
+    const q0 = new THREE.Quaternion();
+    const q1 = new THREE.Quaternion(-Math.sqrt(.5),0,0,Math.sqrt(.5));
+
+    function notify(msg){
       toast.textContent = msg;
       toast.classList.add('show');
-      clearTimeout(window.__toastTimer);
-      window.__toastTimer = setTimeout(() => toast.classList.remove('show'), 1400);
-    };
+      clearTimeout(window.__toast);
+      window.__toast = setTimeout(()=>toast.classList.remove('show'),1400);
+    }
 
-    marker.addEventListener('markerFound', () => {
-      status.classList.add('found');
-      statusText.textContent = 'تم التتبع';
-      guide.classList.add('hidden');
-      notify('تم رصد العلامة');
-    });
+    function setReady(text){
+      status.classList.add('ready');
+      statusText.textContent = text;
+    }
 
-    marker.addEventListener('markerLost', () => {
-      status.classList.remove('found');
-      statusText.textContent = 'ابحث عن العلامة';
-      guide.classList.remove('hidden');
-    });
+    function screenOrientation(){
+      if (screen.orientation && typeof screen.orientation.angle === 'number') return THREE.MathUtils.degToRad(screen.orientation.angle);
+      return THREE.MathUtils.degToRad(window.orientation || 0);
+    }
 
-    document.getElementById('markerBtn').addEventListener('click', () => {
-      window.location.href = './marker.html';
-    });
+    function setDeviceQuaternion(alpha,beta,gamma,orient){
+      orientEuler.set(beta,alpha,-gamma,'YXZ');
+      camera.quaternion.setFromEuler(orientEuler);
+      camera.quaternion.multiply(q1);
+      camera.quaternion.multiply(q0.setFromAxisAngle(zee,-orient));
+    }
 
-    document.getElementById('pulseBtn').addEventListener('click', () => {
-      if (!marker.object3D.visible) {
-        notify('وجّه الكاميرا إلى علامة HIRO أولاً');
-        return;
+    function onDeviceOrientation(e){
+      if (e.alpha == null || e.beta == null || e.gamma == null) return;
+      lastOrientation = {
+        a:THREE.MathUtils.degToRad(e.alpha),
+        b:THREE.MathUtils.degToRad(e.beta),
+        g:THREE.MathUtils.degToRad(e.gamma)
+      };
+    }
+
+    async function enableOrientation(){
+      try{
+        if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function'){
+          const state = await DeviceOrientationEvent.requestPermission();
+          if (state !== 'granted') return;
+        }
+        window.addEventListener('deviceorientation', onDeviceOrientation, true);
+        orientationEnabled = true;
+      }catch(e){
+        orientationEnabled = false;
       }
-      portal.setAttribute('animation__pulse', {
-        property: 'scale',
-        from: '1 1 1',
-        to: '1.28 1.28 1.28',
-        dir: 'alternate',
-        dur: 260,
-        loop: 3,
-        easing: 'easeOutQuad'
+    }
+
+    async function supportsXR(){
+      if (!navigator.xr) return false;
+      try{return await navigator.xr.isSessionSupported('immersive-ar');}
+      catch(e){return false;}
+    }
+
+    async function startXR(){
+      renderer.setClearColor(0x000000,0);
+      renderer.xr.setReferenceSpaceType('local-floor');
+      const session = await navigator.xr.requestSession('immersive-ar',{
+        requiredFeatures:['hit-test'],
+        optionalFeatures:['dom-overlay','local-floor'],
+        domOverlay:{root:document.body}
       });
-      core.setAttribute('material', 'emissiveIntensity', 2.6);
-      setTimeout(() => core.setAttribute('material', 'emissiveIntensity', 1.5), 1000);
-      notify('تم تفعيل طاقة البوابة');
-      if (navigator.vibrate) navigator.vibrate([35, 30, 55]);
+      await renderer.xr.setSession(session);
+      xrActive = true;
+      fallbackActive = false;
+      intro.style.display = 'none';
+      target.style.display = 'none';
+      modeNote.textContent = 'WebXR: تثبيت مكاني حقيقي + تحكم بالجويستك';
+      guide.innerHTML = '<b>ابحث عن سطح</b>حرّك الجوال قليلًا حتى يظهر المؤشر ثم اضغط «وضع الروبوت».';
+      setReady('AR حقيقي');
+      session.addEventListener('end',()=>{
+        xrActive=false;
+        location.reload();
+      });
+      renderer.setAnimationLoop(renderXR);
+    }
+
+    async function startFallback(){
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video:{facingMode:{ideal:'environment'},width:{ideal:1920},height:{ideal:1080}},
+        audio:false
+      });
+      video.srcObject = stream;
+      await video.play();
+      await enableOrientation();
+      video.style.display = 'block';
+      intro.style.display = 'none';
+      target.style.display = 'block';
+      fallbackActive = true;
+      xrActive = false;
+      modeNote.textContent = 'iPhone: كاميرا تفاعلية لاختبار التحكم — التثبيت الدوراني فقط';
+      guide.innerHTML = '<b>وجّه الكاميرا أمامك</b>اضغط «وضع الروبوت»، ثم حرّكه بالجويستك.';
+      setReady('كاميرا AR');
+      renderer.setAnimationLoop(renderFallback);
+    }
+
+    function placeRobot(){
+      if (xrActive){
+        if (!reticle.visible){
+          notify('حرّك الجوال حتى يظهر مؤشر السطح');
+          return;
+        }
+        tempPos.setFromMatrixPosition(reticle.matrix);
+        robot.position.copy(tempPos);
+        robot.rotation.set(0,0,0);
+      }else{
+        if (lastOrientation) setDeviceQuaternion(lastOrientation.a,lastOrientation.b,lastOrientation.g,screenOrientation());
+        camera.getWorldDirection(tempForward);
+        tempForward.y = 0;
+        if (tempForward.lengthSq() < .001) tempForward.set(0,0,-1);
+        tempForward.normalize();
+        robot.position.copy(camera.position).addScaledVector(tempForward,2.6);
+        robot.position.y = 0;
+        robot.rotation.y = Math.atan2(tempForward.x,tempForward.z);
+      }
+      robot.visible = true;
+      placed = true;
+      guide.style.display = 'none';
+      placeBtn.textContent = 'نقل هنا';
+      notify('تم وضع الروبوت — حرّكه بالجويستك');
+      if (navigator.vibrate) navigator.vibrate(35);
+    }
+
+    function resetRobot(){
+      robot.visible = false;
+      placed = false;
+      robot.userData.visual.position.y = 0;
+      jumping = false;
+      guide.style.display = 'block';
+      placeBtn.textContent = 'وضع الروبوت';
+      notify('تمت الإعادة');
+    }
+
+    function jump(){
+      if (!placed || jumping) return;
+      jumping = true;
+      jumpStart = performance.now();
+      if (navigator.vibrate) navigator.vibrate(25);
+    }
+
+    function getControlCamera(){
+      if (xrActive) return renderer.xr.getCamera(camera);
+      return camera;
+    }
+
+    function updateRobot(dt,now){
+      if (!placed) return;
+
+      const visual = robot.userData.visual;
+      robot.userData.ring.rotation.z += dt * 2.2;
+
+      const magnitude = Math.min(1,Math.hypot(joyX,joyY));
+      if (magnitude > .05){
+        const c = getControlCamera();
+        c.getWorldDirection(tempForward);
+        tempForward.y = 0;
+        if (tempForward.lengthSq() < .001) tempForward.set(0,0,-1);
+        tempForward.normalize();
+
+        tempRight.crossVectors(tempForward,new THREE.Vector3(0,1,0)).normalize();
+        tempMove.copy(tempForward).multiplyScalar(joyY).addScaledVector(tempRight,joyX);
+        if (tempMove.lengthSq() > .0001){
+          tempMove.normalize();
+          const speed = 1.05 * magnitude;
+          robot.position.addScaledVector(tempMove,speed * dt);
+          robot.rotation.y = Math.atan2(tempMove.x,tempMove.z);
+          visual.position.y = Math.abs(Math.sin(now * .012)) * .035;
+        }
+      }else if (!jumping){
+        visual.position.y *= .72;
+      }
+
+      if (jumping){
+        const t = Math.min(1,(now-jumpStart)/620);
+        visual.position.y = Math.sin(t*Math.PI) * .62;
+        if (t >= 1){
+          jumping = false;
+          visual.position.y = 0;
+        }
+      }
+    }
+
+    function renderFallback(now){
+      const dt = Math.min(.05,(now-lastTime)/1000 || .016);
+      lastTime = now;
+      if (orientationEnabled && lastOrientation){
+        setDeviceQuaternion(lastOrientation.a,lastOrientation.b,lastOrientation.g,screenOrientation());
+      }
+      updateRobot(dt,now);
+      renderer.render(scene,camera);
+    }
+
+    function renderXR(now,frame){
+      const dt = Math.min(.05,(now-lastTime)/1000 || .016);
+      lastTime = now;
+
+      if (frame){
+        const session = renderer.xr.getSession();
+        const refSpace = renderer.xr.getReferenceSpace();
+
+        if (!hitTestSourceRequested){
+          session.requestReferenceSpace('viewer').then((viewerSpace)=>{
+            session.requestHitTestSource({space:viewerSpace}).then((source)=>{
+              hitTestSource = source;
+            });
+          });
+          session.addEventListener('end',()=>{
+            hitTestSourceRequested=false;
+            hitTestSource=null;
+          });
+          hitTestSourceRequested=true;
+        }
+
+        if (hitTestSource){
+          const hits = frame.getHitTestResults(hitTestSource);
+          if (hits.length){
+            const pose = hits[0].getPose(refSpace);
+            reticle.visible = true;
+            reticle.matrix.fromArray(pose.transform.matrix);
+          }else{
+            reticle.visible = false;
+          }
+        }
+      }
+
+      updateRobot(dt,now);
+      renderer.render(scene,camera);
+    }
+
+    function updateJoystick(e){
+      const r = joyBase.getBoundingClientRect();
+      const cx = r.left + r.width/2;
+      const cy = r.top + r.height/2;
+      let dx = e.clientX - cx;
+      let dy = e.clientY - cy;
+      const max = r.width * .32;
+      const len = Math.hypot(dx,dy);
+      if (len > max){
+        dx = dx/len*max;
+        dy = dy/len*max;
+      }
+      joyX = dx/max;
+      joyY = -dy/max;
+      joyKnob.style.transform = 'translate('+dx+'px,'+dy+'px)';
+    }
+
+    function stopJoystick(){
+      joyX=0; joyY=0;
+      joyKnob.style.transform='translate(0,0)';
+    }
+
+    joyBase.addEventListener('pointerdown',(e)=>{
+      joyBase.setPointerCapture(e.pointerId);
+      updateJoystick(e);
+    });
+    joyBase.addEventListener('pointermove',(e)=>{
+      if (joyBase.hasPointerCapture(e.pointerId)) updateJoystick(e);
+    });
+    joyBase.addEventListener('pointerup',stopJoystick);
+    joyBase.addEventListener('pointercancel',stopJoystick);
+
+    placeBtn.addEventListener('click',placeRobot);
+    resetBtn.addEventListener('click',resetRobot);
+    jumpBtn.addEventListener('click',jump);
+
+    startBtn.addEventListener('click',async()=>{
+      startBtn.disabled=true;
+      startBtn.textContent='جاري تشغيل الكاميرا...';
+      errorBox.style.display='none';
+      try{
+        if (await supportsXR()) await startXR();
+        else await startFallback();
+      }catch(err){
+        console.error(err);
+        errorBox.style.display='block';
+        errorBox.textContent='تعذر تشغيل التجربة. تأكد من السماح للكاميرا ثم أعد فتح الصفحة في Safari أو Chrome.';
+        startBtn.disabled=false;
+        startBtn.textContent='حاول مرة أخرى';
+      }
+    });
+
+    window.addEventListener('resize',()=>{
+      camera.aspect=innerWidth/innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(innerWidth,innerHeight);
     });
   </script>
 </body>
