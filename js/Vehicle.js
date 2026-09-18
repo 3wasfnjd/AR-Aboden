@@ -111,14 +111,14 @@ export class Vehicle {
         this.wheelBL = new THREE.Group();
         this.wheelBL.name = 'fallback-wheel-back-left';
         this.wheelBL.position.set(-halfTrack, y, rearZ);
-        vehicleModel.add(this.wheelBL);
+        this.container.add(this.wheelBL);
       }
 
       if (!this.wheelBR) {
         this.wheelBR = new THREE.Group();
         this.wheelBR.name = 'fallback-wheel-back-right';
         this.wheelBR.position.set(halfTrack, y, rearZ);
-        vehicleModel.add(this.wheelBR);
+        this.container.add(this.wheelBR);
       }
     }
 
