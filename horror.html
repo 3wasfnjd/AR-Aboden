@@ -214,10 +214,10 @@
     const playForward=new THREE.Vector3(0,0,-1);
     const playRight=new THREE.Vector3(1,0,0);
 
-    const START_MIN_DISTANCE=4.2;
-    const START_MAX_DISTANCE=5.4;
-    const STALK_STOP_DISTANCE=1.40;
-    const STALK_SIDE_OFFSET=.22;
+    const START_MIN_DISTANCE=7.2;
+    const START_MAX_DISTANCE=9.0;
+    const STALK_STOP_DISTANCE=2.60;
+    const STALK_SIDE_OFFSET=.18;
 
     const actors=[];
     const mixers=[];
@@ -320,9 +320,28 @@
       wrapper.scale.setScalar(height/Math.max(orientedSize.y,.001));
 
       wrapper.traverse(o=>{
-        if(o.isMesh){
-          o.castShadow=false;
-          o.receiveShadow=false;
+        if(!o.isMesh)return;
+
+        o.castShadow=false;
+        o.receiveShadow=false;
+
+        const materials=Array.isArray(o.material)?o.material:[o.material];
+        for(const m of materials){
+          if(!m)continue;
+
+          // Remove dark metallic/AO response that makes the troll appear black
+          // in camera passthrough while keeping the original color textures.
+          if('metalness' in m)m.metalness=0;
+          if('roughness' in m)m.roughness=.88;
+          if('aoMapIntensity' in m)m.aoMapIntensity=0;
+
+          // Gentle self-lighting so the texture remains readable in dim rooms.
+          if('emissive' in m){
+            m.emissive.setRGB(.16,.16,.16);
+            m.emissiveIntensity=.70;
+          }
+
+          m.needsUpdate=true;
         }
       });
 
@@ -380,7 +399,7 @@
 
       // A troll should read substantially larger than a human in the room,
       // but still remain believable relative to the AR floor.
-      const troll=normalizeModel(trollGltf.scene,{height:2.55,modelYaw:0});
+      const troll=normalizeModel(trollGltf.scene,{height:5.40,modelYaw:0});
       let mixer=null;
       let action=null;
 
@@ -392,14 +411,14 @@
 
         action=mixer.clipAction(clip);
         action.setLoop(THREE.LoopRepeat,Infinity);
-        action.timeScale=.62;
+        action.timeScale=.48;
         action.play();
         action.paused=true;
       }
 
       createActor(troll,{
-        speed:.24,
-        turnRate:1.35,
+        speed:.20,
+        turnRate:1.05,
         forwardOffset:0,
         mixer,
         action
@@ -459,7 +478,7 @@
           if(!a.action.paused){
             // The model has a genuine Walk clip. Keep it deliberate and
             // synchronize the cycle with the troll's actual approach speed.
-            const targetTimeScale=.42+.28*speedRatio;
+            const targetTimeScale=.34+.18*speedRatio;
             a.action.timeScale=THREE.MathUtils.lerp(
               a.action.timeScale,
               targetTimeScale,
@@ -502,7 +521,7 @@
 
         if(a.action){
           a.action.paused=true;
-          a.action.timeScale=.62;
+          a.action.timeScale=.48;
         }
       }
     }
@@ -519,18 +538,20 @@
 
       renderer.shadowMap.enabled=false;
 
-      scene.add(new THREE.HemisphereLight(0x7b8793,0x13090b,1.05));
-      const key=new THREE.DirectionalLight(0xffd8d8,.68);
-      key.position.set(1.5,4,-1.5);
+      // Neutral lighting only: keep the model's original texture colors
+      // and avoid the previous red/blue horror tint.
+      scene.add(new THREE.AmbientLight(0xffffff,1.55));
+      scene.add(new THREE.HemisphereLight(0xffffff,0xf2f2f2,1.35));
+
+      const key=new THREE.DirectionalLight(0xffffff,1.10);
+      key.position.set(2.5,5,2.5);
+      key.castShadow=false;
       scene.add(key);
 
-      // Slight cold/red contrast on virtual characters only.
-      const cold=new THREE.PointLight(0x6e8cff,.28,4,2);
-      cold.position.set(-2,1.6,-2);
-      scene.add(cold);
-      const red=new THREE.PointLight(0xb72f3c,.24,3.5,2);
-      red.position.set(2,1.2,-1);
-      scene.add(red);
+      const fill=new THREE.DirectionalLight(0xffffff,.65);
+      fill.position.set(-3,3,1);
+      fill.castShadow=false;
+      scene.add(fill);
 
       try{
         await loadCharacters();
