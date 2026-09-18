@@ -147,7 +147,8 @@
     import { MobileControls } from './js/Controls.js';
     import {
       createVehicleWorld,
-      createGroundCollider,
+      createRollingGround,
+      updateRollingGround,
       createVehicleBody,
       resetVehicleBody
     } from './js/Physics.js';
@@ -230,7 +231,7 @@
     let vehicle = null;
     let world = null;
     let body = null;
-    let groundCollider = null;
+    let rollingGround = null;
     let placed = false;
 
     const vehicleRadius = 0.13;
@@ -338,7 +339,7 @@
       scene.add(key);
 
       shadowPlane = new THREE.Mesh(
-        new THREE.PlaneGeometry(2000,2000),
+        new THREE.PlaneGeometry(26,26),
         new THREE.ShadowMaterial({opacity:.20})
       );
       shadowPlane.rotation.x = -Math.PI/2;
@@ -436,6 +437,14 @@
 
       if (!placed || !body) return;
 
+      // Recycle the small ground grid only when the car crosses into
+      // another 8 m cell. This keeps only 9 colliders alive at all times.
+      updateRollingGround(rollingGround, vehicle.spherePos.x, vehicle.spherePos.z);
+
+      // Keep the invisible shadow receiver under the active driving area.
+      shadowPlane.position.x = vehicle.spherePos.x;
+      shadowPlane.position.z = vehicle.spherePos.z;
+
       // Critical difference from the previous prototype:
       // car movement is now driven ONLY by the physics body.
       // Camera motion never edits the car's world position.
@@ -464,9 +473,19 @@
         reticle.position.z
       );
 
-      // Build a very large physical floor centered on the selected AR area.
-      // This avoids the old fixed-origin floor edge that the car could drive off.
-      groundCollider = createGroundCollider(world, spawn.x, spawn.z, 1000);
+      // Rolling Ground: only a small 3x3 set of physics tiles exists.
+      // The tiles are recycled around the car as it moves, so the drivable
+      // area behaves as endless without a giant collider.
+      if (!rollingGround) {
+        rollingGround = createRollingGround(world, spawn.x, spawn.z, {
+          tileSize: 8,
+          radius: 1,
+          overlap: 0.35
+        });
+      } else {
+        updateRollingGround(rollingGround, spawn.x, spawn.z, true);
+      }
+
       shadowPlane.position.set(spawn.x, 0, spawn.z);
 
       if (!body){
