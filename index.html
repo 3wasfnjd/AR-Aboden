@@ -108,7 +108,7 @@
     </div>
 
     <div class="toast" id="toast"></div>
-    <div class="mode" id="modeText">حلبة AR ثابتة: الحلبة هي الـAnchor والسيارة تلعب داخل حدودها</div>
+    <div class="mode" id="modeText">حلبة أسفلت AR: سيارة أصغر + دخان هجولة + آثار إطارات</div>
 
     <div class="controls" id="controls">
       <div class="placement">
@@ -134,7 +134,7 @@
       <p>ثبّت الحلبة مرة واحدة على الأرض، وبعدها تولد السيارة داخلها وتبقى محصورة بحواجز فيزيائية حول الحلبة.</p>
       <button class="start" id="startBtn" disabled>جاري تجهيز المحرك…</button>
       <div class="error" id="errorBox"></div>
-      <p class="tiny">بعد تثبيت الحلبة: الجويستك للتوجيه، بنزين وفرامل منفصلان، والهاندبريك للدرفت داخل الحلبة.</p>
+      <p class="tiny">بعد تثبيت الحلبة: السيارة أصغر، الأرضية أسفلت، والهاندبريك يولّد دخان وآثار إطارات مثل هجولة.</p>
     </div>
   </div>
 
@@ -145,6 +145,8 @@
 
     import { Vehicle } from './js/Vehicle.js';
     import { MobileControls } from './js/Controls.js';
+    import { SmokeTrails } from './js/Particles.js';
+    import { DriftMarks } from './js/DriftMarks.js';
     import {
       createVehicleWorld,
       createArenaPhysics,
@@ -231,11 +233,15 @@
     let arenaGroup = null;
     let arenaPhysics = null;
     let vehicle = null;
+    let smokeTrails = null;
+    let driftMarks = null;
     let world = null;
     let body = null;
     let placed = false;
 
-    const vehicleRadius = 0.13;
+    const vehicleRadius = 0.10;
+    const CAR_LENGTH_METERS = 0.55;
+    const AR_EFFECT_SCALE = 0.12;
     const ARENA_RADIUS = 2.0;
     const ARENA_SEGMENTS = 28;
     const ARENA_WALL_HEIGHT = 0.22;
@@ -313,7 +319,7 @@
       model.position.y -= box.min.y;
 
       const maxDim = Math.max(size.x,size.y,size.z) || 1;
-      model.scale.setScalar(0.85 / maxDim);
+      model.scale.setScalar(CAR_LENGTH_METERS / maxDim);
 
       model.updateMatrixWorld(true);
       const scaled = new THREE.Box3().setFromObject(model);
@@ -371,14 +377,37 @@
       arenaGroup = new THREE.Group();
       arenaGroup.visible = false;
 
+      const textureLoader = new THREE.TextureLoader();
+      textureLoader.setCrossOrigin('anonymous');
+
+      const asphaltMap = textureLoader.load(
+        'https://raw.githubusercontent.com/3wasfnjd/hajwala/master/images/highway-asphalt.jpg'
+      );
+      const asphaltNormal = textureLoader.load(
+        'https://raw.githubusercontent.com/3wasfnjd/hajwala/master/images/highway-asphalt-normal.jpg'
+      );
+      const asphaltRoughness = textureLoader.load(
+        'https://raw.githubusercontent.com/3wasfnjd/hajwala/master/images/highway-asphalt-roughness.jpg'
+      );
+
+      for (const tex of [asphaltMap,asphaltNormal,asphaltRoughness]) {
+        tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+        tex.repeat.set(4,4);
+        tex.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
+      }
+      asphaltMap.colorSpace = THREE.SRGBColorSpace;
+
       const arenaFloor = new THREE.Mesh(
         new THREE.CircleGeometry(ARENA_RADIUS,72).rotateX(-Math.PI/2),
         new THREE.MeshStandardMaterial({
-          color:0x20252c,
-          roughness:.92,
+          map:asphaltMap,
+          normalMap:asphaltNormal,
+          roughnessMap:asphaltRoughness,
+          color:0xffffff,
+          roughness:1,
           metalness:0,
           transparent:true,
-          opacity:.48,
+          opacity:.97,
           side:THREE.DoubleSide
         })
       );
@@ -435,6 +464,10 @@
       const carRoot = vehicle.init(carModel);
       carRoot.visible = false;
       scene.add(carRoot);
+
+      // Same effects used in hajwala, scaled down for this tabletop-size AR car.
+      smokeTrails = new SmokeTrails(scene, AR_EFFECT_SCALE, 0.55);
+      driftMarks = new DriftMarks(scene, 'ar-aboden-arena', AR_EFFECT_SCALE, 9);
 
       camera.position.set(0,1.5,2.0);
       XR8.XrController.updateCameraProjectionMatrix({
@@ -516,6 +549,9 @@
 
       const input = controls.update();
       vehicle.update(dt, input);
+
+      smokeTrails?.update(dt, vehicle);
+      driftMarks?.update(dt, vehicle);
     }
 
     function placeVehicle(){
