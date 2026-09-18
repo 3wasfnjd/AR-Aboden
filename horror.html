@@ -32,7 +32,9 @@
     #camerafeed{
       position:fixed!important;left:0!important;top:0!important;
       width:var(--app-w)!important;height:var(--app-h)!important;
-      display:block!important
+      display:block!important;
+      filter:none!important;-webkit-filter:none!important;
+      opacity:1!important
     }
     .ui{position:fixed;inset:0;z-index:20;pointer-events:none;color:#fff}
     .home-btn{
@@ -92,8 +94,8 @@
     .reticle:after{width:1px;height:6px;transform:translate(-50%,-50%)}
     .vignette{
       position:absolute;inset:0;pointer-events:none;
-      background:radial-gradient(circle at center,transparent 48%,rgba(0,0,0,.20) 74%,rgba(20,0,0,.42) 100%);
-      opacity:.62
+      background:radial-gradient(circle at center,transparent 62%,rgba(0,0,0,.10) 84%,rgba(0,0,0,.22) 100%);
+      opacity:.22
     }
     .toast{
       position:absolute;left:50%;bottom:105px;transform:translate(-50%,12px);
@@ -202,11 +204,11 @@
     const playForward=new THREE.Vector3(0,0,-1);
     const playRight=new THREE.Vector3(1,0,0);
 
-    const PLAY_MIN_DISTANCE=2.25;
-    const PLAY_MAX_DISTANCE=5.25;
-    const PLAY_HALF_ANGLE=THREE.MathUtils.degToRad(70);
-    const PLAY_INNER_ANGLE=THREE.MathUtils.degToRad(18);
-    const MIN_ACTOR_SEPARATION=1.85;
+    const PLAY_MIN_DISTANCE=3.10;
+    const PLAY_MAX_DISTANCE=6.40;
+    const PLAY_HALF_ANGLE=THREE.MathUtils.degToRad(68);
+    const PLAY_INNER_ANGLE=THREE.MathUtils.degToRad(20);
+    const MIN_ACTOR_SEPARATION=2.35;
 
     const actors=[];
     const mixers=[];
@@ -334,8 +336,8 @@
       // if random attempts happen to collide.
       const fallbackAngle=(side||1)*THREE.MathUtils.degToRad(42);
       out.copy(playOrigin)
-        .addScaledVector(playForward,Math.cos(fallbackAngle)*3.4)
-        .addScaledVector(playRight,Math.sin(fallbackAngle)*3.4);
+        .addScaledVector(playForward,Math.cos(fallbackAngle)*4.4)
+        .addScaledVector(playRight,Math.sin(fallbackAngle)*4.4);
       out.y=playOrigin.y;
       return out;
     }
@@ -376,7 +378,7 @@
 
       // The optimized ghost model is already Y-up. The previous -90° X
       // correction laid it on its side in AR, so keep X untouched.
-      const ghost=normalizeModel(ghostGltf.scene,{height:1.52,rotateY:Math.PI});
+      const ghost=normalizeModel(ghostGltf.scene,{height:1.92,rotateY:Math.PI});
       createActor(ghost,{
         speed:.22,
         turnRate:1.8,
@@ -385,7 +387,7 @@
         laneSide:-1
       });
 
-      const hooded=normalizeModel(hoodedGltf.scene,{height:1.62,rotateY:0});
+      const hooded=normalizeModel(hoodedGltf.scene,{height:2.02,rotateY:0});
       let mixer=null;
       if(hoodedGltf.animations?.length){
         mixer=new THREE.AnimationMixer(hooded);
@@ -465,7 +467,7 @@
         const startAngle=side*THREE.MathUtils.degToRad(
           THREE.MathUtils.randFloat(34,58)
         );
-        const startDistance=THREE.MathUtils.randFloat(2.8,4.2);
+        const startDistance=THREE.MathUtils.randFloat(4.00,5.35);
 
         a.root.position.copy(playOrigin)
           .addScaledVector(playForward,Math.cos(startAngle)*startDistance)
