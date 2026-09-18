@@ -38,72 +38,90 @@ export function createVehicleWorld() {
   return world;
 }
 
-export function createRollingGround(world, centerX = 0, centerZ = 0, options = {}) {
-  const tileSize = options.tileSize || 8;
-  const radius = options.radius || 1; // 1 = 3x3 tiles
-  const overlap = options.overlap ?? 0.35;
+export function createArenaPhysics(world, centerX = 0, centerZ = 0, options = {}) {
+  const radius = options.radius || 2.0;
+  const segments = options.segments || 28;
+  const wallThickness = options.wallThickness || 0.09;
+  const wallHeight = options.wallHeight || 0.22;
+  const floorMargin = options.floorMargin || 0.35;
 
-  const manager = {
+  const arena = {
     world,
-    tileSize,
     radius,
-    overlap,
-    cellX: Number.NaN,
-    cellZ: Number.NaN,
-    tiles: [],
+    segments,
+    wallThickness,
+    wallHeight,
+    floorMargin,
+    centerX,
+    centerZ,
+    floor: null,
+    walls: [],
   };
 
-  const half = tileSize * 0.5 + overlap;
+  arena.floor = rigidBody.create(world, {
+    shape: box.create({
+      halfExtents: [radius + floorMargin, 0.025, radius + floorMargin],
+    }),
+    motionType: MotionType.STATIC,
+    objectLayer: world._OL_STATIC,
+    position: [centerX, -0.025, centerZ],
+    friction: 5.0,
+    restitution: 0.0,
+  });
 
-  for (let gz = -radius; gz <= radius; gz++) {
-    for (let gx = -radius; gx <= radius; gx++) {
-      const body = rigidBody.create(world, {
-        shape: box.create({ halfExtents: [half, 0.02, half] }),
-        motionType: MotionType.STATIC,
-        objectLayer: world._OL_STATIC,
-        position: [0, -0.02, 0],
-        friction: 5.0,
-        restitution: 0.0,
-      });
+  const circumference = Math.PI * 2 * radius;
+  const segmentLength = circumference / segments;
+  const wallHalfLength = segmentLength * 0.56; // slight overlap, no gaps
 
-      manager.tiles.push({ gx, gz, body });
-    }
+  for (let i = 0; i < segments; i++) {
+    const a = (i / segments) * Math.PI * 2;
+    const x = centerX + Math.cos(a) * radius;
+    const z = centerZ + Math.sin(a) * radius;
+    const yaw = -a;
+
+    const body = rigidBody.create(world, {
+      shape: box.create({
+        halfExtents: [wallThickness * 0.5, wallHeight * 0.5, wallHalfLength],
+      }),
+      motionType: MotionType.STATIC,
+      objectLayer: world._OL_STATIC,
+      position: [x, wallHeight * 0.5, z],
+      quaternion: [0, Math.sin(yaw * 0.5), 0, Math.cos(yaw * 0.5)],
+      friction: 0.45,
+      restitution: 0.12,
+    });
+
+    arena.walls.push(body);
   }
 
-  updateRollingGround(manager, centerX, centerZ, true);
-  return manager;
+  return arena;
 }
 
-export function updateRollingGround(manager, x, z, force = false) {
-  if (!manager) return false;
+export function moveArenaPhysics(arena, centerX, centerZ) {
+  if (!arena) return;
 
-  const { world, tileSize, radius } = manager;
-  const cellX = Math.floor(x / tileSize);
-  const cellZ = Math.floor(z / tileSize);
+  arena.centerX = centerX;
+  arena.centerZ = centerZ;
 
-  if (!force && cellX === manager.cellX && cellZ === manager.cellZ) {
-    return false;
-  }
+  rigidBody.setPosition(
+    arena.world,
+    arena.floor,
+    [centerX, -0.025, centerZ],
+    false
+  );
 
-  manager.cellX = cellX;
-  manager.cellZ = cellZ;
-
-  for (const tile of manager.tiles) {
-    const tx = (cellX + tile.gx) * tileSize + tileSize * 0.5;
-    const tz = (cellZ + tile.gz) * tileSize + tileSize * 0.5;
+  for (let i = 0; i < arena.walls.length; i++) {
+    const a = (i / arena.segments) * Math.PI * 2;
+    const x = centerX + Math.cos(a) * arena.radius;
+    const z = centerZ + Math.sin(a) * arena.radius;
 
     rigidBody.setPosition(
-      world,
-      tile.body,
-      [tx, -0.02, tz],
+      arena.world,
+      arena.walls[i],
+      [x, arena.wallHeight * 0.5, z],
       false
     );
-
-    rigidBody.setLinearVelocity?.(world, tile.body, [0, 0, 0]);
-    rigidBody.setAngularVelocity?.(world, tile.body, [0, 0, 0]);
   }
-
-  return true;
 }
 
 export function createVehicleBody(world, position, radius = 0.13) {
