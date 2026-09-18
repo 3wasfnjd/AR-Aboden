@@ -8,7 +8,7 @@ const temp = new THREE.Vector3();
 const targetQuat = new THREE.Quaternion();
 
 const LINEAR_DAMP = 0.1;
-const MAX_SPEED = 1.55;
+const MAX_SPEED = 0.95;
 const REVERSE_SPEED_SCALE = 0.6;
 
 function lerpAngle(a, b, t) {
