@@ -173,6 +173,27 @@ export class Vehicle {
 
       const v = this.rigidBody.motionProperties.linearVelocity;
       this.sphereVel.set(v[0], v[1], v[2]);
+
+      // Safety net: if the physics body ever tunnels through the AR floor,
+      // restore it to the latest placement point instead of letting it fall forever.
+      const fallLimit = this.spawnPos.y - Math.max(1.0, this.sphereRadius * 8);
+      if (this.spherePos.y < fallLimit) {
+        rigidBody.setPosition(
+          this.physicsWorld,
+          this.rigidBody,
+          [this.spawnPos.x, this.spawnPos.y, this.spawnPos.z],
+          false
+        );
+        rigidBody.setLinearVelocity(this.physicsWorld, this.rigidBody, [0, 0, 0]);
+        rigidBody.setAngularVelocity(this.physicsWorld, this.rigidBody, [0, 0, 0]);
+
+        this.spherePos.copy(this.spawnPos);
+        this.sphereVel.set(0, 0, 0);
+        this.linearSpeed = 0;
+        this.angularSpeed = 0;
+        this.acceleration = 0;
+        this.container.rotation.set(0, this.spawnAngle, 0);
+      }
     }
 
     this.acceleration = THREE.MathUtils.lerp(
