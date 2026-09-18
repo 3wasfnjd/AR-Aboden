@@ -268,12 +268,17 @@
     const tapNdc = new THREE.Vector2();
 
     const BALLOON_COUNT = 16;
-    const PLAY_HALF_X = 3.2;
-    const PLAY_HALF_Z = 3.2;
-    const PLAY_MIN_Y = 0.45;
+    const PLAY_MIN_DISTANCE = 0.85;
+    const PLAY_MAX_DISTANCE = 3.45;
+    const PLAY_HALF_ANGLE = THREE.MathUtils.degToRad(82);
+    const PLAY_MIN_Y = 0.55;
     const PLAY_MAX_Y = 2.65;
 
     const roomCenter = new THREE.Vector3();
+    const playForward = new THREE.Vector3(0,0,-1);
+    const playRight = new THREE.Vector3(1,0,0);
+    const _playDelta = new THREE.Vector3();
+    const _zoneTarget = new THREE.Vector3();
     const balloonGeometry = new THREE.SphereGeometry(.16,18,14);
     const particleGeometry = new THREE.SphereGeometry(.018,8,6);
     const rocketBodyGeometry = new THREE.CylinderGeometry(.025,.025,.16,10);
@@ -759,21 +764,94 @@
       e.preventDefault();e.stopPropagation();selectRocketType('homing');
     });
 
-    function randomPoint(out){
-      out.set(
-        roomCenter.x + THREE.MathUtils.randFloatSpread(PLAY_HALF_X*2),
-        THREE.MathUtils.randFloat(PLAY_MIN_Y,PLAY_MAX_Y),
-        roomCenter.z + THREE.MathUtils.randFloatSpread(PLAY_HALF_Z*2)
-      );
+    function updatePlayZoneFromCamera(){
+      if(!camera) return;
 
-      const dx = out.x - roomCenter.x;
-      const dz = out.z - roomCenter.z;
-      if(Math.hypot(dx,dz) < .8){
-        const a = Math.random()*Math.PI*2;
-        out.x = roomCenter.x + Math.cos(a)*THREE.MathUtils.randFloat(1.0,2.3);
-        out.z = roomCenter.z + Math.sin(a)*THREE.MathUtils.randFloat(1.0,2.3);
-      }
+      camera.getWorldPosition(roomCenter);
+
+      camera.getWorldDirection(playForward);
+      playForward.y=0;
+      if(playForward.lengthSq()<.0001) playForward.set(0,0,-1);
+      playForward.normalize();
+
+      // For camera forward (0,0,-1), right becomes (+1,0,0).
+      playRight.set(-playForward.z,0,playForward.x).normalize();
+    }
+
+    function randomPoint(out){
+      // Front hemisphere only: random left/right angle, random near/far distance.
+      const angle=THREE.MathUtils.randFloat(-PLAY_HALF_ANGLE,PLAY_HALF_ANGLE);
+      const distance=THREE.MathUtils.randFloat(PLAY_MIN_DISTANCE,PLAY_MAX_DISTANCE);
+      const forwardDistance=Math.cos(angle)*distance;
+      const sideDistance=Math.sin(angle)*distance;
+
+      out.copy(roomCenter)
+        .addScaledVector(playForward,forwardDistance)
+        .addScaledVector(playRight,sideDistance);
+
+      out.y=THREE.MathUtils.randFloat(PLAY_MIN_Y,PLAY_MAX_Y);
       return out;
+    }
+
+    function keepBalloonInFrontZone(balloon){
+      const u=balloon.userData;
+
+      _playDelta.subVectors(balloon.position,roomCenter);
+      _playDelta.y=0;
+
+      let forwardDistance=_playDelta.dot(playForward);
+      let sideDistance=_playDelta.dot(playRight);
+      let distance=Math.hypot(forwardDistance,sideDistance);
+      let angle=Math.atan2(sideDistance,Math.max(.001,forwardDistance));
+      let corrected=false;
+
+      if(distance<PLAY_MIN_DISTANCE){
+        distance=PLAY_MIN_DISTANCE;
+        corrected=true;
+      }
+      if(distance>PLAY_MAX_DISTANCE){
+        distance=PLAY_MAX_DISTANCE;
+        corrected=true;
+      }
+      if(Math.abs(angle)>PLAY_HALF_ANGLE){
+        angle=THREE.MathUtils.clamp(angle,-PLAY_HALF_ANGLE,PLAY_HALF_ANGLE);
+        corrected=true;
+      }
+
+      // The angle clamp plus positive cosine guarantees no position can go behind.
+      forwardDistance=Math.cos(angle)*distance;
+      sideDistance=Math.sin(angle)*distance;
+
+      if(corrected){
+        balloon.position.x=roomCenter.x
+          +playForward.x*forwardDistance
+          +playRight.x*sideDistance;
+        balloon.position.z=roomCenter.z
+          +playForward.z*forwardDistance
+          +playRight.z*sideDistance;
+
+        // Nudge the next movement back toward the middle of the playable sector.
+        _zoneTarget.copy(roomCenter)
+          .addScaledVector(playForward,THREE.MathUtils.randFloat(1.45,2.45))
+          .addScaledVector(playRight,THREE.MathUtils.randFloatSpread(1.5));
+        _zoneTarget.y=THREE.MathUtils.randFloat(PLAY_MIN_Y,PLAY_MAX_Y);
+
+        u.targetVelocity.subVectors(_zoneTarget,balloon.position);
+        if(u.targetVelocity.lengthSq()<.001) u.targetVelocity.copy(randomVelocity());
+        else u.targetVelocity.normalize().multiplyScalar(THREE.MathUtils.randFloat(.16,.34));
+        u.velocity.lerp(u.targetVelocity,.7);
+      }
+
+      if(balloon.position.y<PLAY_MIN_Y){
+        balloon.position.y=PLAY_MIN_Y;
+        u.velocity.y=Math.abs(u.velocity.y);
+        u.targetVelocity.y=Math.abs(u.targetVelocity.y);
+      }
+      if(balloon.position.y>PLAY_MAX_Y){
+        balloon.position.y=PLAY_MAX_Y;
+        u.velocity.y=-Math.abs(u.velocity.y);
+        u.targetVelocity.y=-Math.abs(u.targetVelocity.y);
+      }
     }
 
     function randomVelocity(){
@@ -898,15 +976,7 @@
         b.position.addScaledVector(u.velocity,dt);
         b.position.y += Math.sin(now*.0015+u.phase)*.015*dt;
 
-        const minX=roomCenter.x-PLAY_HALF_X,maxX=roomCenter.x+PLAY_HALF_X;
-        const minZ=roomCenter.z-PLAY_HALF_Z,maxZ=roomCenter.z+PLAY_HALF_Z;
-
-        if(b.position.x<minX){b.position.x=minX;u.velocity.x=Math.abs(u.velocity.x);u.targetVelocity.x=Math.abs(u.targetVelocity.x)}
-        if(b.position.x>maxX){b.position.x=maxX;u.velocity.x=-Math.abs(u.velocity.x);u.targetVelocity.x=-Math.abs(u.targetVelocity.x)}
-        if(b.position.z<minZ){b.position.z=minZ;u.velocity.z=Math.abs(u.velocity.z);u.targetVelocity.z=Math.abs(u.targetVelocity.z)}
-        if(b.position.z>maxZ){b.position.z=maxZ;u.velocity.z=-Math.abs(u.velocity.z);u.targetVelocity.z=-Math.abs(u.targetVelocity.z)}
-        if(b.position.y<PLAY_MIN_Y){b.position.y=PLAY_MIN_Y;u.velocity.y=Math.abs(u.velocity.y);u.targetVelocity.y=Math.abs(u.targetVelocity.y)}
-        if(b.position.y>PLAY_MAX_Y){b.position.y=PLAY_MAX_Y;u.velocity.y=-Math.abs(u.velocity.y);u.targetVelocity.y=-Math.abs(u.targetVelocity.y)}
+        keepBalloonInFrontZone(b);
 
         b.rotation.y += dt*.18;
       }
@@ -1275,14 +1345,13 @@
     recenterBtn.addEventListener('click',(e)=>{
       e.preventDefault();
       if(!camera) return;
-      roomCenter.copy(camera.position);
-      roomCenter.y=1.35;
+      updatePlayZoneFromCamera();
       createAllBalloons();
       score=0;
       scoreEl.textContent='0';
       guide.classList.remove('hidden');
       try{XR8.XrController.recenter()}catch{}
-      notify('تمت إعادة توزيع الأهداف');
+      notify('تم توزيع المناطيد أمامك فقط');
     });
 
     async function setupScene(){
@@ -1307,8 +1376,7 @@
         facing:camera.quaternion
       });
 
-      roomCenter.copy(camera.position);
-      roomCenter.y=1.35;
+      updatePlayZoneFromCamera();
 
       await prepareBalloonModel();
       await prepareRocketModel();
