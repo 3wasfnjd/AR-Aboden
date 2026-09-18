@@ -108,11 +108,6 @@
     }
     .reticle:before{width:6px;height:1px;transform:translate(-50%,-50%)}
     .reticle:after{width:1px;height:6px;transform:translate(-50%,-50%)}
-    .vignette{
-      position:absolute;inset:0;pointer-events:none;
-      background:radial-gradient(circle at center,transparent 62%,rgba(0,0,0,.10) 84%,rgba(0,0,0,.22) 100%);
-      opacity:.22
-    }
     .toast{
       position:absolute;left:50%;bottom:105px;transform:translate(-50%,12px);
       padding:9px 13px;border-radius:999px;background:rgba(4,5,6,.82);
@@ -151,7 +146,6 @@
   <a class="home-btn" href="./index.html">⌂ الرئيسية</a>
 
   <div class="ui" id="gameUi">
-    <div class="vignette"></div>
     <div class="top">
       <div class="pill">👻 الرعب المتجول</div>
       <div class="pill status" id="status"><span class="dot"></span><span id="statusText">جاهز</span></div>
@@ -297,35 +291,40 @@
       return await new Promise((resolve,reject)=>loader.load(path,resolve,undefined,reject));
     }
 
-    function normalizeModel(raw,{height=1.55,rotateX=0,rotateY=0}={}){
-      const wrapper=new THREE.Group();
-      raw.rotation.x+=rotateX;
-      raw.rotation.y+=rotateY;
+    function normalizeModel(raw,{height=1.55,modelYaw=0}={}){
+      // Keep the GLB root transform exactly as authored. Both supplied
+      // Sketchfab files already include their own axis-conversion matrix;
+      // mutating raw.rotation here composes with that matrix and can create
+      // confusing orientation artifacts.
+      const content=new THREE.Group();
+      content.add(raw);
+
       raw.updateMatrixWorld(true);
 
       const box=new THREE.Box3().setFromObject(raw);
-      const size=new THREE.Vector3();
       const center=new THREE.Vector3();
-      box.getSize(size);
       box.getCenter(center);
 
+      // Recenter on the floor in the wrapper's coordinate system.
       raw.position.x-=center.x;
       raw.position.z-=center.z;
       raw.position.y-=box.min.y;
-      wrapper.add(raw);
 
-      raw.updateMatrixWorld(true);
-      const orientedBox=new THREE.Box3().setFromObject(wrapper);
+      content.rotation.y=modelYaw;
+      content.updateMatrixWorld(true);
+
+      const orientedBox=new THREE.Box3().setFromObject(content);
       const orientedSize=new THREE.Vector3();
       orientedBox.getSize(orientedSize);
 
-      const s=height/Math.max(orientedSize.y,.001);
-      wrapper.scale.setScalar(s);
+      const wrapper=new THREE.Group();
+      wrapper.add(content);
+      wrapper.scale.setScalar(height/Math.max(orientedSize.y,.001));
 
       wrapper.traverse(o=>{
         if(o.isMesh){
-          o.castShadow=true;
-          o.receiveShadow=true;
+          o.castShadow=false;
+          o.receiveShadow=false;
         }
       });
 
@@ -422,7 +421,7 @@
 
       // The optimized ghost model is already Y-up. The previous -90° X
       // correction laid it on its side in AR, so keep X untouched.
-      const ghost=normalizeModel(ghostGltf.scene,{height:1.92,rotateY:Math.PI});
+      const ghost=normalizeModel(ghostGltf.scene,{height:1.92,modelYaw:Math.PI});
       createActor(ghost,{
         speed:.22,
         turnRate:1.8,
@@ -431,7 +430,7 @@
         laneSide:-1
       });
 
-      const hooded=normalizeModel(hoodedGltf.scene,{height:2.02,rotateY:0});
+      const hooded=normalizeModel(hoodedGltf.scene,{height:2.02,modelYaw:0});
       let mixer=null;
       if(hoodedGltf.animations?.length){
         mixer=new THREE.AnimationMixer(hooded);
@@ -489,8 +488,6 @@
 
         if(a.ghost){
           a.root.position.y=a.baseY+Math.sin(time*1.55+a.bobSeed)*.035;
-          const spectral=0.88+Math.sin(time*1.1+a.bobSeed)*.035;
-          a.root.scale.x=a.root.scale.z=spectral*a.root.scale.y;
         }else{
           a.root.position.y=a.baseY;
         }
@@ -534,8 +531,7 @@
       setTimeout(syncVisualViewport,50);
       setTimeout(syncVisualViewport,250);
 
-      renderer.shadowMap.enabled=true;
-      renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+      renderer.shadowMap.enabled=false;
 
       scene.add(new THREE.HemisphereLight(0x7b8793,0x13090b,1.05));
       const key=new THREE.DirectionalLight(0xffd8d8,.68);
