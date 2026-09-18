@@ -456,8 +456,12 @@
       // Use a wrapper so the imported GLB's authored root transforms stay intact.
       const model = new THREE.Group();
       model.name = 'car-visual-root';
-      model.add(rawModel);
-      rawModel.rotation.y += loadedSource?.yaw || 0;
+
+      const orientation = new THREE.Group();
+      orientation.name = 'car-model-orientation';
+      orientation.rotation.y = loadedSource?.yaw || 0;
+      orientation.add(rawModel);
+      model.add(orientation);
 
       model.traverse((obj)=>{
         if (obj.isMesh){
