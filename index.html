@@ -147,6 +147,7 @@
     import { MobileControls } from './js/Controls.js';
     import {
       createVehicleWorld,
+      createGroundCollider,
       createVehicleBody,
       resetVehicleBody
     } from './js/Physics.js';
@@ -229,6 +230,7 @@
     let vehicle = null;
     let world = null;
     let body = null;
+    let groundCollider = null;
     let placed = false;
 
     const vehicleRadius = 0.13;
@@ -336,7 +338,7 @@
       scene.add(key);
 
       shadowPlane = new THREE.Mesh(
-        new THREE.PlaneGeometry(50,50),
+        new THREE.PlaneGeometry(2000,2000),
         new THREE.ShadowMaterial({opacity:.20})
       );
       shadowPlane.rotation.x = -Math.PI/2;
@@ -461,6 +463,11 @@
         vehicleRadius,
         reticle.position.z
       );
+
+      // Build a very large physical floor centered on the selected AR area.
+      // This avoids the old fixed-origin floor edge that the car could drive off.
+      groundCollider = createGroundCollider(world, spawn.x, spawn.z, 1000);
+      shadowPlane.position.set(spawn.x, 0, spawn.z);
 
       if (!body){
         body = createVehicleBody(
