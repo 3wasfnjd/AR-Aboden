@@ -1,0 +1,562 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+  <meta name="theme-color" content="#05070b">
+  <title>صيد المناطيد — عبودين AR</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/@8thwall/engine-binary@1/dist/xr.js"
+          async crossorigin="anonymous" data-preload-chunks="slam"></script>
+
+  <script type="importmap">
+  {
+    "imports":{
+      "three":"https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.module.js"
+    }
+  }
+  </script>
+
+  <style>
+    *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+    :root{--app-w:100vw;--app-h:100dvh}
+    html{margin:0;width:100%;height:100%;overflow:hidden;background:#03060b}
+    body{
+      position:fixed;left:0;top:0;margin:0;
+      width:var(--app-w);height:var(--app-h);
+      overflow:hidden;background:#03060b;touch-action:none;
+      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Tahoma,Arial,sans-serif;
+      color:#fff;overscroll-behavior:none;
+    }
+    #camerafeed{
+      position:fixed!important;left:0!important;top:0!important;
+      width:var(--app-w)!important;height:var(--app-h)!important;
+      display:block!important;z-index:0!important;
+    }
+    .ui{position:fixed;left:0;top:0;width:var(--app-w);height:var(--app-h);z-index:20;pointer-events:none}
+    .top{
+      position:absolute;
+      top:max(14px,env(safe-area-inset-top));
+      left:14px;right:14px;
+      display:flex;align-items:center;justify-content:space-between;gap:10px;
+    }
+    .pill{
+      background:rgba(5,10,17,.70);
+      border:1px solid rgba(255,255,255,.14);
+      backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+      border-radius:999px;padding:9px 12px;
+      box-shadow:0 8px 28px rgba(0,0,0,.25);
+      font-size:12px;font-weight:800;
+    }
+    .score{font-size:13px}
+    .crosshair{
+      position:absolute;left:50%;top:50%;
+      width:34px;height:34px;transform:translate(-50%,-50%);
+    }
+    .crosshair:before,.crosshair:after{
+      content:"";position:absolute;background:#fff;border-radius:2px;
+      box-shadow:0 0 8px rgba(0,0,0,.8);
+    }
+    .crosshair:before{width:2px;height:34px;left:16px;top:0}
+    .crosshair:after{height:2px;width:34px;left:0;top:16px}
+    .crosshair .dot{
+      position:absolute;width:5px;height:5px;border-radius:50%;
+      background:#ff4f62;left:14.5px;top:14.5px;
+      box-shadow:0 0 10px #ff4f62;
+    }
+    .guide{
+      position:absolute;left:50%;top:36%;
+      width:min(88vw,420px);
+      transform:translate(-50%,-50%);
+      text-align:center;line-height:1.8;font-size:14px;
+      text-shadow:0 2px 14px rgba(0,0,0,.95);
+    }
+    .guide b{display:block;font-size:20px;margin-bottom:5px}
+    .guide.hidden{display:none}
+    .fire{
+      pointer-events:auto;
+      position:absolute;
+      right:20px;
+      bottom:max(24px,env(safe-area-inset-bottom));
+      width:86px;height:86px;border-radius:50%;
+      border:2px solid rgba(255,255,255,.35);
+      background:rgba(220,36,62,.78);
+      color:#fff;font-size:16px;font-weight:950;
+      box-shadow:0 10px 30px rgba(0,0,0,.30);
+      touch-action:none;
+    }
+    .fire:active{transform:scale(.94)}
+    .recenter{
+      pointer-events:auto;
+      position:absolute;
+      left:18px;
+      bottom:max(30px,env(safe-area-inset-bottom));
+      border:1px solid rgba(255,255,255,.17);
+      background:rgba(5,10,17,.72);
+      color:#fff;border-radius:16px;
+      padding:11px 14px;font-weight:850;
+      backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+    }
+    .hitflash{
+      position:absolute;inset:0;
+      border:0 solid rgba(255,255,255,0);
+      pointer-events:none;transition:.12s;
+    }
+    .hitflash.on{border-width:6px;border-color:rgba(255,255,255,.48)}
+    .toast{
+      position:absolute;left:50%;top:16%;
+      transform:translate(-50%,-6px);opacity:0;
+      transition:.18s;background:rgba(5,10,17,.82);
+      border:1px solid rgba(255,255,255,.14);
+      border-radius:999px;padding:9px 14px;font-size:12px;white-space:nowrap;
+    }
+    .toast.show{opacity:1;transform:translate(-50%,0)}
+    #intro{
+      position:fixed;inset:0;z-index:40;
+      background:radial-gradient(circle at 50% 28%,#21334b 0,#0a101a 46%,#03060b 100%);
+      display:flex;align-items:flex-end;justify-content:center;
+      padding:22px 18px max(28px,env(safe-area-inset-bottom));
+    }
+    .card{
+      width:min(100%,520px);
+      background:rgba(255,255,255,.07);
+      border:1px solid rgba(255,255,255,.12);
+      border-radius:28px;padding:24px;
+      backdrop-filter:blur(15px);-webkit-backdrop-filter:blur(15px);
+    }
+    .card .balloon{
+      width:74px;height:86px;margin:0 auto 18px;
+      border-radius:50% 50% 46% 46%;
+      background:linear-gradient(145deg,#77d8ff,#467fff);
+      box-shadow:inset -12px -12px 22px rgba(0,0,0,.16),0 18px 45px rgba(42,133,255,.24);
+      position:relative;
+    }
+    .card .balloon:after{
+      content:"";position:absolute;left:32px;bottom:-9px;
+      width:10px;height:10px;background:#467fff;
+      transform:rotate(45deg);
+    }
+    .card h1{margin:0 0 10px;font-size:28px;text-align:center}
+    .card p{margin:0 0 18px;color:#d6dce6;font-size:14px;line-height:1.85;text-align:center}
+    .start{
+      width:100%;height:58px;border:0;border-radius:18px;
+      background:#fff;color:#091019;font-size:16px;font-weight:950;
+    }
+    .tiny{font-size:11px!important;color:#aab4c3!important;margin-top:12px!important}
+    .error{display:none;margin-top:12px;color:#ffc0c0;font-size:12px;line-height:1.7;text-align:center}
+  </style>
+</head>
+<body>
+  <canvas id="camerafeed"></canvas>
+
+  <div class="ui" id="gameUi" style="display:none">
+    <div class="top">
+      <div class="pill">🎈 صيد المناطيد</div>
+      <div class="pill score">النقاط: <span id="score">0</span></div>
+    </div>
+
+    <div class="guide" id="guide">
+      <b>حرّك الجوال للتصويب</b>
+      وجّه العلامة إلى الكرة ثم اضغط إطلاق. الكرات مثبتة داخل عالم الغرفة وليست على الشاشة.
+    </div>
+
+    <div class="crosshair"><span class="dot"></span></div>
+    <div class="toast" id="toast"></div>
+    <div class="hitflash" id="hitflash"></div>
+
+    <button class="recenter" id="recenterBtn">إعادة توزيع</button>
+    <button class="fire" id="fireBtn">إطلاق</button>
+  </div>
+
+  <div id="intro">
+    <div class="card">
+      <div class="balloon"></div>
+      <h1>صيد المناطيد</h1>
+      <p>نسخة تجريبية بدوائر برمجية. بعد تشغيل الكاميرا ستنتشر الأهداف داخل مساحة AR حولك وتتحرك عشوائيًا.</p>
+      <button class="start" id="startBtn" disabled>جاري تجهيز AR…</button>
+      <div class="error" id="errorBox"></div>
+      <p class="tiny">لاحقًا نستبدل الدوائر بموديلات GLB بدون تغيير نظام الحركة أو التصويب.</p>
+    </div>
+  </div>
+
+  <script type="module">
+    import * as THREE from 'three';
+    window.THREE = THREE;
+
+    const canvas = document.getElementById('camerafeed');
+    const intro = document.getElementById('intro');
+    const gameUi = document.getElementById('gameUi');
+    const startBtn = document.getElementById('startBtn');
+    const errorBox = document.getElementById('errorBox');
+    const scoreEl = document.getElementById('score');
+    const guide = document.getElementById('guide');
+    const fireBtn = document.getElementById('fireBtn');
+    const recenterBtn = document.getElementById('recenterBtn');
+    const toast = document.getElementById('toast');
+    const hitflash = document.getElementById('hitflash');
+
+    let xrReady = false;
+    let xrStarted = false;
+    let scene, camera, renderer;
+    let score = 0;
+    let lastTime = performance.now();
+
+    const balloons = [];
+    const explosions = [];
+    const raycaster = new THREE.Raycaster();
+    const screenCenter = new THREE.Vector2(0,0);
+
+    const BALLOON_COUNT = 16;
+    const PLAY_HALF_X = 3.2;
+    const PLAY_HALF_Z = 3.2;
+    const PLAY_MIN_Y = 0.45;
+    const PLAY_MAX_Y = 2.65;
+
+    const roomCenter = new THREE.Vector3();
+    const balloonGeometry = new THREE.SphereGeometry(.16,18,14);
+    const particleGeometry = new THREE.SphereGeometry(.018,8,6);
+    const colors = [0xff4f6d,0x53c8ff,0xffcf4a,0x9c6cff,0x65e68b,0xff8b3d];
+
+    function syncVisualViewport(){
+      const vv = window.visualViewport;
+      const w = Math.round(vv?.width || window.innerWidth || document.documentElement.clientWidth);
+      const h = Math.round(vv?.height || window.innerHeight || document.documentElement.clientHeight);
+
+      document.documentElement.style.setProperty('--app-w',w+'px');
+      document.documentElement.style.setProperty('--app-h',h+'px');
+
+      canvas.style.setProperty('width',w+'px','important');
+      canvas.style.setProperty('height',h+'px','important');
+
+      requestAnimationFrame(()=>{
+        if(renderer?.setSize) renderer.setSize(w,h,false);
+      });
+    }
+
+    syncVisualViewport();
+    window.addEventListener('resize',syncVisualViewport,{passive:true});
+    window.addEventListener('orientationchange',()=>{
+      setTimeout(syncVisualViewport,80);
+      setTimeout(syncVisualViewport,350);
+    },{passive:true});
+    window.visualViewport?.addEventListener('resize',syncVisualViewport,{passive:true});
+
+    function notify(msg){
+      toast.textContent = msg;
+      toast.classList.add('show');
+      clearTimeout(window.__balloonToast);
+      window.__balloonToast = setTimeout(()=>toast.classList.remove('show'),1100);
+    }
+
+    function randomPoint(out){
+      out.set(
+        roomCenter.x + THREE.MathUtils.randFloatSpread(PLAY_HALF_X*2),
+        THREE.MathUtils.randFloat(PLAY_MIN_Y,PLAY_MAX_Y),
+        roomCenter.z + THREE.MathUtils.randFloatSpread(PLAY_HALF_Z*2)
+      );
+
+      const dx = out.x - roomCenter.x;
+      const dz = out.z - roomCenter.z;
+      if(Math.hypot(dx,dz) < .8){
+        const a = Math.random()*Math.PI*2;
+        out.x = roomCenter.x + Math.cos(a)*THREE.MathUtils.randFloat(1.0,2.3);
+        out.z = roomCenter.z + Math.sin(a)*THREE.MathUtils.randFloat(1.0,2.3);
+      }
+      return out;
+    }
+
+    function randomVelocity(){
+      const v = new THREE.Vector3(
+        THREE.MathUtils.randFloatSpread(1),
+        THREE.MathUtils.randFloatSpread(.55),
+        THREE.MathUtils.randFloatSpread(1)
+      );
+      if(v.lengthSq()<.01) v.set(.3,.1,.2);
+      return v.normalize().multiplyScalar(THREE.MathUtils.randFloat(.16,.34));
+    }
+
+    function createBalloon(index){
+      const color = colors[index % colors.length];
+      const mat = new THREE.MeshStandardMaterial({
+        color,
+        roughness:.48,
+        metalness:.02,
+        transparent:true,
+        opacity:.96
+      });
+      const mesh = new THREE.Mesh(balloonGeometry,mat);
+      mesh.scale.set(.84,1.12,.84);
+      mesh.castShadow = false;
+      mesh.userData.balloon = true;
+      mesh.userData.velocity = randomVelocity();
+      mesh.userData.targetVelocity = randomVelocity();
+      mesh.userData.changeTimer = THREE.MathUtils.randFloat(.8,2.3);
+      mesh.userData.phase = Math.random()*Math.PI*2;
+      mesh.userData.baseColor = color;
+      randomPoint(mesh.position);
+      scene.add(mesh);
+      balloons.push(mesh);
+      return mesh;
+    }
+
+    function createAllBalloons(){
+      for(const b of balloons) scene.remove(b);
+      balloons.length = 0;
+      for(let i=0;i<BALLOON_COUNT;i++) createBalloon(i);
+    }
+
+    function resetBalloon(balloon){
+      randomPoint(balloon.position);
+      balloon.userData.velocity.copy(randomVelocity());
+      balloon.userData.targetVelocity.copy(randomVelocity());
+      balloon.userData.changeTimer = THREE.MathUtils.randFloat(.8,2.2);
+      balloon.visible = true;
+    }
+
+    function updateBalloons(dt,now){
+      for(const b of balloons){
+        if(!b.visible) continue;
+        const u = b.userData;
+        u.changeTimer -= dt;
+
+        if(u.changeTimer<=0){
+          u.targetVelocity.copy(randomVelocity());
+          u.changeTimer = THREE.MathUtils.randFloat(.8,2.4);
+        }
+
+        u.velocity.lerp(u.targetVelocity,Math.min(1,dt*1.2));
+
+        b.position.addScaledVector(u.velocity,dt);
+        b.position.y += Math.sin(now*.0015+u.phase)*.015*dt;
+
+        const minX=roomCenter.x-PLAY_HALF_X,maxX=roomCenter.x+PLAY_HALF_X;
+        const minZ=roomCenter.z-PLAY_HALF_Z,maxZ=roomCenter.z+PLAY_HALF_Z;
+
+        if(b.position.x<minX){b.position.x=minX;u.velocity.x=Math.abs(u.velocity.x);u.targetVelocity.x=Math.abs(u.targetVelocity.x)}
+        if(b.position.x>maxX){b.position.x=maxX;u.velocity.x=-Math.abs(u.velocity.x);u.targetVelocity.x=-Math.abs(u.targetVelocity.x)}
+        if(b.position.z<minZ){b.position.z=minZ;u.velocity.z=Math.abs(u.velocity.z);u.targetVelocity.z=Math.abs(u.targetVelocity.z)}
+        if(b.position.z>maxZ){b.position.z=maxZ;u.velocity.z=-Math.abs(u.velocity.z);u.targetVelocity.z=-Math.abs(u.targetVelocity.z)}
+        if(b.position.y<PLAY_MIN_Y){b.position.y=PLAY_MIN_Y;u.velocity.y=Math.abs(u.velocity.y);u.targetVelocity.y=Math.abs(u.targetVelocity.y)}
+        if(b.position.y>PLAY_MAX_Y){b.position.y=PLAY_MAX_Y;u.velocity.y=-Math.abs(u.velocity.y);u.targetVelocity.y=-Math.abs(u.targetVelocity.y)}
+
+        b.rotation.y += dt*.18;
+      }
+    }
+
+    function explode(balloon){
+      const color = balloon.userData.baseColor;
+      const material = new THREE.MeshBasicMaterial({color,transparent:true,opacity:1});
+      const group = new THREE.Group();
+      group.position.copy(balloon.position);
+
+      const parts=[];
+      for(let i=0;i<14;i++){
+        const p=new THREE.Mesh(particleGeometry,material.clone());
+        const v=new THREE.Vector3(
+          THREE.MathUtils.randFloatSpread(1),
+          THREE.MathUtils.randFloat(-.2,1),
+          THREE.MathUtils.randFloatSpread(1)
+        ).normalize().multiplyScalar(THREE.MathUtils.randFloat(.45,1.05));
+        p.userData.velocity=v;
+        p.userData.life=THREE.MathUtils.randFloat(.32,.60);
+        p.userData.maxLife=p.userData.life;
+        group.add(p);
+        parts.push(p);
+      }
+
+      scene.add(group);
+      explosions.push({group,parts});
+      balloon.visible=false;
+      setTimeout(()=>resetBalloon(balloon),500);
+    }
+
+    function updateExplosions(dt){
+      for(let i=explosions.length-1;i>=0;i--){
+        const e=explosions[i];
+        let alive=false;
+        for(const p of e.parts){
+          if(p.userData.life<=0) continue;
+          alive=true;
+          p.userData.life-=dt;
+          p.userData.velocity.y-=1.2*dt;
+          p.position.addScaledVector(p.userData.velocity,dt);
+          const a=Math.max(0,p.userData.life/p.userData.maxLife);
+          p.material.opacity=a;
+          p.scale.setScalar(.6+a*.7);
+        }
+        if(!alive){
+          scene.remove(e.group);
+          e.parts.forEach(p=>p.material.dispose());
+          explosions.splice(i,1);
+        }
+      }
+    }
+
+    function shoot(){
+      if(!xrStarted||!camera) return;
+
+      raycaster.setFromCamera(screenCenter,camera);
+      const visible = balloons.filter(b=>b.visible);
+      const hits = raycaster.intersectObjects(visible,false);
+
+      if(hits.length){
+        const target=hits[0].object;
+        explode(target);
+        score++;
+        scoreEl.textContent=score;
+        guide.classList.add('hidden');
+        hitflash.classList.add('on');
+        setTimeout(()=>hitflash.classList.remove('on'),90);
+        if(navigator.vibrate) navigator.vibrate(20);
+      }else{
+        notify('حاول مرة ثانية');
+      }
+    }
+
+    fireBtn.addEventListener('pointerdown',(e)=>{
+      e.preventDefault();e.stopPropagation();shoot();
+    });
+
+    document.addEventListener('pointerdown',(e)=>{
+      if(!xrStarted) return;
+      if(e.target.closest('button')) return;
+      shoot();
+    });
+
+    recenterBtn.addEventListener('click',(e)=>{
+      e.preventDefault();
+      if(!camera) return;
+      roomCenter.copy(camera.position);
+      roomCenter.y=1.35;
+      createAllBalloons();
+      score=0;
+      scoreEl.textContent='0';
+      guide.classList.remove('hidden');
+      try{XR8.XrController.recenter()}catch{}
+      notify('تمت إعادة توزيع الأهداف');
+    });
+
+    async function setupScene(){
+      const xrScene=XR8.Threejs.xrScene();
+      scene=xrScene.scene;
+      camera=xrScene.camera;
+      renderer=xrScene.renderer;
+
+      renderer.shadowMap.enabled=false;
+      syncVisualViewport();
+      setTimeout(syncVisualViewport,80);
+      setTimeout(syncVisualViewport,350);
+
+      scene.add(new THREE.HemisphereLight(0xffffff,0x66707e,1.8));
+      const key=new THREE.DirectionalLight(0xffffff,1.4);
+      key.position.set(2,4,1);
+      scene.add(key);
+
+      camera.position.set(0,1.5,2.0);
+      XR8.XrController.updateCameraProjectionMatrix({
+        origin:camera.position,
+        facing:camera.quaternion
+      });
+
+      roomCenter.copy(camera.position);
+      roomCenter.y=1.35;
+
+      createAllBalloons();
+      lastTime=performance.now();
+      requestAnimationFrame(loop);
+    }
+
+    function loop(now){
+      requestAnimationFrame(loop);
+      if(!scene||!camera) return;
+      const dt=Math.min(1/30,(now-lastTime)/1000||.016);
+      lastTime=now;
+      updateBalloons(dt,now);
+      updateExplosions(dt);
+    }
+
+    function worldModule(){
+      return{
+        name:'aboden-balloon-shooter',
+        onStart:async()=>{
+          try{
+            await setupScene();
+            window.dispatchEvent(new Event('resize'));
+          }catch(err){
+            console.error(err);
+            notify('فشل تجهيز التجربة');
+          }
+        },
+        onException:(error)=>{
+          console.error(error);
+          notify('حدث خطأ في التتبع');
+        }
+      };
+    }
+
+    startBtn.addEventListener('click',()=>{
+      if(!xrReady||xrStarted) return;
+      xrStarted=true;
+      startBtn.disabled=true;
+      startBtn.textContent='جاري فتح الكاميرا…';
+      errorBox.style.display='none';
+
+      try{
+        intro.style.display='none';
+        gameUi.style.display='block';
+        XR8.run({canvas});
+        syncVisualViewport();
+        setTimeout(syncVisualViewport,120);
+        setTimeout(syncVisualViewport,500);
+        setTimeout(syncVisualViewport,1200);
+      }catch(err){
+        console.error(err);
+        xrStarted=false;
+        intro.style.display='flex';
+        gameUi.style.display='none';
+        errorBox.style.display='block';
+        errorBox.textContent='تعذر تشغيل AR. حدّث الصفحة وحاول مرة أخرى.';
+        startBtn.disabled=false;
+        startBtn.textContent='حاول مرة أخرى';
+      }
+    });
+
+    function initializeXR(){
+      if(xrReady||!window.XR8||!window.THREE) return;
+      try{
+        XR8.XrController.configure({
+          disableWorldTracking:false,
+          enableLighting:true,
+          enableWorldPoints:true,
+          scale:'responsive'
+        });
+
+        XR8.addCameraPipelineModules([
+          XR8.GlTextureRenderer.pipelineModule(),
+          XR8.Threejs.pipelineModule(),
+          XR8.XrController.pipelineModule(),
+          worldModule()
+        ]);
+
+        xrReady=true;
+        startBtn.disabled=false;
+        startBtn.textContent='ابدأ التجربة';
+      }catch(err){
+        console.error(err);
+        errorBox.style.display='block';
+        errorBox.textContent='لم يكتمل تحميل محرك AR. أعد تحميل الصفحة.';
+      }
+    }
+
+    if(window.XR8) initializeXR();
+    else window.addEventListener('xrloaded',initializeXR,{once:true});
+
+    setTimeout(()=>{
+      if(!xrReady){
+        errorBox.style.display='block';
+        errorBox.textContent='محرك AR يستغرق وقتًا أطول من المتوقع. تحقق من الاتصال ثم أعد تحميل الصفحة.';
+      }
+    },12000);
+  </script>
+</body>
+</html>
