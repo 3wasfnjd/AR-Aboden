@@ -49,6 +49,8 @@ export class Vehicle {
     this.wheels = [];
     this.wheelFL = null;
     this.wheelFR = null;
+    this.wheelBL = null;
+    this.wheelBR = null;
     this.modelVelocity = new THREE.Vector3();
     this.prevModelPos = new THREE.Vector3();
 
@@ -88,6 +90,36 @@ export class Vehicle {
       this.wheels.push(pivot);
       if (name.includes('front') && name.includes('left')) this.wheelFL = pivot;
       if (name.includes('front') && name.includes('right')) this.wheelFR = pivot;
+      if ((name.includes('back') || name.includes('rear')) && name.includes('left')) this.wheelBL = pivot;
+      if ((name.includes('back') || name.includes('rear')) && name.includes('right')) this.wheelBR = pivot;
+    }
+
+    // Some imported GLB cars don't use predictable wheel node names.
+    // DriftMarks/SmokeTrails need rear-wheel world positions, so create
+    // invisible fallback anchors from the car's own bounding box.
+    if (!this.wheelBL || !this.wheelBR) {
+      vehicleModel.updateMatrixWorld(true);
+      const box = new THREE.Box3().setFromObject(vehicleModel);
+      const size = new THREE.Vector3();
+      box.getSize(size);
+
+      const y = box.min.y + Math.max(0.012, size.y * 0.12);
+      const rearZ = box.min.z + size.z * 0.23;
+      const halfTrack = size.x * 0.31;
+
+      if (!this.wheelBL) {
+        this.wheelBL = new THREE.Group();
+        this.wheelBL.name = 'fallback-wheel-back-left';
+        this.wheelBL.position.set(-halfTrack, y, rearZ);
+        vehicleModel.add(this.wheelBL);
+      }
+
+      if (!this.wheelBR) {
+        this.wheelBR = new THREE.Group();
+        this.wheelBR.name = 'fallback-wheel-back-right';
+        this.wheelBR.position.set(halfTrack, y, rearZ);
+        vehicleModel.add(this.wheelBR);
+      }
     }
 
     return this.container;
