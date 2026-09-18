@@ -104,15 +104,15 @@
 
     <div class="guide" id="guide">
       <b>امسح الأرض بهدوء</b>
-      حرّك الجوال ببطء فوق السجادة أو الأرضية حتى تصبح الحالة «السطح مستقر»، ثم ضع السيارة.
+      حرّك الجوال ببطء فوق السجادة أو الأرضية حتى تصبح الحالة «السطح مستقر»، ثم ثبّت الحلبة كاملة.
     </div>
 
     <div class="toast" id="toast"></div>
-    <div class="mode" id="modeText">فيزياء هجولة: جسم ديناميكي مستقل عن الكاميرا + احتكاك + فرامل يد</div>
+    <div class="mode" id="modeText">حلبة AR ثابتة: الحلبة هي الـAnchor والسيارة تلعب داخل حدودها</div>
 
     <div class="controls" id="controls">
       <div class="placement">
-        <button class="smallBtn primary" id="placeBtn">ضع السيارة</button>
+        <button class="smallBtn primary" id="placeBtn">ثبّت الحلبة</button>
         <button class="smallBtn" id="recenterBtn">معايرة</button>
       </div>
 
@@ -130,11 +130,11 @@
 
   <div id="intro">
     <div class="card">
-      <h1>AR بفيزياء هجولة</h1>
-      <p>هذه النسخة تستفيد من منطق <b>Vehicle.js / Physics.js / Controls.js</b> في مستودع hajwala: السيارة لم تعد تتحرك بمجرد تغيير position؛ أصبحت مربوطة بجسم فيزيائي مستقل.</p>
+      <h1>حلبة هجولة AR</h1>
+      <p>ثبّت الحلبة مرة واحدة على الأرض، وبعدها تولد السيارة داخلها وتبقى محصورة بحواجز فيزيائية حول الحلبة.</p>
       <button class="start" id="startBtn" disabled>جاري تجهيز المحرك…</button>
       <div class="error" id="errorBox"></div>
-      <p class="tiny">بعد وضع السيارة: الجويستك للتوجيه، بنزين وفرامل منفصلان، والهاندبريك يعطي التفافًا أشد ويخفض السرعة.</p>
+      <p class="tiny">بعد تثبيت الحلبة: الجويستك للتوجيه، بنزين وفرامل منفصلان، والهاندبريك للدرفت داخل الحلبة.</p>
     </div>
   </div>
 
@@ -147,8 +147,8 @@
     import { MobileControls } from './js/Controls.js';
     import {
       createVehicleWorld,
-      createRollingGround,
-      updateRollingGround,
+      createArenaPhysics,
+      moveArenaPhysics,
       createVehicleBody,
       resetVehicleBody
     } from './js/Physics.js';
@@ -228,13 +228,17 @@
     let xrStarted = false;
     let scene, camera, renderer;
     let reticle, shadowPlane;
+    let arenaGroup = null;
+    let arenaPhysics = null;
     let vehicle = null;
     let world = null;
     let body = null;
-    let rollingGround = null;
     let placed = false;
 
     const vehicleRadius = 0.13;
+    const ARENA_RADIUS = 2.0;
+    const ARENA_SEGMENTS = 28;
+    const ARENA_WALL_HEIGHT = 0.22;
 
     const raycaster = new THREE.Raycaster();
     const centerNdc = new THREE.Vector2(0, 0);
@@ -339,7 +343,7 @@
       scene.add(key);
 
       shadowPlane = new THREE.Mesh(
-        new THREE.PlaneGeometry(26,26),
+        new THREE.PlaneGeometry(5.2,5.2),
         new THREE.ShadowMaterial({opacity:.20})
       );
       shadowPlane.rotation.x = -Math.PI/2;
@@ -347,13 +351,82 @@
       shadowPlane.receiveShadow = true;
       scene.add(shadowPlane);
 
-      reticle = new THREE.Mesh(
+      reticle = new THREE.Group();
+
+      const centerRing = new THREE.Mesh(
         new THREE.RingGeometry(.10,.125,40).rotateX(-Math.PI/2),
-        new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:.92})
+        new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:.96,depthWrite:false})
       );
+
+      const footprint = new THREE.Mesh(
+        new THREE.RingGeometry(ARENA_RADIUS - .035,ARENA_RADIUS,72).rotateX(-Math.PI/2),
+        new THREE.MeshBasicMaterial({color:0x5dd5ff,transparent:true,opacity:.70,depthWrite:false,side:THREE.DoubleSide})
+      );
+
+      reticle.add(centerRing,footprint);
       reticle.position.y = .008;
       reticle.visible = false;
       scene.add(reticle);
+
+      arenaGroup = new THREE.Group();
+      arenaGroup.visible = false;
+
+      const arenaFloor = new THREE.Mesh(
+        new THREE.CircleGeometry(ARENA_RADIUS,72).rotateX(-Math.PI/2),
+        new THREE.MeshStandardMaterial({
+          color:0x20252c,
+          roughness:.92,
+          metalness:0,
+          transparent:true,
+          opacity:.48,
+          side:THREE.DoubleSide
+        })
+      );
+      arenaFloor.position.y = .004;
+      arenaFloor.receiveShadow = true;
+      arenaGroup.add(arenaFloor);
+
+      const innerRing = new THREE.Mesh(
+        new THREE.RingGeometry(ARENA_RADIUS*.54,ARENA_RADIUS*.56,72).rotateX(-Math.PI/2),
+        new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:.55,side:THREE.DoubleSide})
+      );
+      innerRing.position.y = .007;
+      arenaGroup.add(innerRing);
+
+      const centerMark = new THREE.Mesh(
+        new THREE.CircleGeometry(.08,32).rotateX(-Math.PI/2),
+        new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:.75,side:THREE.DoubleSide})
+      );
+      centerMark.position.y = .008;
+      arenaGroup.add(centerMark);
+
+      const wallThickness = .09;
+      const wallHeight = ARENA_WALL_HEIGHT;
+      const circumference = Math.PI * 2 * ARENA_RADIUS;
+      const segmentLength = circumference / ARENA_SEGMENTS * 1.10;
+
+      for (let i=0;i<ARENA_SEGMENTS;i++){
+        const a = i / ARENA_SEGMENTS * Math.PI * 2;
+        const wall = new THREE.Mesh(
+          new THREE.BoxGeometry(wallThickness,wallHeight,segmentLength),
+          new THREE.MeshStandardMaterial({
+            color: i % 2 === 0 ? 0xf2f2f2 : 0xffb000,
+            roughness:.72,
+            metalness:.06
+          })
+        );
+        wall.position.set(
+          Math.cos(a)*ARENA_RADIUS,
+          wallHeight*.5,
+          Math.sin(a)*ARENA_RADIUS
+        );
+        wall.rotation.y = -a;
+        wall.castShadow = true;
+        wall.receiveShadow = true;
+        arenaGroup.add(wall);
+      }
+
+      scene.add(arenaGroup);
 
       world = createVehicleWorld();
 
@@ -420,7 +493,7 @@
 
       reticle.visible = true;
       reticle.position.set(stablePoint.x,.008,stablePoint.z);
-      reticle.rotation.z += dt*.55;
+      reticle.rotation.y += dt*.12;
 
       surfaceReady = reticleStableMs > 700;
       setStatus(surfaceReady ? 'السطح مستقر' : 'ثبّت الجوال قليلًا', surfaceReady);
@@ -437,17 +510,8 @@
 
       if (!placed || !body) return;
 
-      // Recycle the small ground grid only when the car crosses into
-      // another 8 m cell. This keeps only 9 colliders alive at all times.
-      updateRollingGround(rollingGround, vehicle.spherePos.x, vehicle.spherePos.z);
-
-      // Keep the invisible shadow receiver under the active driving area.
-      shadowPlane.position.x = vehicle.spherePos.x;
-      shadowPlane.position.z = vehicle.spherePos.z;
-
-      // Critical difference from the previous prototype:
-      // car movement is now driven ONLY by the physics body.
-      // Camera motion never edits the car's world position.
+      // The arena stays fixed at its AR anchor.
+      // Only the car moves inside the arena through the physics body.
       updateWorld(world, null, dt);
 
       const input = controls.update();
@@ -467,26 +531,38 @@
         return;
       }
 
-      const spawn = new THREE.Vector3(
+      const arenaCenter = new THREE.Vector3(
         reticle.position.x,
-        vehicleRadius,
+        0,
         reticle.position.z
       );
 
-      // Rolling Ground: only a small 3x3 set of physics tiles exists.
-      // The tiles are recycled around the car as it moves, so the drivable
-      // area behaves as endless without a giant collider.
-      if (!rollingGround) {
-        rollingGround = createRollingGround(world, spawn.x, spawn.z, {
-          tileSize: 8,
-          radius: 1,
-          overlap: 0.35
-        });
-      } else {
-        updateRollingGround(rollingGround, spawn.x, spawn.z, true);
+      if (!arenaPhysics){
+        arenaPhysics = createArenaPhysics(
+          world,
+          arenaCenter.x,
+          arenaCenter.z,
+          {
+            radius:ARENA_RADIUS,
+            segments:ARENA_SEGMENTS,
+            wallThickness:.09,
+            wallHeight:ARENA_WALL_HEIGHT,
+            floorMargin:.30
+          }
+        );
+      }else{
+        moveArenaPhysics(arenaPhysics,arenaCenter.x,arenaCenter.z);
       }
 
-      shadowPlane.position.set(spawn.x, 0, spawn.z);
+      arenaGroup.position.set(arenaCenter.x,0,arenaCenter.z);
+      arenaGroup.visible = true;
+      shadowPlane.position.set(arenaCenter.x,0,arenaCenter.z);
+
+      const spawn = new THREE.Vector3(
+        arenaCenter.x,
+        vehicleRadius,
+        arenaCenter.z
+      );
 
       if (!body){
         body = createVehicleBody(
@@ -504,10 +580,10 @@
 
       placed = true;
       guide.classList.add('hidden');
-      placeBtn.textContent = 'نقل السيارة';
-      setStatus('السيارة مثبتة', true);
+      placeBtn.textContent = 'نقل الحلبة';
+      setStatus('الحلبة مثبتة', true);
       controls.reset();
-      notify('تم تثبيت السيارة — ابدأ القيادة');
+      notify('تم تثبيت الحلبة — ابدأ القيادة');
 
       if (navigator.vibrate) navigator.vibrate(30);
     }
@@ -524,9 +600,10 @@
       controls.reset();
 
       if (vehicle) vehicle.container.visible = false;
+      if (arenaGroup) arenaGroup.visible = false;
 
       guide.classList.remove('hidden');
-      placeBtn.textContent = 'ضع السيارة';
+      placeBtn.textContent = 'ثبّت الحلبة';
       setStatus('أعد مسح الأرض', true);
 
       try{
@@ -535,7 +612,7 @@
         console.warn(err);
       }
 
-      notify('أعد مسح الأرض ببطء');
+      notify('أعد مسح الأرض ثم ثبّت الحلبة من جديد');
     }
 
     placeBtn.addEventListener('click',placeVehicle);
