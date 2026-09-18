@@ -35,16 +35,18 @@ export function createVehicleWorld() {
   world._OL_MOVING = movingLayer;
   world._OL_STATIC = staticLayer;
 
-  rigidBody.create(world, {
-    shape: box.create({ halfExtents: [25, 0.01, 25] }),
+  return world;
+}
+
+export function createGroundCollider(world, centerX = 0, centerZ = 0, halfExtent = 1000) {
+  return rigidBody.create(world, {
+    shape: box.create({ halfExtents: [halfExtent, 0.02, halfExtent] }),
     motionType: MotionType.STATIC,
-    objectLayer: staticLayer,
-    position: [0, -0.01, 0],
+    objectLayer: world._OL_STATIC,
+    position: [centerX, -0.02, centerZ],
     friction: 5.0,
     restitution: 0.0,
   });
-
-  return world;
 }
 
 export function createVehicleBody(world, position, radius = 0.13) {
