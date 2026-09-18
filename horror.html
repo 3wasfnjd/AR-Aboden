@@ -169,7 +169,7 @@
     <div class="card">
       <div class="eyebrow">ABODEN AR · HORROR</div>
       <h1>الرعب المتجول</h1>
-      <p>شخصيتان مرعبتان تتحركان عشوائيًا داخل المساحة أمامك. واحدة تركض بأنيميشن حقيقي، والثانية تنزلق بحركة شبحية بطيئة.</p>
+      <p>شخصية مرعبة تظهر أمامك من مسافة آمنة، ثم تمشي ببطء باتجاه الجوال وتتوقف قبل الاقتراب الشديد.</p>
       <button class="start" id="startBtn" disabled>جاري تجهيز المحرك…</button>
       <div class="error" id="errorBox"></div>
       <p class="tiny">يفضل مساحة فارغة نسبيًا وتحريك الجوال ببطء أثناء التتبع.<br>3D credits: John Doe · PurplePoint / Sketchfab</p>
@@ -214,11 +214,10 @@
     const playForward=new THREE.Vector3(0,0,-1);
     const playRight=new THREE.Vector3(1,0,0);
 
-    const PLAY_MIN_DISTANCE=3.10;
-    const PLAY_MAX_DISTANCE=6.40;
-    const PLAY_HALF_ANGLE=THREE.MathUtils.degToRad(68);
-    const PLAY_INNER_ANGLE=THREE.MathUtils.degToRad(20);
-    const MIN_ACTOR_SEPARATION=2.35;
+    const START_MIN_DISTANCE=3.6;
+    const START_MAX_DISTANCE=4.8;
+    const STALK_STOP_DISTANCE=1.15;
+    const STALK_SIDE_OFFSET=.28;
 
     const actors=[];
     const mixers=[];
@@ -331,114 +330,54 @@
       return wrapper;
     }
 
-    function randomTarget(out,actor=null){
-      const side=actor?.laneSide||0;
-      const candidate=new THREE.Vector3();
+    const tempCameraPos=new THREE.Vector3();
+    const tempCameraForward=new THREE.Vector3();
+    const tempCameraRight=new THREE.Vector3();
 
-      for(let attempt=0;attempt<16;attempt++){
-        let angle;
+    function updateStalkTarget(actor){
+      camera.getWorldPosition(tempCameraPos);
+      tempCameraPos.y=playOrigin.y;
 
-        if(side<0){
-          angle=THREE.MathUtils.randFloat(-PLAY_HALF_ANGLE,-PLAY_INNER_ANGLE);
-        }else if(side>0){
-          angle=THREE.MathUtils.randFloat(PLAY_INNER_ANGLE,PLAY_HALF_ANGLE);
-        }else{
-          angle=THREE.MathUtils.randFloat(-PLAY_HALF_ANGLE,PLAY_HALF_ANGLE);
-        }
+      cameraHorizontalForward(tempCameraForward);
+      tempCameraRight.set(-tempCameraForward.z,0,tempCameraForward.x).normalize();
 
-        const distance=THREE.MathUtils.randFloat(PLAY_MIN_DISTANCE,PLAY_MAX_DISTANCE);
-
-        candidate.copy(playOrigin)
-          .addScaledVector(playForward,Math.cos(angle)*distance)
-          .addScaledVector(playRight,Math.sin(angle)*distance);
-        candidate.y=playOrigin.y;
-
-        let separated=true;
-        for(const other of actors){
-          if(other===actor)continue;
-
-          const otherPos=other.root.position;
-          if(candidate.distanceTo(otherPos)<MIN_ACTOR_SEPARATION){
-            separated=false;
-            break;
-          }
-
-          if(other.target && candidate.distanceTo(other.target)<MIN_ACTOR_SEPARATION*.80){
-            separated=false;
-            break;
-          }
-        }
-
-        if(separated){
-          out.copy(candidate);
-          return out;
-        }
-      }
-
-      // Deterministic fallback keeps each character on its own side even
-      // if random attempts happen to collide.
-      const fallbackAngle=(side||1)*THREE.MathUtils.degToRad(42);
-      out.copy(playOrigin)
-        .addScaledVector(playForward,Math.cos(fallbackAngle)*4.4)
-        .addScaledVector(playRight,Math.sin(fallbackAngle)*4.4);
-      out.y=playOrigin.y;
-      return out;
+      // Stop in front of the phone instead of walking into the camera.
+      actor.target.copy(tempCameraPos)
+        .addScaledVector(tempCameraForward,STALK_STOP_DISTANCE)
+        .addScaledVector(tempCameraRight,actor.sideOffset);
+      actor.target.y=playOrigin.y;
     }
 
     function createActor(root,{
-      speed=.28,
-      turnRate=2.0,
-      ghost=false,
+      speed=.14,
+      turnRate=1.55,
       forwardOffset=0,
       mixer=null,
-      action=null,
-      laneSide=0
+      action=null
     }={}){
       const actor={
         root,
         speed,
         turnRate,
-        ghost,
         forwardOffset,
         mixer,
         action,
-        laneSide,
         target:new THREE.Vector3(),
         currentSpeed:0,
-        pause:0,
-        waitingForTarget:false,
-        bobSeed:Math.random()*Math.PI*2,
         baseY:0,
+        sideOffset:THREE.MathUtils.randFloat(-STALK_SIDE_OFFSET,STALK_SIDE_OFFSET),
+        retargetTimer:0,
       };
 
       root.visible=false;
       scene.add(root);
       actors.push(actor);
-
-      randomTarget(root.position,actor);
-      actor.baseY=root.position.y;
-      randomTarget(actor.target,actor);
-
       if(mixer) mixers.push(mixer);
       return actor;
     }
 
     async function loadCharacters(){
-      const [ghostGltf,hoodedGltf]=await Promise.all([
-        loadGLB('./assets/horror/ghostly_woman.glb'),
-        loadGLB('./assets/horror/hooded_horror_woman.glb')
-      ]);
-
-      // Human-proportioned visual sizes. Kept large enough to read clearly
-      // from the farther roaming distance without looking giant.
-      const ghost=normalizeModel(ghostGltf.scene,{height:1.70,modelYaw:Math.PI});
-      createActor(ghost,{
-        speed:.22,
-        turnRate:1.45,
-        ghost:true,
-        forwardOffset:Math.PI,
-        laneSide:-1
-      });
+      const hoodedGltf=await loadGLB('./assets/horror/hooded_horror_woman.glb');
 
       const hooded=normalizeModel(hoodedGltf.scene,{height:1.78,modelYaw:0});
       let mixer=null;
@@ -448,60 +387,54 @@
         mixer=new THREE.AnimationMixer(hooded);
         const clip=hoodedGltf.animations.find(a=>/runfast/i.test(a.name))||hoodedGltf.animations[0];
         action=mixer.clipAction(clip);
-        action.timeScale=.34;
+
+        // The source clip is RunFast; slow it heavily so it reads as a
+        // slow stalking walk rather than a sprint.
+        action.timeScale=.12;
         action.play();
+        action.paused=true;
       }
 
       createActor(hooded,{
-        speed:.28,
-        turnRate:2.15,
-        ghost:false,
+        speed:.14,
+        turnRate:1.55,
         forwardOffset:Math.PI,
         mixer,
-        action,
-        laneSide:1
+        action
       });
     }
 
-    function updateActors(dt,time){
+    function updateActors(dt){
       const dir=new THREE.Vector3();
 
       for(const a of actors){
-        let distance=0;
-        let hasDirection=false;
-        let desiredSpeed=0;
-
-        if(a.pause>0){
-          a.pause=Math.max(0,a.pause-dt);
-
-          if(a.pause===0 && a.waitingForTarget){
-            randomTarget(a.target,a);
-            a.waitingForTarget=false;
-          }
-        }else{
-          dir.subVectors(a.target,a.root.position);
-          dir.y=0;
-          distance=dir.length();
-
-          if(distance<.20){
-            a.pause=THREE.MathUtils.randFloat(.55,1.45);
-            a.waitingForTarget=true;
-          }else{
-            dir.divideScalar(distance);
-            hasDirection=true;
-
-            // Ease naturally near the destination instead of stopping dead.
-            const slowDown=THREE.MathUtils.smoothstep(distance,.20,1.15);
-            desiredSpeed=a.speed*(.32+.68*slowDown);
-          }
+        a.retargetTimer-=dt;
+        if(a.retargetTimer<=0){
+          updateStalkTarget(a);
+          a.retargetTimer=.12;
         }
 
-        // Human-like acceleration/deceleration instead of constant speed.
-        const response=desiredSpeed>a.currentSpeed ? 2.4 : 4.2;
+        dir.subVectors(a.target,a.root.position);
+        dir.y=0;
+        const distance=dir.length();
+
+        let desiredSpeed=0;
+        let hasDirection=false;
+
+        if(distance>.10){
+          dir.divideScalar(distance);
+          hasDirection=true;
+
+          // Slow down smoothly as she reaches the phone's safe stopping point.
+          const slowDown=THREE.MathUtils.smoothstep(distance,.10,.85);
+          desiredSpeed=a.speed*(.18+.82*slowDown);
+        }
+
+        const response=desiredSpeed>a.currentSpeed ? 1.7 : 3.2;
         const speedBlend=1-Math.exp(-response*dt);
         a.currentSpeed=THREE.MathUtils.lerp(a.currentSpeed,desiredSpeed,speedBlend);
 
-        if(hasDirection && a.currentSpeed>.002){
+        if(hasDirection && a.currentSpeed>.001){
           const targetYaw=Math.atan2(dir.x,dir.z)+a.forwardOffset;
           const currentYaw=a.root.rotation.y;
 
@@ -519,29 +452,21 @@
         const speedRatio=a.speed>0 ? THREE.MathUtils.clamp(a.currentSpeed/a.speed,0,1) : 0;
 
         if(a.action){
-          // Slow the supplied RunFast cycle into a believable fast-walk /
-          // stalking cadence and tie it to actual world movement.
-          a.action.paused=speedRatio<.04;
+          a.action.paused=speedRatio<.025;
+
           if(!a.action.paused){
-            const targetTimeScale=.28+.24*speedRatio;
+            // Keep the leg cycle slow and synchronized with world movement.
+            const targetTimeScale=.10+.08*speedRatio;
             a.action.timeScale=THREE.MathUtils.lerp(
               a.action.timeScale,
               targetTimeScale,
-              1-Math.exp(-5*dt)
+              1-Math.exp(-4*dt)
             );
           }
         }
 
         if(a.mixer) a.mixer.update(dt);
-
-        if(a.ghost){
-          // This model has no skeleton/animation clips, so keep its root
-          // motion restrained: a subtle vertical float only, no stretching.
-          const amp=.005+.010*speedRatio;
-          a.root.position.y=a.baseY+Math.sin(time*1.35+a.bobSeed)*amp;
-        }else{
-          a.root.position.y=a.baseY;
-        }
+        a.root.position.y=a.baseY;
       }
     }
 
@@ -552,13 +477,14 @@
     }
 
     function distributeActors(){
-      // Start on opposite sides, then roam naturally within each lane.
       for(const a of actors){
-        const side=a.laneSide||1;
-        const startAngle=side*THREE.MathUtils.degToRad(
-          THREE.MathUtils.randFloat(34,58)
+        const startAngle=THREE.MathUtils.degToRad(
+          THREE.MathUtils.randFloat(-22,22)
         );
-        const startDistance=THREE.MathUtils.randFloat(4.00,5.35);
+        const startDistance=THREE.MathUtils.randFloat(
+          START_MIN_DISTANCE,
+          START_MAX_DISTANCE
+        );
 
         a.root.position.copy(playOrigin)
           .addScaledVector(playForward,Math.cos(startAngle)*startDistance)
@@ -567,13 +493,13 @@
         a.root.position.y=playOrigin.y;
         a.baseY=playOrigin.y;
         a.currentSpeed=0;
-        a.waitingForTarget=false;
-        randomTarget(a.target,a);
-        a.pause=THREE.MathUtils.randFloat(.25,.85);
+        a.sideOffset=THREE.MathUtils.randFloat(-STALK_SIDE_OFFSET,STALK_SIDE_OFFSET);
+        a.retargetTimer=0;
+        updateStalkTarget(a);
 
         if(a.action){
           a.action.paused=true;
-          a.action.timeScale=.34;
+          a.action.timeScale=.12;
         }
       }
     }
@@ -663,7 +589,7 @@
       placed=true;
       guide.classList.add('hidden');
       placeBtn.textContent='نقل المنطقة';
-      setStatus('الشخصيات تتحرك',true);
+      setStatus('الشخصية تقترب ببطء',true);
       notify('تم تثبيت منطقة الرعب');
       if(navigator.vibrate)navigator.vibrate(25);
     }
@@ -688,7 +614,7 @@
       }
       setPlayFrameFromCamera(playOrigin);
       distributeActors();
-      notify('تم تغيير مواقع الشخصيات');
+      notify('تم تغيير موقع الشخصية');
     }
 
     function loop(now){
@@ -698,7 +624,7 @@
       lastTime=now;
 
       updatePlacement(dt);
-      if(placed)updateActors(dt,now/1000);
+      if(placed)updateActors(dt);
     }
 
     placeBtn.addEventListener('click',()=>{
