@@ -477,6 +477,112 @@
         arenaGroup.add(wall);
       }
 
+      // Decorative tire stacks between barrier groups, inspired by the reference image.
+      // Visual only: no collision, so they never interfere with the car physics.
+      const tireGeometry = new THREE.TorusGeometry(.052,.016,8,18);
+      tireGeometry.rotateX(Math.PI/2);
+      const tireMaterial = new THREE.MeshStandardMaterial({
+        color:0x111214,
+        roughness:.96,
+        metalness:.02
+      });
+      const tireSideMaterial = new THREE.MeshStandardMaterial({
+        color:0x2a2b2d,
+        roughness:.90,
+        metalness:.03
+      });
+
+      const tireAngles = [0.18,0.92,1.72,2.48,3.32,4.08,4.86,5.62];
+      tireAngles.forEach((a,index)=>{
+        const stack = new THREE.Group();
+        const count = index % 3 === 0 ? 3 : 2;
+
+        for(let t=0;t<count;t++){
+          const tire = new THREE.Mesh(tireGeometry,tireMaterial);
+          tire.position.y = .020 + t*.027;
+          tire.rotation.y = (index*.37 + t*.22) % Math.PI;
+          tire.castShadow = true;
+          tire.receiveShadow = true;
+          stack.add(tire);
+
+          // Subtle sidewall ring gives the small AR tire more readable depth.
+          const side = new THREE.Mesh(
+            new THREE.TorusGeometry(.052,.005,6,18).rotateX(Math.PI/2),
+            tireSideMaterial
+          );
+          side.position.y = .0205 + t*.027;
+          stack.add(side);
+        }
+
+        const radius = ARENA_RADIUS + .075;
+        const tangentJitter = (index%2===0?.018:-.018);
+        stack.position.set(
+          Math.cos(a)*radius + Math.cos(a+Math.PI/2)*tangentJitter,
+          0,
+          Math.sin(a)*radius + Math.sin(a+Math.PI/2)*tangentJitter
+        );
+        arenaGroup.add(stack);
+      });
+
+      // Four warm flood-light poles around the outside edge.
+      // Mesh lights stay visible even when XR exposure changes; PointLights illuminate virtual arena assets.
+      const poleMaterial = new THREE.MeshStandardMaterial({
+        color:0x25292f,
+        roughness:.62,
+        metalness:.72
+      });
+      const lampMaterial = new THREE.MeshStandardMaterial({
+        color:0xffe7b0,
+        emissive:0xffc56a,
+        emissiveIntensity:2.4,
+        roughness:.35,
+        metalness:.05
+      });
+      const poleGeometry = new THREE.CylinderGeometry(.008,.012,.34,8);
+      const crossbarGeometry = new THREE.BoxGeometry(.095,.012,.014);
+      const lampGeometry = new THREE.BoxGeometry(.032,.022,.016);
+
+      const lightAngles = [Math.PI*.25,Math.PI*.75,Math.PI*1.25,Math.PI*1.75];
+      lightAngles.forEach((a,index)=>{
+        const pole = new THREE.Group();
+        const mast = new THREE.Mesh(poleGeometry,poleMaterial);
+        mast.position.y=.17;
+        mast.castShadow=true;
+        pole.add(mast);
+
+        const bar = new THREE.Mesh(crossbarGeometry,poleMaterial);
+        bar.position.y=.335;
+        pole.add(bar);
+
+        for(const side of [-1,1]){
+          const lamp = new THREE.Mesh(lampGeometry,lampMaterial);
+          lamp.position.set(side*.032,.334,-.010);
+          lamp.rotation.x=-.18;
+          pole.add(lamp);
+        }
+
+        const base = new THREE.Mesh(
+          new THREE.CylinderGeometry(.024,.030,.018,10),
+          poleMaterial
+        );
+        base.position.y=.009;
+        pole.add(base);
+
+        const radius=ARENA_RADIUS+.19;
+        pole.position.set(Math.cos(a)*radius,0,Math.sin(a)*radius);
+        pole.rotation.y=-a+Math.PI/2;
+        arenaGroup.add(pole);
+
+        const flood = new THREE.PointLight(0xffcf85,.78,1.15,2);
+        flood.position.set(
+          Math.cos(a)*radius,
+          .315,
+          Math.sin(a)*radius
+        );
+        flood.castShadow=false;
+        arenaGroup.add(flood);
+      });
+
       scene.add(arenaGroup);
 
       world = createVehicleWorld();
