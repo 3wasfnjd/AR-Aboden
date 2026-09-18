@@ -142,9 +142,26 @@
       background:linear-gradient(135deg,#8B5FBF,#5B8CFF);
       border-color:rgba(255,255,255,.48);
     }
-    .placement{position:absolute;right:18px;top:calc(max(14px,env(safe-area-inset-top)) + 58px);display:flex;gap:8px;pointer-events:auto}
-    .smallBtn{border:1px solid rgba(255,255,255,.16);border-radius:16px;color:#fff;background:rgba(5,10,17,.68);padding:11px 14px;font-weight:800;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
+    .placement{
+      position:absolute;right:18px;top:calc(max(14px,env(safe-area-inset-top)) + 58px);
+      display:flex;align-items:center;gap:8px;pointer-events:auto;flex-wrap:wrap;justify-content:flex-end;
+      max-width:min(92vw,430px)
+    }
+    .smallBtn{border:1px solid rgba(255,255,255,.16);border-radius:16px;color:#fff;background:rgba(5,10,17,.68);padding:11px 14px;font-weight:800;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);touch-action:manipulation}
     .smallBtn.primary{background:#fff;color:#0b1018}
+    .scalePanel{
+      display:flex;align-items:center;gap:5px;padding:5px;
+      border-radius:16px;background:rgba(5,10,17,.74);
+      border:1px solid rgba(255,255,255,.16);
+      backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)
+    }
+    .scaleBtn{
+      width:38px;height:38px;border:0;border-radius:12px;
+      color:#fff;background:rgba(255,255,255,.10);
+      font-size:24px;font-weight:900;line-height:1;touch-action:manipulation
+    }
+    .scaleBtn:active{transform:scale(.94);background:rgba(255,255,255,.22)}
+    .scaleValue{min-width:50px;text-align:center;color:#fff;font-size:12px;font-weight:900;font-variant-numeric:tabular-nums}
     #intro{position:fixed;inset:0;z-index:40;background:radial-gradient(circle at 50% 34%,#1b2c45 0,#090e17 45%,#03060b 100%);display:flex;align-items:flex-end;justify-content:center;padding:24px 20px max(30px,env(safe-area-inset-bottom));color:#fff}
     .card{width:min(100%,520px);background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);border-radius:28px;padding:24px;backdrop-filter:blur(15px);-webkit-backdrop-filter:blur(15px)}
     .card h1{font-size:28px;margin:0 0 10px}
@@ -179,8 +196,13 @@
     <div class="mode" id="modeText">حلبة أسفلت AR: سيارة أصغر + دخان هجولة + آثار إطارات</div>
 
     <div class="controls" id="controls">
-      <div class="placement">
+      <div class="placement" id="placementTools">
         <button class="smallBtn primary" id="placeBtn">ثبّت الحلبة</button>
+        <div class="scalePanel" id="scalePanel" aria-label="حجم الحلبة قبل التثبيت">
+          <button class="scaleBtn" id="scaleMinusBtn" type="button" aria-label="تصغير الحلبة">−</button>
+          <span class="scaleValue" id="scaleValue">100%</span>
+          <button class="scaleBtn" id="scalePlusBtn" type="button" aria-label="تكبير الحلبة">+</button>
+        </div>
         <button class="smallBtn" id="recenterBtn">معايرة</button>
       </div>
 
@@ -199,7 +221,7 @@
   <div id="intro">
     <div class="card">
       <h1>حلبة هجولة AR</h1>
-      <p>ثبّت الحلبة مرة واحدة على الأرض، وبعدها تولد السيارة داخلها وتبقى محصورة بحواجز فيزيائية حول الحلبة.</p>
+      <p>حدد السطح أولًا، ثم كبّر أو صغّر الحلبة بالمعاينة حتى يناسبك حجمها، وبعدها ثبّتها وابدأ القيادة.</p>
       <button class="start" id="startBtn" disabled>جاري تجهيز المحرك…</button>
       <div class="error" id="errorBox"></div>
       <p class="tiny">التحكم مثل هجولة: الجويستك يحدد اتجاه السيارة ويدعس تلقائيًا، والهاندبريك مستقل للتفحيط.</p>
@@ -279,6 +301,10 @@
     const toast = document.getElementById('toast');
     const placeBtn = document.getElementById('placeBtn');
     const recenterBtn = document.getElementById('recenterBtn');
+    const scalePanel = document.getElementById('scalePanel');
+    const scaleMinusBtn = document.getElementById('scaleMinusBtn');
+    const scalePlusBtn = document.getElementById('scalePlusBtn');
+    const scaleValue = document.getElementById('scaleValue');
 
     const steerZone = document.getElementById('steerZone');
     const joyBase = document.getElementById('joyBase');
@@ -304,6 +330,11 @@
     let world = null;
     let body = null;
     let placed = false;
+
+    let placementScale = 1.0;
+    const MIN_PLACEMENT_SCALE = 0.60;
+    const MAX_PLACEMENT_SCALE = 1.40;
+    const PLACEMENT_SCALE_STEP = 0.10;
 
     const vehicleRadius = 0.075;
     const CAR_LENGTH_METERS = 0.42;
@@ -333,6 +364,50 @@
     function setStatus(text, ready=false){
       statusText.textContent = text;
       status.classList.toggle('ready', ready);
+    }
+
+    function updatePlacementScaleVisuals(){
+      scaleValue.textContent = Math.round(placementScale * 100) + '%';
+
+      if(arenaGroup){
+        arenaGroup.scale.setScalar(placementScale);
+        arenaGroup.traverse(obj=>{
+          if(!obj.isPointLight) return;
+          if(obj.userData.baseDistance == null) obj.userData.baseDistance = obj.distance;
+          obj.distance = obj.userData.baseDistance * placementScale;
+        });
+      }
+
+      if(reticle) reticle.scale.setScalar(placementScale);
+      if(shadowPlane) shadowPlane.scale.setScalar(placementScale);
+    }
+
+    function adjustPlacementScale(delta){
+      if(placed) return;
+
+      const next = THREE.MathUtils.clamp(
+        Math.round((placementScale + delta) * 100) / 100,
+        MIN_PLACEMENT_SCALE,
+        MAX_PLACEMENT_SCALE
+      );
+
+      if(Math.abs(next - placementScale) < .001) return;
+      placementScale = next;
+      updatePlacementScaleVisuals();
+      notify('حجم الحلبة ' + Math.round(placementScale * 100) + '%');
+    }
+
+    function applyEffectScale(scale){
+      const fxScale = AR_EFFECT_SCALE * scale;
+
+      if(smokeTrails) smokeTrails.scale = fxScale;
+
+      if(driftMarks){
+        driftMarks.scale = fxScale;
+        if(Array.isArray(driftMarks.trails)){
+          driftMarks.trails.forEach(trail=>{ trail.scale = fxScale; });
+        }
+      }
     }
 
     function cameraYaw(){
@@ -421,6 +496,7 @@
       shadowPlane.rotation.x = -Math.PI/2;
       shadowPlane.position.y = 0;
       shadowPlane.receiveShadow = true;
+      shadowPlane.visible = false;
       scene.add(shadowPlane);
 
       reticle = new THREE.Group();
@@ -675,6 +751,7 @@
       });
 
       scene.add(arenaGroup);
+      updatePlacementScaleVisuals();
 
       world = createVehicleWorld();
 
@@ -728,6 +805,7 @@
 
       if (!hit || hit.distanceTo(camera.position) > 8){
         reticle.visible = false;
+        if(arenaGroup) arenaGroup.visible = false;
         reticleStableMs = 0;
         surfaceReady = false;
         setStatus('ابحث عن الأرض', false);
@@ -747,8 +825,16 @@
       reticle.position.set(stablePoint.x,.008,stablePoint.z);
       reticle.rotation.y += dt*.12;
 
+      // Full arena preview follows the detected surface before lock-in.
+      arenaGroup.position.set(stablePoint.x,0,stablePoint.z);
+      arenaGroup.scale.setScalar(placementScale);
+      arenaGroup.visible = true;
+
       surfaceReady = reticleStableMs > 700;
-      setStatus(surfaceReady ? 'السطح مستقر' : 'ثبّت الجوال قليلًا', surfaceReady);
+      setStatus(
+        surfaceReady ? 'السطح مستقر — اضبط الحجم ثم ثبّت' : 'ثبّت الجوال قليلًا',
+        surfaceReady
+      );
     }
 
     function tickWorld(now){
@@ -788,59 +874,66 @@
         return;
       }
 
+      const scale = placementScale;
       const arenaCenter = new THREE.Vector3(
         reticle.position.x,
         0,
         reticle.position.z
       );
 
-      if (!arenaPhysics){
-        arenaPhysics = createArenaPhysics(
-          world,
-          arenaCenter.x,
-          arenaCenter.z,
-          {
-            radius:ARENA_RADIUS,
-            segments:ARENA_SEGMENTS,
-            wallThickness:.07,
-            wallHeight:ARENA_WALL_HEIGHT,
-            floorMargin:.24
-          }
-        );
-      }else{
-        moveArenaPhysics(arenaPhysics,arenaCenter.x,arenaCenter.z);
-      }
+      // Rebuild the physics world on every lock-in. This lets the user
+      // recalibrate and choose a completely different arena size without
+      // leaving stale invisible colliders from the previous size.
+      world = createVehicleWorld();
+      arenaPhysics = createArenaPhysics(
+        world,
+        arenaCenter.x,
+        arenaCenter.z,
+        {
+          radius:ARENA_RADIUS * scale,
+          segments:ARENA_SEGMENTS,
+          wallThickness:.07 * scale,
+          wallHeight:ARENA_WALL_HEIGHT * scale,
+          floorMargin:.24 * scale
+        }
+      );
 
       arenaGroup.position.set(arenaCenter.x,0,arenaCenter.z);
+      arenaGroup.scale.setScalar(scale);
       arenaGroup.visible = true;
-      shadowPlane.position.set(arenaCenter.x,0,arenaCenter.z);
 
+      shadowPlane.position.set(arenaCenter.x,0,arenaCenter.z);
+      shadowPlane.scale.setScalar(scale);
+      shadowPlane.visible = true;
+
+      const scaledVehicleRadius = vehicleRadius * scale;
       const spawn = new THREE.Vector3(
         arenaCenter.x,
-        vehicleRadius,
+        scaledVehicleRadius,
         arenaCenter.z
       );
 
-      if (!body){
-        body = createVehicleBody(
-          world,
-          [spawn.x,spawn.y,spawn.z],
-          vehicleRadius
-        );
-        vehicle.attachPhysics(world,body,vehicleRadius);
-      }else{
-        resetVehicleBody(world,body,[spawn.x,spawn.y,spawn.z]);
-      }
+      body = createVehicleBody(
+        world,
+        [spawn.x,spawn.y,spawn.z],
+        scaledVehicleRadius
+      );
+
+      vehicle.container.scale.setScalar(scale);
+      vehicle.attachPhysics(world,body,scaledVehicleRadius);
+      applyEffectScale(scale);
 
       const yaw = cameraYaw();
       vehicle.place(spawn,yaw);
 
       placed = true;
+      reticle.visible = false;
       guide.classList.add('hidden');
+      scalePanel.style.display = 'none';
       placeBtn.textContent = 'نقل الحلبة';
-      setStatus('الحلبة مثبتة', true);
+      setStatus('الحلبة مثبتة — ' + Math.round(scale * 100) + '%', true);
       controls.reset();
-      notify('تم تثبيت الحلبة — ابدأ القيادة');
+      notify('تم تثبيت الحلبة بالحجم المختار');
 
       if (navigator.vibrate) navigator.vibrate(30);
     }
@@ -856,12 +949,19 @@
 
       controls.reset();
 
+      body = null;
+      arenaPhysics = null;
+
       if (vehicle) vehicle.container.visible = false;
       if (arenaGroup) arenaGroup.visible = false;
+      if (shadowPlane) shadowPlane.visible = false;
+
+      scalePanel.style.display = 'flex';
+      updatePlacementScaleVisuals();
 
       guide.classList.remove('hidden');
       placeBtn.textContent = 'ثبّت الحلبة';
-      setStatus('أعد مسح الأرض', true);
+      setStatus('أعد مسح الأرض واضبط الحجم', true);
 
       try{
         XR8.XrController.recenter();
@@ -872,7 +972,21 @@
       notify('أعد مسح الأرض ثم ثبّت الحلبة من جديد');
     }
 
-    placeBtn.addEventListener('click',placeVehicle);
+    scaleMinusBtn.addEventListener('pointerdown',(e)=>{
+      e.preventDefault();
+      e.stopPropagation();
+      adjustPlacementScale(-PLACEMENT_SCALE_STEP);
+    });
+    scalePlusBtn.addEventListener('pointerdown',(e)=>{
+      e.preventDefault();
+      e.stopPropagation();
+      adjustPlacementScale(PLACEMENT_SCALE_STEP);
+    });
+
+    placeBtn.addEventListener('click',()=>{
+      if(placed) recenter();
+      else placeVehicle();
+    });
     recenterBtn.addEventListener('click',recenter);
 
     startBtn.addEventListener('click',async()=>{
