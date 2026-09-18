@@ -421,45 +421,22 @@
 
     async function loadCar(){
       const loader = new GLTFLoader();
+      const gltf = await new Promise((resolve,reject)=>{
+        loader.load('./assets/car_carton_ar.glb', resolve, undefined, reject);
+      });
 
-      // New cartoon car first. Keep Camaro only as a safe fallback until
-      // the replacement model has been visually verified on-device.
-      const sources = [
-        {path:'./assets/car_carton_ar.glb', yaw:Math.PI, label:'Cartoon car'},
-        {path:'./assets/%20camaro.glb', yaw:0, label:'Camaro fallback'},
-        {path:'./assets/camaro.glb', yaw:0, label:'Camaro fallback'}
-      ];
+      const rawModel = gltf.scene || gltf.scenes?.[0];
+      if (!rawModel) throw new Error('Cartoon car model not found');
 
-      let rawModel = null;
-      let loadedSource = null;
-      let lastError = null;
-
-      for (const source of sources){
-        try{
-          const gltf = await new Promise((resolve,reject)=>{
-            loader.load(source.path, resolve, undefined, reject);
-          });
-          rawModel = gltf.scene || gltf.scenes?.[0];
-          if (rawModel){
-            loadedSource = source;
-            break;
-          }
-        }catch(err){
-          lastError = err;
-        }
-      }
-
-      if (!rawModel) throw lastError || new Error('Car model not found');
-
-      // The uploaded cartoon car is authored facing -Z while Vehicle.js
-      // drives toward +Z. Rotate only the replacement model 180 degrees.
-      // Use a wrapper so the imported GLB's authored root transforms stay intact.
+      // The cartoon car is authored facing -Z while Vehicle.js drives
+      // toward +Z. Correct the visual heading on a wrapper so the GLB's
+      // authored node transforms and wheel hierarchy stay untouched.
       const model = new THREE.Group();
       model.name = 'car-visual-root';
 
       const orientation = new THREE.Group();
       orientation.name = 'car-model-orientation';
-      orientation.rotation.y = loadedSource?.yaw || 0;
+      orientation.rotation.y = Math.PI;
       orientation.add(rawModel);
       model.add(orientation);
 
@@ -489,7 +466,7 @@
       const scaled = new THREE.Box3().setFromObject(model);
       if (scaled.min.y < 0) model.position.y += -scaled.min.y;
 
-      console.info('[AR-Aboden] Loaded car:', loadedSource?.label || loadedSource?.path);
+      console.info('[AR-Aboden] Loaded cartoon car');
       return model;
     }
 
