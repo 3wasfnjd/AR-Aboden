@@ -1,3 +1,5 @@
+import * as THREE from 'three';
+
 const DEADZONE = 0.15;
 
 export class MobileControls {
@@ -124,7 +126,7 @@ export class MobileControls {
     this.handbrakeBtn?.classList.remove('active');
   }
 
-  update() {
+  update(worldAngle = Math.PI / 4) {
     let x = 0;
     let z = 0;
 
@@ -134,20 +136,12 @@ export class MobileControls {
       const mag = Math.hypot(jx, jy);
 
       if (mag > DEADZONE) {
-        // Same direct 2-axis driving style as Hajwala:
-        // left/right = steering, joystick up = forward, down = reverse/brake.
-        x = jx;
-        z = -jy;
-
-        const driveMag = Math.min(1, mag);
-        x = THREE.MathUtils.clamp(x, -1, 1);
-        z = THREE.MathUtils.clamp(z, -1, 1);
-
-        // Preserve analog strength near center instead of forcing full throttle.
-        if (driveMag < 1) {
-          x *= driveMag;
-          z *= driveMag;
-        }
+        // Same mapping used by Hajwala: the joystick is a world-space
+        // direction selector. Vehicle.js handles touch as auto-gas.
+        const cosA = Math.cos(worldAngle);
+        const sinA = Math.sin(worldAngle);
+        x = (jx * cosA + jy * sinA) / mag;
+        z = (-jx * sinA + jy * cosA) / mag;
       }
     }
 
@@ -157,5 +151,4 @@ export class MobileControls {
       touchActive: this.touchActive,
       handbrake: this.handbrake,
     };
-  }
-}
+  }}
