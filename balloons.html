@@ -172,15 +172,17 @@
     <div class="card">
       <div class="balloon"></div>
       <h1>صيد المناطيد</h1>
-      <p>نسخة تجريبية بدوائر برمجية. بعد تشغيل الكاميرا ستنتشر الأهداف داخل مساحة AR حولك وتتحرك عشوائيًا.</p>
+      <p>بعد تشغيل الكاميرا ستنتشر المناطيد داخل مساحة AR حولك وتتحرك عشوائيًا في جميع الاتجاهات.</p>
       <button class="start" id="startBtn" disabled>جاري تجهيز AR…</button>
       <div class="error" id="errorBox"></div>
-      <p class="tiny">لاحقًا نستبدل الدوائر بموديلات GLB بدون تغيير نظام الحركة أو التصويب.</p>
+      <p class="tiny">تم استخدام نسخة AR خفيفة من موديل المنطاد الذي رفعته، مع نفس نظام الحركة والتصويب.</p>
     </div>
   </div>
 
   <script type="module">
     import * as THREE from 'three';
+    import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.185.1/examples/jsm/loaders/GLTFLoader.js';
+    import { loadEmbeddedBalloon } from './js/BalloonModel.js';
     window.THREE = THREE;
 
     const canvas = document.getElementById('camerafeed');
@@ -216,6 +218,9 @@
     const balloonGeometry = new THREE.SphereGeometry(.16,18,14);
     const particleGeometry = new THREE.SphereGeometry(.018,8,6);
     const colors = [0xff4f6d,0x53c8ff,0xffcf4a,0x9c6cff,0x65e68b,0xff8b3d];
+
+    let balloonTemplate = null;
+    let usingModel = false;
 
     function syncVisualViewport(){
       const vv = window.visualViewport;
@@ -277,26 +282,75 @@
 
     function createBalloon(index){
       const color = colors[index % colors.length];
-      const mat = new THREE.MeshStandardMaterial({
-        color,
-        roughness:.48,
-        metalness:.02,
-        transparent:true,
-        opacity:.96
+      let target;
+
+      if(balloonTemplate){
+        target = balloonTemplate.clone(true);
+        target.rotation.y = Math.random()*Math.PI*2;
+        const variation = THREE.MathUtils.randFloat(.88,1.12);
+        target.scale.multiplyScalar(variation);
+      }else{
+        const mat = new THREE.MeshStandardMaterial({
+          color,
+          roughness:.48,
+          metalness:.02,
+          transparent:true,
+          opacity:.96
+        });
+        const mesh = new THREE.Mesh(balloonGeometry,mat);
+        mesh.scale.set(.84,1.12,.84);
+        target = new THREE.Group();
+        target.add(mesh);
+      }
+
+      target.userData.balloon = true;
+      target.userData.velocity = randomVelocity();
+      target.userData.targetVelocity = randomVelocity();
+      target.userData.changeTimer = THREE.MathUtils.randFloat(.8,2.3);
+      target.userData.phase = Math.random()*Math.PI*2;
+      target.userData.baseColor = usingModel ? 0xff5a45 : color;
+
+      target.traverse(obj=>{
+        if(obj.isMesh){
+          obj.castShadow = false;
+          obj.receiveShadow = false;
+        }
       });
-      const mesh = new THREE.Mesh(balloonGeometry,mat);
-      mesh.scale.set(.84,1.12,.84);
-      mesh.castShadow = false;
-      mesh.userData.balloon = true;
-      mesh.userData.velocity = randomVelocity();
-      mesh.userData.targetVelocity = randomVelocity();
-      mesh.userData.changeTimer = THREE.MathUtils.randFloat(.8,2.3);
-      mesh.userData.phase = Math.random()*Math.PI*2;
-      mesh.userData.baseColor = color;
-      randomPoint(mesh.position);
-      scene.add(mesh);
-      balloons.push(mesh);
-      return mesh;
+
+      randomPoint(target.position);
+      scene.add(target);
+      balloons.push(target);
+      return target;
+    }
+
+    async function prepareBalloonModel(){
+      try{
+        const raw = await loadEmbeddedBalloon(GLTFLoader);
+        if(!raw) throw new Error('Balloon scene missing');
+
+        raw.updateMatrixWorld(true);
+        const box = new THREE.Box3().setFromObject(raw);
+        const size = new THREE.Vector3();
+        const center = new THREE.Vector3();
+        box.getSize(size);
+        box.getCenter(center);
+
+        const normalized = new THREE.Group();
+        raw.position.sub(center);
+        normalized.add(raw);
+
+        // About 45 cm tall in the AR room.
+        const targetHeight = .45;
+        normalized.scale.setScalar(targetHeight / Math.max(size.y,.001));
+        normalized.updateMatrixWorld(true);
+
+        balloonTemplate = normalized;
+        usingModel = true;
+      }catch(err){
+        console.warn('Balloon GLB fallback:',err);
+        balloonTemplate = null;
+        usingModel = false;
+      }
     }
 
     function createAllBalloons(){
@@ -397,10 +451,17 @@
 
       raycaster.setFromCamera(screenCenter,camera);
       const visible = balloons.filter(b=>b.visible);
-      const hits = raycaster.intersectObjects(visible,false);
+      const hits = raycaster.intersectObjects(visible,true);
 
       if(hits.length){
-        const target=hits[0].object;
+        let target=hits[0].object;
+        while(target && !target.userData.balloon) target=target.parent;
+
+        if(!target){
+          notify('حاول مرة ثانية');
+          return;
+        }
+
         explode(target);
         score++;
         scoreEl.textContent=score;
@@ -461,6 +522,7 @@
       roomCenter.copy(camera.position);
       roomCenter.y=1.35;
 
+      await prepareBalloonModel();
       createAllBalloons();
       lastTime=performance.now();
       requestAnimationFrame(loop);
