@@ -169,10 +169,10 @@
     <div class="card">
       <div class="eyebrow">ABODEN AR · HORROR</div>
       <h1>الرعب المتجول</h1>
-      <p>شخصية مرعبة تظهر أمامك من مسافة آمنة، ثم تمشي ببطء باتجاه الجوال وتتوقف قبل الاقتراب الشديد.</p>
+      <p>ترول ضخم يظهر أمامك من مسافة آمنة، ثم يمشي باتجاه الجوال بحركة Walk أصلية ويتوقف قبل الاقتراب الشديد.</p>
       <button class="start" id="startBtn" disabled>جاري تجهيز المحرك…</button>
       <div class="error" id="errorBox"></div>
-      <p class="tiny">يفضل مساحة فارغة نسبيًا وتحريك الجوال ببطء أثناء التتبع.<br>3D credits: John Doe · PurplePoint / Sketchfab</p>
+      <p class="tiny">يفضل مساحة فارغة نسبيًا وتحريك الجوال ببطء أثناء التتبع.<br>3D: The-Lord-Of-The-Rings-Troll-Walk · bensimulator2 / Sketchfab · CC BY 4.0</p>
     </div>
   </div>
 
@@ -214,10 +214,10 @@
     const playForward=new THREE.Vector3(0,0,-1);
     const playRight=new THREE.Vector3(1,0,0);
 
-    const START_MIN_DISTANCE=3.6;
-    const START_MAX_DISTANCE=4.8;
-    const STALK_STOP_DISTANCE=1.15;
-    const STALK_SIDE_OFFSET=.28;
+    const START_MIN_DISTANCE=4.2;
+    const START_MAX_DISTANCE=5.4;
+    const STALK_STOP_DISTANCE=1.40;
+    const STALK_SIDE_OFFSET=.22;
 
     const actors=[];
     const mixers=[];
@@ -291,10 +291,9 @@
     }
 
     function normalizeModel(raw,{height=1.55,modelYaw=0}={}){
-      // Keep the GLB root transform exactly as authored. Both supplied
-      // Sketchfab files already include their own axis-conversion matrix;
-      // mutating raw.rotation here composes with that matrix and can create
-      // confusing orientation artifacts.
+      // Keep the imported GLB root transform exactly as authored.
+      // Apply scene-facing rotation on a wrapper rather than mutating the
+      // skinned model's original transform.
       const content=new THREE.Group();
       content.add(raw);
 
@@ -377,28 +376,31 @@
     }
 
     async function loadCharacters(){
-      const hoodedGltf=await loadGLB('./assets/horror/hooded_horror_woman.glb');
+      const trollGltf=await loadGLB('./assets/horror/troll_walk_ar_384.glb');
 
-      const hooded=normalizeModel(hoodedGltf.scene,{height:1.78,modelYaw:0});
+      // A troll should read substantially larger than a human in the room,
+      // but still remain believable relative to the AR floor.
+      const troll=normalizeModel(trollGltf.scene,{height:2.55,modelYaw:0});
       let mixer=null;
       let action=null;
 
-      if(hoodedGltf.animations?.length){
-        mixer=new THREE.AnimationMixer(hooded);
-        const clip=hoodedGltf.animations.find(a=>/runfast/i.test(a.name))||hoodedGltf.animations[0];
-        action=mixer.clipAction(clip);
+      if(trollGltf.animations?.length){
+        mixer=new THREE.AnimationMixer(troll);
+        const clip=trollGltf.animations.find(a=>/^walk$/i.test(a.name))
+          || trollGltf.animations.find(a=>/walk/i.test(a.name))
+          || trollGltf.animations[0];
 
-        // The source clip is RunFast; slow it heavily so it reads as a
-        // slow stalking walk rather than a sprint.
-        action.timeScale=.12;
+        action=mixer.clipAction(clip);
+        action.setLoop(THREE.LoopRepeat,Infinity);
+        action.timeScale=.62;
         action.play();
         action.paused=true;
       }
 
-      createActor(hooded,{
-        speed:.14,
-        turnRate:1.55,
-        forwardOffset:Math.PI,
+      createActor(troll,{
+        speed:.24,
+        turnRate:1.35,
+        forwardOffset:0,
         mixer,
         action
       });
@@ -455,8 +457,9 @@
           a.action.paused=speedRatio<.025;
 
           if(!a.action.paused){
-            // Keep the leg cycle slow and synchronized with world movement.
-            const targetTimeScale=.10+.08*speedRatio;
+            // The model has a genuine Walk clip. Keep it deliberate and
+            // synchronize the cycle with the troll's actual approach speed.
+            const targetTimeScale=.42+.28*speedRatio;
             a.action.timeScale=THREE.MathUtils.lerp(
               a.action.timeScale,
               targetTimeScale,
@@ -499,7 +502,7 @@
 
         if(a.action){
           a.action.paused=true;
-          a.action.timeScale=.12;
+          a.action.timeScale=.62;
         }
       }
     }
@@ -534,8 +537,8 @@
       }catch(err){
         console.error(err);
         errorBox.style.display='block';
-        errorBox.textContent='تعذر تحميل موديلات الرعب. تأكد من رفع الملفين داخل assets/horror بالأسماء المطلوبة.';
-        notify('موديلات الرعب غير موجودة في المستودع');
+        errorBox.textContent='تعذر تحميل موديل الترول. تأكد من وجود troll_walk_ar_384.glb داخل assets/horror.';
+        notify('موديل الترول غير موجود في المستودع');
       }
 
       // XR8 owns the tracked camera pose and projection. Do not overwrite
@@ -589,7 +592,7 @@
       placed=true;
       guide.classList.add('hidden');
       placeBtn.textContent='نقل المنطقة';
-      setStatus('الشخصية تقترب ببطء',true);
+      setStatus('الترول يقترب ببطء',true);
       notify('تم تثبيت منطقة الرعب');
       if(navigator.vibrate)navigator.vibrate(25);
     }
@@ -614,7 +617,7 @@
       }
       setPlayFrameFromCamera(playOrigin);
       distributeActors();
-      notify('تم تغيير موقع الشخصية');
+      notify('تم تغيير موقع الترول');
     }
 
     function loop(now){
