@@ -156,23 +156,21 @@
     </div>
 
     <div class="guide" id="guide">
-      <b>حرّك الجوال للتصويب</b>
-      وجّه العلامة إلى الكرة ثم اضغط إطلاق. الكرات مثبتة داخل عالم الغرفة وليست على الشاشة.
+      <b>المس أي مكان لإطلاق صاروخ</b>
+      نقطة اللمس هي اتجاه التصويب. الصاروخ يطير فعليًا داخل الغرفة وينفجر عند اصطدامه بمنطاد.
     </div>
 
-    <div class="crosshair"><span class="dot"></span></div>
     <div class="toast" id="toast"></div>
     <div class="hitflash" id="hitflash"></div>
 
     <button class="recenter" id="recenterBtn">إعادة توزيع</button>
-    <button class="fire" id="fireBtn">إطلاق</button>
   </div>
 
   <div id="intro">
     <div class="card">
       <div class="balloon"></div>
       <h1>صيد المناطيد</h1>
-      <p>بعد تشغيل الكاميرا ستنتشر المناطيد داخل مساحة AR حولك وتتحرك عشوائيًا في جميع الاتجاهات.</p>
+      <p>بعد تشغيل الكاميرا ستنتشر المناطيد داخل الغرفة. المس أي مكان على الشاشة لإطلاق صاروخ باتجاه نقطة اللمس وتفجير المناطيد.</p>
       <button class="start" id="startBtn" disabled>جاري تجهيز AR…</button>
       <div class="error" id="errorBox"></div>
       <p class="tiny">تم استخدام نسخة AR خفيفة من موديل المنطاد الذي رفعته، مع نفس نظام الحركة والتصويب.</p>
@@ -191,7 +189,6 @@
     const errorBox = document.getElementById('errorBox');
     const scoreEl = document.getElementById('score');
     const guide = document.getElementById('guide');
-    const fireBtn = document.getElementById('fireBtn');
     const recenterBtn = document.getElementById('recenterBtn');
     const toast = document.getElementById('toast');
     const hitflash = document.getElementById('hitflash');
@@ -204,8 +201,10 @@
 
     const balloons = [];
     const explosions = [];
+    const rockets = [];
     const raycaster = new THREE.Raycaster();
-    const screenCenter = new THREE.Vector2(0,0);
+    const rocketRaycaster = new THREE.Raycaster();
+    const tapNdc = new THREE.Vector2();
 
     const BALLOON_COUNT = 16;
     const PLAY_HALF_X = 3.2;
@@ -216,6 +215,11 @@
     const roomCenter = new THREE.Vector3();
     const balloonGeometry = new THREE.SphereGeometry(.16,18,14);
     const particleGeometry = new THREE.SphereGeometry(.018,8,6);
+    const rocketBodyGeometry = new THREE.CylinderGeometry(.025,.025,.16,10);
+    const rocketNoseGeometry = new THREE.ConeGeometry(.04,.075,10);
+    const rocketBodyMaterial = new THREE.MeshStandardMaterial({color:0xcfd8e3,roughness:.38,metalness:.42});
+    const rocketNoseMaterial = new THREE.MeshStandardMaterial({color:0xff4e3d,roughness:.5,metalness:.08});
+    const rocketTrailMaterial = new THREE.MeshBasicMaterial({color:0xffb347,transparent:true,opacity:.85});
     const colors = [0xff4f6d,0x53c8ff,0xffcf4a,0x9c6cff,0x65e68b,0xff8b3d];
 
     let balloonTemplate = null;
@@ -405,6 +409,118 @@
       }
     }
 
+    function createRocketVisual(){
+      const group = new THREE.Group();
+
+      const body = new THREE.Mesh(rocketBodyGeometry,rocketBodyMaterial);
+      body.position.y = .01;
+      group.add(body);
+
+      const nose = new THREE.Mesh(rocketNoseGeometry,rocketNoseMaterial);
+      nose.position.y = .127;
+      group.add(nose);
+
+      const flame = new THREE.Mesh(
+        new THREE.ConeGeometry(.026,.075,8),
+        rocketTrailMaterial.clone()
+      );
+      flame.rotation.z = Math.PI;
+      flame.position.y = -.105;
+      group.add(flame);
+
+      return group;
+    }
+
+    function launchRocket(clientX,clientY){
+      if(!xrStarted||!camera||!scene) return;
+
+      const rect = canvas.getBoundingClientRect();
+      tapNdc.set(
+        ((clientX-rect.left)/rect.width)*2-1,
+        -(((clientY-rect.top)/rect.height)*2-1)
+      );
+
+      raycaster.setFromCamera(tapNdc,camera);
+
+      const direction = raycaster.ray.direction.clone().normalize();
+      const start = camera.getWorldPosition(new THREE.Vector3())
+        .addScaledVector(direction,.14);
+
+      const rocket = createRocketVisual();
+      rocket.position.copy(start);
+
+      const up = new THREE.Vector3(0,1,0);
+      rocket.quaternion.setFromUnitVectors(up,direction);
+
+      scene.add(rocket);
+      rockets.push({
+        object:rocket,
+        direction,
+        speed:5.0,
+        life:2.4
+      });
+
+      guide.classList.add('hidden');
+      if(navigator.vibrate) navigator.vibrate(8);
+    }
+
+    function removeRocket(index){
+      const r=rockets[index];
+      if(!r) return;
+      scene.remove(r.object);
+      r.object.traverse(obj=>{
+        if(obj.material && obj.material !== rocketBodyMaterial && obj.material !== rocketNoseMaterial){
+          obj.material.dispose?.();
+        }
+      });
+      rockets.splice(index,1);
+    }
+
+    function resolveBalloonFromHit(object){
+      let target=object;
+      while(target && !target.userData.balloon) target=target.parent;
+      return target || null;
+    }
+
+    function updateRockets(dt){
+      for(let i=rockets.length-1;i>=0;i--){
+        const r=rockets[i];
+        r.life-=dt;
+
+        if(r.life<=0){
+          removeRocket(i);
+          continue;
+        }
+
+        const distance = r.speed*dt;
+        const origin = r.object.position.clone();
+
+        rocketRaycaster.set(origin,r.direction);
+        rocketRaycaster.near=0;
+        rocketRaycaster.far=distance+.09;
+
+        const visible = balloons.filter(b=>b.visible);
+        const hits = rocketRaycaster.intersectObjects(visible,true);
+
+        if(hits.length){
+          const target=resolveBalloonFromHit(hits[0].object);
+          if(target && target.visible){
+            r.object.position.copy(hits[0].point);
+            explode(target);
+            score++;
+            scoreEl.textContent=score;
+            hitflash.classList.add('on');
+            setTimeout(()=>hitflash.classList.remove('on'),90);
+            if(navigator.vibrate) navigator.vibrate(22);
+            removeRocket(i);
+            continue;
+          }
+        }
+
+        r.object.position.addScaledVector(r.direction,distance);
+      }
+    }
+
     function explode(balloon){
       const color = balloon.userData.baseColor;
       const material = new THREE.MeshBasicMaterial({color,transparent:true,opacity:1});
@@ -454,42 +570,11 @@
       }
     }
 
-    function shoot(){
-      if(!xrStarted||!camera) return;
-
-      raycaster.setFromCamera(screenCenter,camera);
-      const visible = balloons.filter(b=>b.visible);
-      const hits = raycaster.intersectObjects(visible,true);
-
-      if(hits.length){
-        let target=hits[0].object;
-        while(target && !target.userData.balloon) target=target.parent;
-
-        if(!target){
-          notify('حاول مرة ثانية');
-          return;
-        }
-
-        explode(target);
-        score++;
-        scoreEl.textContent=score;
-        guide.classList.add('hidden');
-        hitflash.classList.add('on');
-        setTimeout(()=>hitflash.classList.remove('on'),90);
-        if(navigator.vibrate) navigator.vibrate(20);
-      }else{
-        notify('حاول مرة ثانية');
-      }
-    }
-
-    fireBtn.addEventListener('pointerdown',(e)=>{
-      e.preventDefault();e.stopPropagation();shoot();
-    });
-
     document.addEventListener('pointerdown',(e)=>{
       if(!xrStarted) return;
       if(e.target.closest('button')) return;
-      shoot();
+      e.preventDefault();
+      launchRocket(e.clientX,e.clientY);
     });
 
     recenterBtn.addEventListener('click',(e)=>{
@@ -542,6 +627,7 @@
       const dt=Math.min(1/30,(now-lastTime)/1000||.016);
       lastTime=now;
       updateBalloons(dt,now);
+      updateRockets(dt);
       updateExplosions(dt);
     }
 
