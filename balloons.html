@@ -202,6 +202,9 @@
     const balloons = [];
     const explosions = [];
     const rockets = [];
+    const fxParticles = [];
+    const shockwaves = [];
+    const blastLights = [];
     const raycaster = new THREE.Raycaster();
     const rocketRaycaster = new THREE.Raycaster();
     const tapNdc = new THREE.Vector2();
@@ -219,11 +222,271 @@
     const rocketNoseGeometry = new THREE.ConeGeometry(.04,.075,10);
     const rocketBodyMaterial = new THREE.MeshStandardMaterial({color:0xcfd8e3,roughness:.38,metalness:.42});
     const rocketNoseMaterial = new THREE.MeshStandardMaterial({color:0xff4e3d,roughness:.5,metalness:.08});
-    const rocketTrailMaterial = new THREE.MeshBasicMaterial({color:0xffb347,transparent:true,opacity:.85});
     const colors = [0xff4f6d,0x53c8ff,0xffcf4a,0x9c6cff,0x65e68b,0xff8b3d];
 
     let balloonTemplate = null;
     let usingModel = false;
+    let rocketTemplate = null;
+    let smokeTexture = null;
+    let fireTexture = null;
+    let flashTexture = null;
+
+    function makeSoftTexture(kind='smoke',size=128){
+      const canvas=document.createElement('canvas');
+      canvas.width=canvas.height=size;
+      const ctx=canvas.getContext('2d');
+      const cx=size*.5,cy=size*.5;
+
+      if(kind==='smoke'){
+        const img=ctx.createImageData(size,size);
+        const d=img.data;
+        for(let y=0;y<size;y++){
+          for(let x=0;x<size;x++){
+            const dx=(x-cx)/(size*.5),dy=(y-cy)/(size*.5);
+            const r=Math.sqrt(dx*dx+dy*dy);
+            const edge=Math.max(0,1-r);
+            const noise=.72+Math.random()*.28;
+            const a=Math.pow(edge,1.9)*noise;
+            const i=(y*size+x)*4;
+            d[i]=210;d[i+1]=216;d[i+2]=222;d[i+3]=Math.floor(a*205);
+          }
+        }
+        ctx.putImageData(img,0,0);
+      }else{
+        const g=ctx.createRadialGradient(cx,cy,0,cx,cy,size*.5);
+        if(kind==='fire'){
+          g.addColorStop(0,'rgba(255,255,235,1)');
+          g.addColorStop(.16,'rgba(255,236,128,.98)');
+          g.addColorStop(.42,'rgba(255,120,18,.88)');
+          g.addColorStop(.72,'rgba(220,36,0,.35)');
+          g.addColorStop(1,'rgba(80,0,0,0)');
+        }else{
+          g.addColorStop(0,'rgba(255,255,255,1)');
+          g.addColorStop(.24,'rgba(255,245,190,.92)');
+          g.addColorStop(.56,'rgba(255,145,40,.38)');
+          g.addColorStop(1,'rgba(255,90,0,0)');
+        }
+        ctx.fillStyle=g;
+        ctx.fillRect(0,0,size,size);
+      }
+
+      const tex=new THREE.CanvasTexture(canvas);
+      tex.colorSpace=THREE.SRGBColorSpace;
+      tex.minFilter=THREE.LinearFilter;
+      tex.magFilter=THREE.LinearFilter;
+      tex.generateMipmaps=false;
+      return tex;
+    }
+
+    function ensureFxTextures(){
+      smokeTexture ||= makeSoftTexture('smoke');
+      fireTexture ||= makeSoftTexture('fire');
+      flashTexture ||= makeSoftTexture('flash');
+    }
+
+    function addFxSprite({
+      type='smoke',position,velocity=new THREE.Vector3(),size=.12,life=.6,
+      growth=1.5,opacity=1,color=0xffffff,drag=1.5,buoyancy=0,gravity=0
+    }){
+      ensureFxTextures();
+      const map=type==='smoke'?smokeTexture:(type==='fire'?fireTexture:flashTexture);
+      const additive=type!=='smoke';
+      const mat=new THREE.SpriteMaterial({
+        map,color,transparent:true,opacity,
+        depthWrite:false,depthTest:true,
+        blending:additive?THREE.AdditiveBlending:THREE.NormalBlending
+      });
+      mat.rotation=Math.random()*Math.PI*2;
+      const sprite=new THREE.Sprite(mat);
+      sprite.position.copy(position);
+      sprite.scale.setScalar(size);
+      sprite.renderOrder=additive?7:3;
+      scene.add(sprite);
+      fxParticles.push({
+        sprite,type,velocity:velocity.clone(),life,maxLife:life,
+        startSize:size,growth,baseOpacity:opacity,drag,buoyancy,gravity
+      });
+      if(fxParticles.length>260){
+        const old=fxParticles.shift();
+        scene.remove(old.sprite);
+        old.sprite.material.dispose();
+      }
+      return sprite;
+    }
+
+    function updateFx(dt){
+      for(let i=fxParticles.length-1;i>=0;i--){
+        const p=fxParticles[i];
+        p.life-=dt;
+        if(p.life<=0){
+          scene.remove(p.sprite);
+          p.sprite.material.dispose();
+          fxParticles.splice(i,1);
+          continue;
+        }
+        const age=1-p.life/p.maxLife;
+        const damping=Math.exp(-p.drag*dt);
+        p.velocity.multiplyScalar(damping);
+        p.velocity.y+=(p.buoyancy-p.gravity)*dt;
+        p.sprite.position.addScaledVector(p.velocity,dt);
+
+        const s=p.startSize*(1+p.growth*age);
+        p.sprite.scale.setScalar(s);
+
+        if(p.type==='smoke'){
+          const fadeIn=Math.min(1,age*7);
+          p.sprite.material.opacity=p.baseOpacity*fadeIn*Math.pow(1-age,1.35);
+        }else if(p.type==='fire'){
+          p.sprite.material.opacity=p.baseOpacity*Math.pow(1-age,1.8);
+        }else{
+          p.sprite.material.opacity=p.baseOpacity*Math.pow(1-age,3.1);
+        }
+      }
+    }
+
+    function spawnSmokePuff(position,velocity,size=.09,life=.75,dark=false){
+      return addFxSprite({
+        type:'smoke',position,velocity,size,life,
+        growth:THREE.MathUtils.randFloat(1.8,3.2),
+        opacity:dark?THREE.MathUtils.randFloat(.30,.48):THREE.MathUtils.randFloat(.18,.34),
+        color:dark?0x7a7f84:0xc5c9cc,
+        drag:THREE.MathUtils.randFloat(1.1,2.0),
+        buoyancy:THREE.MathUtils.randFloat(.10,.25)
+      });
+    }
+
+    function createShockwave(position){
+      const mat=new THREE.MeshBasicMaterial({
+        color:0xffcc88,transparent:true,opacity:.72,
+        side:THREE.DoubleSide,depthWrite:false,blending:THREE.AdditiveBlending
+      });
+      const ring=new THREE.Mesh(new THREE.RingGeometry(.045,.065,32),mat);
+      ring.position.copy(position);
+      ring.quaternion.copy(camera.quaternion);
+      scene.add(ring);
+      shockwaves.push({ring,life:.30,maxLife:.30});
+    }
+
+    function updateShockwaves(dt){
+      for(let i=shockwaves.length-1;i>=0;i--){
+        const s=shockwaves[i];
+        s.life-=dt;
+        if(s.life<=0){
+          scene.remove(s.ring);
+          s.ring.geometry.dispose();
+          s.ring.material.dispose();
+          shockwaves.splice(i,1);
+          continue;
+        }
+        const age=1-s.life/s.maxLife;
+        const scale=.8+age*9;
+        s.ring.scale.setScalar(scale);
+        s.ring.material.opacity=.72*Math.pow(1-age,2.2);
+      }
+    }
+
+    function addBlastLight(position,intensity=2.8,distance=1.8,life=.18,color=0xff8a32){
+      const light=new THREE.PointLight(color,intensity,distance,2);
+      light.position.copy(position);
+      scene.add(light);
+      blastLights.push({light,life,maxLife:life});
+    }
+
+    function updateBlastLights(dt){
+      for(let i=blastLights.length-1;i>=0;i--){
+        const b=blastLights[i];
+        b.life-=dt;
+        if(b.life<=0){
+          scene.remove(b.light);
+          blastLights.splice(i,1);
+          continue;
+        }
+        b.light.intensity=3.2*Math.pow(b.life/b.maxLife,2);
+      }
+    }
+
+    function launchBurst(position,direction){
+      addFxSprite({
+        type:'flash',position,size:.18,life:.10,growth:1.1,
+        opacity:1.0,color:0xffe4a0,drag:0
+      });
+
+      const rear=direction.clone().multiplyScalar(-.75);
+      for(let i=0;i<5;i++){
+        const v=rear.clone()
+          .add(new THREE.Vector3(
+            THREE.MathUtils.randFloatSpread(.35),
+            THREE.MathUtils.randFloatSpread(.25)+.12,
+            THREE.MathUtils.randFloatSpread(.35)
+          ))
+          .multiplyScalar(THREE.MathUtils.randFloat(.22,.50));
+        spawnSmokePuff(position,v,THREE.MathUtils.randFloat(.045,.075),THREE.MathUtils.randFloat(.38,.65),i<2);
+      }
+      addBlastLight(position,1.4,.7,.09,0xffa14a);
+    }
+
+    function impactExplosion(position){
+      addFxSprite({
+        type:'flash',position,size:.34,life:.11,growth:1.5,
+        opacity:1,color:0xffffff,drag:0
+      });
+      createShockwave(position);
+      addBlastLight(position,4.0,2.2,.22,0xff6a18);
+
+      for(let i=0;i<7;i++){
+        const v=new THREE.Vector3(
+          THREE.MathUtils.randFloatSpread(1),
+          THREE.MathUtils.randFloat(-.10,.75),
+          THREE.MathUtils.randFloatSpread(1)
+        ).normalize().multiplyScalar(THREE.MathUtils.randFloat(.18,.65));
+        addFxSprite({
+          type:'fire',
+          position:position.clone().add(new THREE.Vector3(
+            THREE.MathUtils.randFloatSpread(.08),
+            THREE.MathUtils.randFloatSpread(.08),
+            THREE.MathUtils.randFloatSpread(.08)
+          )),
+          velocity:v,size:THREE.MathUtils.randFloat(.10,.19),
+          life:THREE.MathUtils.randFloat(.22,.46),
+          growth:THREE.MathUtils.randFloat(1.0,2.0),
+          opacity:THREE.MathUtils.randFloat(.70,1),color:i<2?0xfff0a0:0xff6a16,
+          drag:2.4,buoyancy:.12
+        });
+      }
+
+      for(let i=0;i<10;i++){
+        const v=new THREE.Vector3(
+          THREE.MathUtils.randFloatSpread(1),
+          THREE.MathUtils.randFloat(.05,.9),
+          THREE.MathUtils.randFloatSpread(1)
+        ).normalize().multiplyScalar(THREE.MathUtils.randFloat(.12,.52));
+        spawnSmokePuff(
+          position.clone().add(new THREE.Vector3(
+            THREE.MathUtils.randFloatSpread(.09),
+            THREE.MathUtils.randFloatSpread(.06),
+            THREE.MathUtils.randFloatSpread(.09)
+          )),
+          v,
+          THREE.MathUtils.randFloat(.09,.16),
+          THREE.MathUtils.randFloat(.75,1.35),
+          i<5
+        );
+      }
+
+      for(let i=0;i<13;i++){
+        const v=new THREE.Vector3(
+          THREE.MathUtils.randFloatSpread(1),
+          THREE.MathUtils.randFloat(-.25,1.1),
+          THREE.MathUtils.randFloatSpread(1)
+        ).normalize().multiplyScalar(THREE.MathUtils.randFloat(.55,1.55));
+        addFxSprite({
+          type:'flash',
+          position,velocity:v,size:THREE.MathUtils.randFloat(.012,.026),
+          life:THREE.MathUtils.randFloat(.18,.42),growth:.15,
+          opacity:.95,color:0xffb23d,drag:.8,gravity:1.6
+        });
+      }
+    }
 
     function syncVisualViewport(){
       const vv = window.visualViewport;
@@ -409,24 +672,92 @@
       }
     }
 
+    async function prepareRocketModel(){
+      try{
+        const loader=new GLTFLoader();
+        const gltf=await new Promise((resolve,reject)=>{
+          loader.load('./assets/rockets/rocket.glb',resolve,undefined,reject);
+        });
+        const raw=gltf.scene||gltf.scenes?.[0];
+        if(!raw) throw new Error('Rocket scene missing');
+
+        raw.updateMatrixWorld(true);
+        const box=new THREE.Box3().setFromObject(raw);
+        const size=new THREE.Vector3();
+        const center=new THREE.Vector3();
+        box.getSize(size);
+        box.getCenter(center);
+
+        const normalized=new THREE.Group();
+        raw.position.sub(center);
+        normalized.add(raw);
+
+        // Temporary assumption: the model's forward axis is +Y.
+        // Once the final GLB is uploaded we only adjust this orientation if needed.
+        const targetLength=.22;
+        normalized.scale.setScalar(targetLength/Math.max(size.x,size.y,size.z,.001));
+        normalized.traverse(obj=>{
+          if(obj.isMesh){
+            obj.castShadow=false;
+            obj.receiveShadow=false;
+          }
+        });
+        rocketTemplate=normalized;
+        console.info('Rocket GLB loaded',size);
+      }catch(err){
+        rocketTemplate=null;
+        console.info('Rocket GLB not present yet — procedural fallback active.');
+      }
+    }
+
     function createRocketVisual(){
+      ensureFxTextures();
       const group = new THREE.Group();
+      const modelHolder=new THREE.Group();
 
-      const body = new THREE.Mesh(rocketBodyGeometry,rocketBodyMaterial);
-      body.position.y = .01;
-      group.add(body);
+      if(rocketTemplate){
+        modelHolder.add(rocketTemplate.clone(true));
+      }else{
+        const body = new THREE.Mesh(rocketBodyGeometry,rocketBodyMaterial);
+        body.position.y=.01;
+        modelHolder.add(body);
 
-      const nose = new THREE.Mesh(rocketNoseGeometry,rocketNoseMaterial);
-      nose.position.y = .127;
-      group.add(nose);
+        const nose = new THREE.Mesh(rocketNoseGeometry,rocketNoseMaterial);
+        nose.position.y=.127;
+        modelHolder.add(nose);
 
-      const flame = new THREE.Mesh(
-        new THREE.ConeGeometry(.026,.075,8),
-        rocketTrailMaterial.clone()
-      );
-      flame.rotation.z = Math.PI;
-      flame.position.y = -.105;
-      group.add(flame);
+        // Small stabilizing fins make the temporary projectile read as a rocket.
+        const finGeo=new THREE.BoxGeometry(.065,.055,.012);
+        for(let i=0;i<4;i++){
+          const fin=new THREE.Mesh(finGeo,rocketNoseMaterial);
+          fin.position.y=-.055;
+          fin.rotation.y=i*Math.PI*.5;
+          modelHolder.add(fin);
+        }
+      }
+      group.add(modelHolder);
+
+      const outerFlame=new THREE.Sprite(new THREE.SpriteMaterial({
+        map:fireTexture,color:0xff7420,transparent:true,opacity:.92,
+        depthWrite:false,blending:THREE.AdditiveBlending
+      }));
+      outerFlame.name='rocketFlameOuter';
+      outerFlame.position.y=-.13;
+      outerFlame.scale.set(.09,.15,.09);
+      group.add(outerFlame);
+
+      const coreFlame=new THREE.Sprite(new THREE.SpriteMaterial({
+        map:flashTexture,color:0xfff0ad,transparent:true,opacity:1,
+        depthWrite:false,blending:THREE.AdditiveBlending
+      }));
+      coreFlame.name='rocketFlameCore';
+      coreFlame.position.y=-.115;
+      coreFlame.scale.set(.045,.085,.045);
+      group.add(coreFlame);
+
+      const glow=new THREE.PointLight(0xff8a35,.55,.55,2);
+      glow.position.y=-.10;
+      group.add(glow);
 
       return group;
     }
@@ -456,12 +787,17 @@
       rockets.push({
         object:rocket,
         direction,
-        speed:5.0,
-        life:2.4
+        speed:2.25,
+        maxSpeed:7.8,
+        acceleration:10.5,
+        life:2.8,
+        trailTimer:0,
+        age:0
       });
 
+      launchBurst(start,direction);
       guide.classList.add('hidden');
-      if(navigator.vibrate) navigator.vibrate(8);
+      if(navigator.vibrate) navigator.vibrate(12);
     }
 
     function removeRocket(index){
@@ -486,18 +822,57 @@
       for(let i=rockets.length-1;i>=0;i--){
         const r=rockets[i];
         r.life-=dt;
+        r.age+=dt;
 
         if(r.life<=0){
           removeRocket(i);
           continue;
         }
 
-        const distance = r.speed*dt;
-        const origin = r.object.position.clone();
+        r.speed=Math.min(r.maxSpeed,r.speed+r.acceleration*dt);
+        const distance=r.speed*dt;
+        const origin=r.object.position.clone();
+
+        // Engine flicker: two flame layers with independent, very small variation.
+        const outer=r.object.getObjectByName('rocketFlameOuter');
+        const core=r.object.getObjectByName('rocketFlameCore');
+        if(outer){
+          const f=.86+Math.random()*.28;
+          outer.scale.set(.085*f,.145*f,.085*f);
+          outer.material.opacity=.72+Math.random()*.22;
+        }
+        if(core){
+          const f=.90+Math.random()*.20;
+          core.scale.set(.043*f,.080*f,.043*f);
+          core.material.opacity=.82+Math.random()*.18;
+        }
+
+        // Continuous smoke trail. New puffs inherit a little backwards momentum,
+        // then slow down and rise instead of following the missile rigidly.
+        r.trailTimer+=dt;
+        const interval=r.age<.20?.020:.032;
+        while(r.trailTimer>=interval){
+          r.trailTimer-=interval;
+          const rear=r.object.position.clone().addScaledVector(r.direction,-.12);
+          rear.x+=THREE.MathUtils.randFloatSpread(.018);
+          rear.y+=THREE.MathUtils.randFloatSpread(.018);
+          rear.z+=THREE.MathUtils.randFloatSpread(.018);
+
+          const v=r.direction.clone().multiplyScalar(THREE.MathUtils.randFloat(-.46,-.24));
+          v.x+=THREE.MathUtils.randFloatSpread(.09);
+          v.y+=THREE.MathUtils.randFloat(.03,.14);
+          v.z+=THREE.MathUtils.randFloatSpread(.09);
+          spawnSmokePuff(
+            rear,v,
+            THREE.MathUtils.randFloat(.040,.060),
+            THREE.MathUtils.randFloat(.55,.88),
+            Math.random()<.38
+          );
+        }
 
         rocketRaycaster.set(origin,r.direction);
         rocketRaycaster.near=0;
-        rocketRaycaster.far=distance+.09;
+        rocketRaycaster.far=distance+.10;
 
         const visible = balloons.filter(b=>b.visible);
         const hits = rocketRaycaster.intersectObjects(visible,true);
@@ -506,12 +881,12 @@
           const target=resolveBalloonFromHit(hits[0].object);
           if(target && target.visible){
             r.object.position.copy(hits[0].point);
-            explode(target);
+            explode(target,hits[0].point);
             score++;
             scoreEl.textContent=score;
             hitflash.classList.add('on');
-            setTimeout(()=>hitflash.classList.remove('on'),90);
-            if(navigator.vibrate) navigator.vibrate(22);
+            setTimeout(()=>hitflash.classList.remove('on'),70);
+            if(navigator.vibrate) navigator.vibrate([18,18,32]);
             removeRocket(i);
             continue;
           }
@@ -521,22 +896,27 @@
       }
     }
 
-    function explode(balloon){
-      const color = balloon.userData.baseColor;
-      const material = new THREE.MeshBasicMaterial({color,transparent:true,opacity:1});
-      const group = new THREE.Group();
-      group.position.copy(balloon.position);
+    function explode(balloon,hitPoint=null){
+      const color=balloon.userData.baseColor;
+      const position=hitPoint?hitPoint.clone():balloon.position.clone();
 
+      impactExplosion(position);
+
+      // A few colored fragments preserve the visual identity of the balloon
+      // while the fire/smoke system supplies the blast.
+      const material=new THREE.MeshBasicMaterial({color,transparent:true,opacity:1});
+      const group=new THREE.Group();
+      group.position.copy(position);
       const parts=[];
-      for(let i=0;i<14;i++){
+      for(let i=0;i<8;i++){
         const p=new THREE.Mesh(particleGeometry,material.clone());
         const v=new THREE.Vector3(
           THREE.MathUtils.randFloatSpread(1),
-          THREE.MathUtils.randFloat(-.2,1),
+          THREE.MathUtils.randFloat(-.05,1),
           THREE.MathUtils.randFloatSpread(1)
-        ).normalize().multiplyScalar(THREE.MathUtils.randFloat(.45,1.05));
+        ).normalize().multiplyScalar(THREE.MathUtils.randFloat(.38,.95));
         p.userData.velocity=v;
-        p.userData.life=THREE.MathUtils.randFloat(.32,.60);
+        p.userData.life=THREE.MathUtils.randFloat(.28,.50);
         p.userData.maxLife=p.userData.life;
         group.add(p);
         parts.push(p);
@@ -545,7 +925,7 @@
       scene.add(group);
       explosions.push({group,parts});
       balloon.visible=false;
-      setTimeout(()=>resetBalloon(balloon),500);
+      setTimeout(()=>resetBalloon(balloon),900);
     }
 
     function updateExplosions(dt){
@@ -616,6 +996,7 @@
       roomCenter.y=1.35;
 
       await prepareBalloonModel();
+      await prepareRocketModel();
       createAllBalloons();
       lastTime=performance.now();
       requestAnimationFrame(loop);
@@ -629,6 +1010,9 @@
       updateBalloons(dt,now);
       updateRockets(dt);
       updateExplosions(dt);
+      updateFx(dt);
+      updateShockwaves(dt);
+      updateBlastLights(dt);
     }
 
     function worldModule(){
