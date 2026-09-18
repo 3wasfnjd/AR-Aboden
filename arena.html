@@ -500,127 +500,174 @@
       const circumference = Math.PI * 2 * ARENA_RADIUS;
       const segmentLength = circumference / ARENA_SEGMENTS * 1.10;
 
-      for (let i=0;i<ARENA_SEGMENTS;i++){
-        const a = i / ARENA_SEGMENTS * Math.PI * 2;
-        const wall = new THREE.Mesh(
+      // Some visual barrier segments are replaced with stacked tires,
+      // matching the reference: 2 tires on the lower row, 3 on top.
+      // The continuous arena physics wall remains underneath so the car
+      // still cannot escape through these decorative tire sections.
+      const tireBarrierSlots = new Set([2,6,10,14,18,22,26]);
+
+      const whiteWallMaterial = new THREE.MeshStandardMaterial({
+        color:0xf2f2f2,
+        roughness:.72,
+        metalness:.06
+      });
+      const orangeWallMaterial = new THREE.MeshStandardMaterial({
+        color:0xffb000,
+        roughness:.72,
+        metalness:.06
+      });
+
+      const tireMaterial = new THREE.MeshStandardMaterial({
+        color:0x101113,
+        roughness:.97,
+        metalness:.01
+      });
+      const tireSideMaterial = new THREE.MeshStandardMaterial({
+        color:0x27292c,
+        roughness:.92,
+        metalness:.02
+      });
+
+      const tireGeometry = new THREE.TorusGeometry(.046,.014,8,18);
+      // Default torus faces local Z. Rotate so each tire stands vertically
+      // in the barrier plane (local Y/Z), with its face pointing radial.
+      tireGeometry.rotateY(Math.PI/2);
+
+      const tireAccentGeometry = new THREE.TorusGeometry(.046,.004,6,18);
+      tireAccentGeometry.rotateY(Math.PI/2);
+
+      function createTireBarrierCluster(index){
+        const cluster = new THREE.Group();
+
+        const layout = [
+          // bottom row: 2
+          {z:-.050,y:.046,tilt:.035},
+          {z: .050,y:.046,tilt:-.035},
+          // top row: 3
+          {z:-.092,y:.118,tilt:-.025},
+          {z: 0.000,y:.118,tilt:.020},
+          {z: .092,y:.118,tilt:-.020},
+        ];
+
+        layout.forEach((p,tireIndex)=>{
+          const tire = new THREE.Mesh(tireGeometry,tireMaterial);
+          tire.position.set(0,p.y,p.z);
+          tire.rotation.x=p.tilt;
+          tire.rotation.z=(tireIndex%2===0?.015:-.015);
+          tire.castShadow=true;
+          tire.receiveShadow=true;
+          cluster.add(tire);
+
+          const accent = new THREE.Mesh(tireAccentGeometry,tireSideMaterial);
+          accent.position.copy(tire.position);
+          accent.rotation.copy(tire.rotation);
+          cluster.add(accent);
+        });
+
+        // Slight per-cluster variation keeps the ring from looking copied/pasted.
+        cluster.rotation.x=(index%2===0?.008:-.008);
+        return cluster;
+      }
+
+      for(let i=0;i<ARENA_SEGMENTS;i++){
+        const a=i/ARENA_SEGMENTS*Math.PI*2;
+
+        if(tireBarrierSlots.has(i)){
+          const cluster=createTireBarrierCluster(i);
+          cluster.position.set(
+            Math.cos(a)*ARENA_RADIUS,
+            0,
+            Math.sin(a)*ARENA_RADIUS
+          );
+          // Same tangent orientation as the concrete barrier segment.
+          cluster.rotation.y=-a;
+          arenaGroup.add(cluster);
+          continue;
+        }
+
+        const wall=new THREE.Mesh(
           new THREE.BoxGeometry(wallThickness,wallHeight,segmentLength),
-          new THREE.MeshStandardMaterial({
-            color: i % 2 === 0 ? 0xf2f2f2 : 0xffb000,
-            roughness:.72,
-            metalness:.06
-          })
+          i%2===0 ? whiteWallMaterial : orangeWallMaterial
         );
         wall.position.set(
           Math.cos(a)*ARENA_RADIUS,
           wallHeight*.5,
           Math.sin(a)*ARENA_RADIUS
         );
-        wall.rotation.y = -a;
-        wall.castShadow = true;
-        wall.receiveShadow = true;
+        wall.rotation.y=-a;
+        wall.castShadow=true;
+        wall.receiveShadow=true;
         arenaGroup.add(wall);
       }
 
-      // Decorative tire stacks between barrier groups, inspired by the reference image.
-      // Visual only: no collision, so they never interfere with the car physics.
-      const tireGeometry = new THREE.TorusGeometry(.052,.016,8,18);
-      tireGeometry.rotateX(Math.PI/2);
-      const tireMaterial = new THREE.MeshStandardMaterial({
-        color:0x111214,
-        roughness:.96,
-        metalness:.02
-      });
-      const tireSideMaterial = new THREE.MeshStandardMaterial({
-        color:0x2a2b2d,
-        roughness:.90,
-        metalness:.03
-      });
-
-      const tireAngles = [0.18,0.92,1.72,2.48,3.32,4.08,4.86,5.62];
-      tireAngles.forEach((a,index)=>{
-        const stack = new THREE.Group();
-        const count = index % 3 === 0 ? 3 : 2;
-
-        for(let t=0;t<count;t++){
-          const tire = new THREE.Mesh(tireGeometry,tireMaterial);
-          tire.position.y = .020 + t*.027;
-          tire.rotation.y = (index*.37 + t*.22) % Math.PI;
-          tire.castShadow = true;
-          tire.receiveShadow = true;
-          stack.add(tire);
-
-          // Subtle sidewall ring gives the small AR tire more readable depth.
-          const side = new THREE.Mesh(
-            new THREE.TorusGeometry(.052,.005,6,18).rotateX(Math.PI/2),
-            tireSideMaterial
-          );
-          side.position.y = .0205 + t*.027;
-          stack.add(side);
-        }
-
-        const radius = ARENA_RADIUS + .075;
-        const tangentJitter = (index%2===0?.018:-.018);
-        stack.position.set(
-          Math.cos(a)*radius + Math.cos(a+Math.PI/2)*tangentJitter,
-          0,
-          Math.sin(a)*radius + Math.sin(a+Math.PI/2)*tangentJitter
-        );
-        arenaGroup.add(stack);
-      });
-
-      // Four warm flood-light poles around the outside edge.
-      // Mesh lights stay visible even when XR exposure changes; PointLights illuminate virtual arena assets.
+      // Taller/larger flood-light poles, positioned just INSIDE the barrier.
+      // They stay decorative (no collision) so the driving physics remains clean.
       const poleMaterial = new THREE.MeshStandardMaterial({
-        color:0x25292f,
-        roughness:.62,
-        metalness:.72
+        color:0x23272c,
+        roughness:.58,
+        metalness:.76
       });
       const lampMaterial = new THREE.MeshStandardMaterial({
-        color:0xffe7b0,
-        emissive:0xffc56a,
-        emissiveIntensity:2.4,
-        roughness:.35,
-        metalness:.05
+        color:0xffedbd,
+        emissive:0xffc66f,
+        emissiveIntensity:3.0,
+        roughness:.30,
+        metalness:.06
       });
-      const poleGeometry = new THREE.CylinderGeometry(.008,.012,.34,8);
-      const crossbarGeometry = new THREE.BoxGeometry(.095,.012,.014);
-      const lampGeometry = new THREE.BoxGeometry(.032,.022,.016);
 
-      const lightAngles = [Math.PI*.25,Math.PI*.75,Math.PI*1.25,Math.PI*1.75];
+      const poleGeometry = new THREE.CylinderGeometry(.010,.015,.50,10);
+      const crossbarGeometry = new THREE.BoxGeometry(.135,.014,.018);
+      const lampGeometry = new THREE.BoxGeometry(.043,.030,.020);
+      const baseGeometry = new THREE.CylinderGeometry(.028,.036,.024,10);
+
+      const lightAngles=[
+        Math.PI*.22,
+        Math.PI*.72,
+        Math.PI*1.22,
+        Math.PI*1.72
+      ];
+
       lightAngles.forEach((a,index)=>{
-        const pole = new THREE.Group();
-        const mast = new THREE.Mesh(poleGeometry,poleMaterial);
-        mast.position.y=.17;
+        const pole=new THREE.Group();
+
+        const mast=new THREE.Mesh(poleGeometry,poleMaterial);
+        mast.position.y=.25;
         mast.castShadow=true;
         pole.add(mast);
 
-        const bar = new THREE.Mesh(crossbarGeometry,poleMaterial);
-        bar.position.y=.335;
+        const base=new THREE.Mesh(baseGeometry,poleMaterial);
+        base.position.y=.012;
+        base.castShadow=true;
+        pole.add(base);
+
+        const bar=new THREE.Mesh(crossbarGeometry,poleMaterial);
+        bar.position.y=.492;
+        bar.castShadow=true;
         pole.add(bar);
 
         for(const side of [-1,1]){
-          const lamp = new THREE.Mesh(lampGeometry,lampMaterial);
-          lamp.position.set(side*.032,.334,-.010);
-          lamp.rotation.x=-.18;
+          const lamp=new THREE.Mesh(lampGeometry,lampMaterial);
+          lamp.position.set(side*.043,.486,-.015);
+          lamp.rotation.x=-.28;
+          lamp.castShadow=false;
           pole.add(lamp);
         }
 
-        const base = new THREE.Mesh(
-          new THREE.CylinderGeometry(.024,.030,.018,10),
-          poleMaterial
+        // Inside the barrier line, close enough to read as part of it.
+        const radius=ARENA_RADIUS-.095;
+        pole.position.set(
+          Math.cos(a)*radius,
+          0,
+          Math.sin(a)*radius
         );
-        base.position.y=.009;
-        pole.add(base);
-
-        const radius=ARENA_RADIUS+.19;
-        pole.position.set(Math.cos(a)*radius,0,Math.sin(a)*radius);
         pole.rotation.y=-a+Math.PI/2;
         arenaGroup.add(pole);
 
-        const flood = new THREE.PointLight(0xffcf85,.78,1.15,2);
+        // Warm light aimed as an omnidirectional fill for virtual arena assets.
+        const flood=new THREE.PointLight(0xffcf86,.95,1.45,2);
         flood.position.set(
           Math.cos(a)*radius,
-          .315,
+          .455,
           Math.sin(a)*radius
         );
         flood.castShadow=false;
