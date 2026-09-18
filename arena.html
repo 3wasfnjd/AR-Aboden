@@ -261,12 +261,12 @@
     let body = null;
     let placed = false;
 
-    const vehicleRadius = 0.10;
-    const CAR_LENGTH_METERS = 0.55;
-    const AR_EFFECT_SCALE = 0.12;
-    const ARENA_RADIUS = 2.0;
+    const vehicleRadius = 0.075;
+    const CAR_LENGTH_METERS = 0.42;
+    const AR_EFFECT_SCALE = 0.09;
+    const ARENA_RADIUS = 1.55;
     const ARENA_SEGMENTS = 28;
-    const ARENA_WALL_HEIGHT = 0.22;
+    const ARENA_WALL_HEIGHT = 0.17;
 
     const raycaster = new THREE.Raycaster();
     const centerNdc = new THREE.Vector2(0, 0);
@@ -371,7 +371,7 @@
       scene.add(key);
 
       shadowPlane = new THREE.Mesh(
-        new THREE.PlaneGeometry(5.2,5.2),
+        new THREE.PlaneGeometry(4.1,4.1),
         new THREE.ShadowMaterial({opacity:.20})
       );
       shadowPlane.rotation.x = -Math.PI/2;
@@ -445,13 +445,13 @@
       arenaGroup.add(innerRing);
 
       const centerMark = new THREE.Mesh(
-        new THREE.CircleGeometry(.08,32).rotateX(-Math.PI/2),
+        new THREE.CircleGeometry(.06,32).rotateX(-Math.PI/2),
         new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:.75,side:THREE.DoubleSide})
       );
       centerMark.position.y = .008;
       arenaGroup.add(centerMark);
 
-      const wallThickness = .09;
+      const wallThickness = .07;
       const wallHeight = ARENA_WALL_HEIGHT;
       const circumference = Math.PI * 2 * ARENA_RADIUS;
       const segmentLength = circumference / ARENA_SEGMENTS * 1.10;
@@ -603,9 +603,9 @@
           {
             radius:ARENA_RADIUS,
             segments:ARENA_SEGMENTS,
-            wallThickness:.09,
+            wallThickness:.07,
             wallHeight:ARENA_WALL_HEIGHT,
-            floorMargin:.30
+            floorMargin:.24
           }
         );
       }else{
