@@ -202,9 +202,11 @@
     const playForward=new THREE.Vector3(0,0,-1);
     const playRight=new THREE.Vector3(1,0,0);
 
-    const PLAY_MIN_DISTANCE=1.1;
-    const PLAY_MAX_DISTANCE=4.5;
-    const PLAY_HALF_ANGLE=THREE.MathUtils.degToRad(78);
+    const PLAY_MIN_DISTANCE=2.25;
+    const PLAY_MAX_DISTANCE=5.25;
+    const PLAY_HALF_ANGLE=THREE.MathUtils.degToRad(70);
+    const PLAY_INNER_ANGLE=THREE.MathUtils.degToRad(18);
+    const MIN_ACTOR_SEPARATION=1.85;
 
     const actors=[];
     const mixers=[];
@@ -284,17 +286,61 @@
       return wrapper;
     }
 
-    function randomTarget(out){
-      const angle=THREE.MathUtils.randFloat(-PLAY_HALF_ANGLE,PLAY_HALF_ANGLE);
-      const distance=THREE.MathUtils.randFloat(PLAY_MIN_DISTANCE,PLAY_MAX_DISTANCE);
+    function randomTarget(out,actor=null){
+      const side=actor?.laneSide||0;
+      const candidate=new THREE.Vector3();
+
+      for(let attempt=0;attempt<16;attempt++){
+        let angle;
+
+        if(side<0){
+          angle=THREE.MathUtils.randFloat(-PLAY_HALF_ANGLE,-PLAY_INNER_ANGLE);
+        }else if(side>0){
+          angle=THREE.MathUtils.randFloat(PLAY_INNER_ANGLE,PLAY_HALF_ANGLE);
+        }else{
+          angle=THREE.MathUtils.randFloat(-PLAY_HALF_ANGLE,PLAY_HALF_ANGLE);
+        }
+
+        const distance=THREE.MathUtils.randFloat(PLAY_MIN_DISTANCE,PLAY_MAX_DISTANCE);
+
+        candidate.copy(playOrigin)
+          .addScaledVector(playForward,Math.cos(angle)*distance)
+          .addScaledVector(playRight,Math.sin(angle)*distance);
+        candidate.y=playOrigin.y;
+
+        let separated=true;
+        for(const other of actors){
+          if(other===actor)continue;
+
+          const otherPos=other.root.position;
+          if(candidate.distanceTo(otherPos)<MIN_ACTOR_SEPARATION){
+            separated=false;
+            break;
+          }
+
+          if(other.target && candidate.distanceTo(other.target)<MIN_ACTOR_SEPARATION*.80){
+            separated=false;
+            break;
+          }
+        }
+
+        if(separated){
+          out.copy(candidate);
+          return out;
+        }
+      }
+
+      // Deterministic fallback keeps each character on its own side even
+      // if random attempts happen to collide.
+      const fallbackAngle=(side||1)*THREE.MathUtils.degToRad(42);
       out.copy(playOrigin)
-        .addScaledVector(playForward,Math.cos(angle)*distance)
-        .addScaledVector(playRight,Math.sin(angle)*distance);
-      out.y=0;
+        .addScaledVector(playForward,Math.cos(fallbackAngle)*3.4)
+        .addScaledVector(playRight,Math.sin(fallbackAngle)*3.4);
+      out.y=playOrigin.y;
       return out;
     }
 
-    function createActor(root,{speed=.35,turnRate=2.8,ghost=false,forwardOffset=0,mixer=null}={}){
+    function createActor(root,{speed=.35,turnRate=2.8,ghost=false,forwardOffset=0,mixer=null,laneSide=0}={}){
       const actor={
         root,
         speed,
@@ -302,17 +348,22 @@
         ghost,
         forwardOffset,
         mixer,
+        laneSide,
         target:new THREE.Vector3(),
         velocity:new THREE.Vector3(),
         pause:0,
         bobSeed:Math.random()*Math.PI*2,
         baseY:0,
       };
-      randomTarget(root.position);
-      actor.baseY=root.position.y;
-      randomTarget(actor.target);
+
+      root.visible=false;
       scene.add(root);
       actors.push(actor);
+
+      randomTarget(root.position,actor);
+      actor.baseY=root.position.y;
+      randomTarget(actor.target,actor);
+
       if(mixer) mixers.push(mixer);
       return actor;
     }
@@ -323,16 +374,18 @@
         loadGLB('./assets/horror/hooded_horror_woman.glb')
       ]);
 
-      // This Sketchfab model uses Z as its vertical axis, so rotate it into Three.js Y-up.
-      const ghost=normalizeModel(ghostGltf.scene,{height:1.52,rotateX:-Math.PI/2,rotateY:Math.PI});
+      // The optimized ghost model is already Y-up. The previous -90° X
+      // correction laid it on its side in AR, so keep X untouched.
+      const ghost=normalizeModel(ghostGltf.scene,{height:1.52,rotateY:Math.PI});
       createActor(ghost,{
-        speed:.24,
+        speed:.22,
         turnRate:1.8,
         ghost:true,
-        forwardOffset:Math.PI
+        forwardOffset:Math.PI,
+        laneSide:-1
       });
 
-      const hooded=normalizeModel(hoodedGltf.scene,{height:1.68,rotateY:0});
+      const hooded=normalizeModel(hoodedGltf.scene,{height:1.62,rotateY:0});
       let mixer=null;
       if(hoodedGltf.animations?.length){
         mixer=new THREE.AnimationMixer(hooded);
@@ -343,11 +396,12 @@
       }
 
       createActor(hooded,{
-        speed:.50,
-        turnRate:3.2,
+        speed:.42,
+        turnRate:3.0,
         ghost:false,
         forwardOffset:Math.PI,
-        mixer
+        mixer,
+        laneSide:1
       });
     }
 
@@ -371,7 +425,7 @@
 
         if(distance<.12){
           a.pause=THREE.MathUtils.randFloat(.25,1.15);
-          randomTarget(a.target);
+          randomTarget(a.target,a);
           continue;
         }
 
@@ -404,12 +458,23 @@
     }
 
     function distributeActors(){
+      // Start the two characters on opposite sides and keep subsequent
+      // roaming targets in those separate lanes.
       for(const a of actors){
-        randomTarget(a.root.position);
-        a.root.position.y=0;
-        a.baseY=0;
-        randomTarget(a.target);
-        a.pause=THREE.MathUtils.randFloat(0,.5);
+        const side=a.laneSide||1;
+        const startAngle=side*THREE.MathUtils.degToRad(
+          THREE.MathUtils.randFloat(34,58)
+        );
+        const startDistance=THREE.MathUtils.randFloat(2.8,4.2);
+
+        a.root.position.copy(playOrigin)
+          .addScaledVector(playForward,Math.cos(startAngle)*startDistance)
+          .addScaledVector(playRight,Math.sin(startAngle)*startDistance);
+
+        a.root.position.y=playOrigin.y;
+        a.baseY=playOrigin.y;
+        randomTarget(a.target,a);
+        a.pause=THREE.MathUtils.randFloat(.15,.65);
       }
     }
 
@@ -444,12 +509,9 @@
         notify('موديلات الرعب غير موجودة في المستودع');
       }
 
-      camera.position.set(0,1.5,2);
-      XR8.XrController.updateCameraProjectionMatrix({
-        origin:camera.position,
-        facing:camera.quaternion
-      });
-
+      // XR8 owns the tracked camera pose and projection. Do not overwrite
+      // camera.position or its projection matrix here; doing so offsets the
+      // virtual characters from the real camera on iPhone.
       setStatus('امسح الأرض',true);
       requestAnimationFrame(loop);
     }
