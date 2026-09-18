@@ -182,7 +182,6 @@
   <script type="module">
     import * as THREE from 'three';
     import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.185.1/examples/jsm/loaders/GLTFLoader.js';
-    import { loadEmbeddedBalloon } from './js/BalloonModel.js';
     window.THREE = THREE;
 
     const canvas = document.getElementById('camerafeed');
@@ -325,7 +324,12 @@
 
     async function prepareBalloonModel(){
       try{
-        const raw = await loadEmbeddedBalloon(GLTFLoader);
+        const loader = new GLTFLoader();
+        const gltf = await new Promise((resolve,reject)=>{
+          loader.load('./assets/balloons/balloon.glb',resolve,undefined,reject);
+        });
+
+        const raw = gltf.scene || gltf.scenes?.[0];
         if(!raw) throw new Error('Balloon scene missing');
 
         raw.updateMatrixWorld(true);
@@ -336,7 +340,9 @@
         box.getCenter(center);
 
         const normalized = new THREE.Group();
-        raw.position.sub(center);
+        raw.position.x -= center.x;
+        raw.position.z -= center.z;
+        raw.position.y -= box.min.y;
         normalized.add(raw);
 
         // About 45 cm tall in the AR room.
@@ -346,10 +352,12 @@
 
         balloonTemplate = normalized;
         usingModel = true;
+        console.info('Balloon GLB loaded',size);
       }catch(err){
         console.warn('Balloon GLB fallback:',err);
         balloonTemplate = null;
         usingModel = false;
+        notify('تعذر تحميل الموديل — تم استخدام الشكل الاحتياطي');
       }
     }
 
