@@ -21,9 +21,40 @@
 
   <style>
     *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-    html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#02050a;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Tahoma,Arial,sans-serif;touch-action:none}
-    #camerafeed{position:fixed;inset:0;width:100%;height:100%;display:block}
-    .ui{position:fixed;inset:0;z-index:20;color:#fff;pointer-events:none}
+    :root{--app-w:100vw;--app-h:100dvh}
+    html{margin:0;width:100%;height:100%;min-height:100%;background:#02050a;overflow:hidden}
+    body{
+      position:fixed;
+      left:0;top:0;
+      margin:0;
+      width:var(--app-w);
+      height:var(--app-h);
+      min-height:var(--app-h);
+      overflow:hidden;
+      overscroll-behavior:none;
+      background:#02050a;
+      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Tahoma,Arial,sans-serif;
+      touch-action:none;
+    }
+    #camerafeed{
+      position:fixed!important;
+      left:0!important;
+      top:0!important;
+      right:auto!important;
+      bottom:auto!important;
+      margin:0!important;
+      padding:0!important;
+      width:var(--app-w)!important;
+      height:var(--app-h)!important;
+      min-width:var(--app-w)!important;
+      min-height:var(--app-h)!important;
+      max-width:none!important;
+      max-height:none!important;
+      display:block!important;
+      z-index:0!important;
+      transform:none!important;
+    }
+    .ui{position:fixed;left:0;top:0;width:var(--app-w);height:var(--app-h);z-index:20;color:#fff;pointer-events:none}
     .top{position:absolute;top:max(14px,env(safe-area-inset-top));left:14px;right:14px;display:flex;align-items:center;justify-content:space-between;gap:10px}
     .pill{background:rgba(5,10,17,.68);border:1px solid rgba(255,255,255,.14);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-radius:999px;padding:9px 12px;box-shadow:0 8px 28px rgba(0,0,0,.24)}
     .brand{font-weight:900;letter-spacing:.7px;font-size:14px}
@@ -121,6 +152,49 @@
     } from './js/Physics.js';
 
     window.THREE = THREE;
+
+    function syncVisualViewport(){
+      const vv = window.visualViewport;
+      const w = Math.round(vv?.width || window.innerWidth || document.documentElement.clientWidth);
+      const h = Math.round(vv?.height || window.innerHeight || document.documentElement.clientHeight);
+
+      document.documentElement.style.setProperty('--app-w', w + 'px');
+      document.documentElement.style.setProperty('--app-h', h + 'px');
+
+      const cameraCanvas = document.getElementById('camerafeed');
+      if (cameraCanvas){
+        cameraCanvas.style.setProperty('left','0px','important');
+        cameraCanvas.style.setProperty('top','0px','important');
+        cameraCanvas.style.setProperty('width',w + 'px','important');
+        cameraCanvas.style.setProperty('height',h + 'px','important');
+      }
+
+      // XR8 can update the canvas dimensions after the first frame.
+      // Re-apply the CSS size after its own resize pass.
+      requestAnimationFrame(()=>{
+        if (cameraCanvas){
+          cameraCanvas.style.setProperty('left','0px','important');
+          cameraCanvas.style.setProperty('top','0px','important');
+          cameraCanvas.style.setProperty('width',w + 'px','important');
+          cameraCanvas.style.setProperty('height',h + 'px','important');
+        }
+
+        if (renderer && renderer.setSize){
+          renderer.setSize(w,h,false);
+        }
+      });
+    }
+
+    syncVisualViewport();
+    window.addEventListener('resize',syncVisualViewport,{passive:true});
+    window.addEventListener('orientationchange',()=>{
+      setTimeout(syncVisualViewport,80);
+      setTimeout(syncVisualViewport,350);
+    },{passive:true});
+    if (window.visualViewport){
+      window.visualViewport.addEventListener('resize',syncVisualViewport,{passive:true});
+      window.visualViewport.addEventListener('scroll',syncVisualViewport,{passive:true});
+    }
 
     const canvas = document.getElementById('camerafeed');
     const intro = document.getElementById('intro');
@@ -249,6 +323,10 @@
 
       renderer.shadowMap.enabled = true;
       renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+      syncVisualViewport();
+      setTimeout(syncVisualViewport,50);
+      setTimeout(syncVisualViewport,250);
 
       scene.add(new THREE.HemisphereLight(0xffffff,0x596779,1.45));
       const key = new THREE.DirectionalLight(0xffffff,1.8);
@@ -450,6 +528,10 @@
         controlsEl.style.display='block';
         setStatus('تشغيل SLAM…', false);
         XR8.run({canvas});
+        syncVisualViewport();
+        setTimeout(syncVisualViewport,120);
+        setTimeout(syncVisualViewport,500);
+        setTimeout(syncVisualViewport,1200);
       }catch(err){
         console.error(err);
         xrStarted = false;
