@@ -214,10 +214,10 @@
     const playForward=new THREE.Vector3(0,0,-1);
     const playRight=new THREE.Vector3(1,0,0);
 
-    const START_MIN_DISTANCE=7.2;
-    const START_MAX_DISTANCE=9.0;
-    const STALK_STOP_DISTANCE=2.60;
-    const STALK_SIDE_OFFSET=.18;
+    const START_MIN_DISTANCE=9.5;
+    const START_MAX_DISTANCE=11.5;
+    const STALK_STOP_DISTANCE=3.40;
+    const STALK_SIDE_OFFSET=.16;
 
     const actors=[];
     const mixers=[];
@@ -325,24 +325,29 @@
         o.castShadow=false;
         o.receiveShadow=false;
 
-        const materials=Array.isArray(o.material)?o.material:[o.material];
-        for(const m of materials){
-          if(!m)continue;
+        const original=Array.isArray(o.material)?o.material:[o.material];
+        const unlit=original.map(m=>{
+          if(!m)return m;
 
-          // Remove dark metallic/AO response that makes the troll appear black
-          // in camera passthrough while keeping the original color textures.
-          if('metalness' in m)m.metalness=0;
-          if('roughness' in m)m.roughness=.88;
-          if('aoMapIntensity' in m)m.aoMapIntensity=0;
+          const mat=new THREE.MeshBasicMaterial({
+            map:m.map||null,
+            color:m.color?.clone?.()||new THREE.Color(0xffffff),
+            transparent:!!m.transparent,
+            opacity:m.opacity??1,
+            alphaMap:m.alphaMap||null,
+            alphaTest:m.alphaTest||0,
+            side:m.side,
+            depthTest:m.depthTest!==false,
+            depthWrite:m.depthWrite!==false,
+            vertexColors:!!m.vertexColors,
+            toneMapped:false
+          });
 
-          // Gentle self-lighting so the texture remains readable in dim rooms.
-          if('emissive' in m){
-            m.emissive.setRGB(.16,.16,.16);
-            m.emissiveIntensity=.70;
-          }
+          mat.name=(m.name||'troll')+'_unlit';
+          return mat;
+        });
 
-          m.needsUpdate=true;
-        }
+        o.material=Array.isArray(o.material)?unlit:unlit[0];
       });
 
       return wrapper;
@@ -399,7 +404,7 @@
 
       // A troll should read substantially larger than a human in the room,
       // but still remain believable relative to the AR floor.
-      const troll=normalizeModel(trollGltf.scene,{height:5.40,modelYaw:0});
+      const troll=normalizeModel(trollGltf.scene,{height:7.20,modelYaw:0});
       let mixer=null;
       let action=null;
 
@@ -417,8 +422,8 @@
       }
 
       createActor(troll,{
-        speed:.20,
-        turnRate:1.05,
+        speed:.18,
+        turnRate:.92,
         forwardOffset:0,
         mixer,
         action
@@ -538,20 +543,8 @@
 
       renderer.shadowMap.enabled=false;
 
-      // Neutral lighting only: keep the model's original texture colors
-      // and avoid the previous red/blue horror tint.
-      scene.add(new THREE.AmbientLight(0xffffff,1.55));
-      scene.add(new THREE.HemisphereLight(0xffffff,0xf2f2f2,1.35));
-
-      const key=new THREE.DirectionalLight(0xffffff,1.10);
-      key.position.set(2.5,5,2.5);
-      key.castShadow=false;
-      scene.add(key);
-
-      const fill=new THREE.DirectionalLight(0xffffff,.65);
-      fill.position.set(-3,3,1);
-      fill.castShadow=false;
-      scene.add(fill);
+      // Troll materials are deliberately unlit so no scene light can cast
+      // or paint visible shadows onto the model in camera passthrough.
 
       try{
         await loadCharacters();
