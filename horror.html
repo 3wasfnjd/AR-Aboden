@@ -1,0 +1,624 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+  <meta name="theme-color" content="#050607">
+  <title>الرعب المتجول · ABODEN AR</title>
+
+  <script
+    src="https://cdn.jsdelivr.net/npm/@8thwall/engine-binary@1/dist/xr.js"
+    async crossorigin
+    data-preload-chunks="slam"
+  ></script>
+
+  <script type="importmap">
+  {
+    "imports":{
+      "three":"https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.module.js",
+      "three/addons/":"https://cdn.jsdelivr.net/npm/three@0.185.1/examples/jsm/"
+    }
+  }
+  </script>
+
+  <style>
+    :root{--app-w:100vw;--app-h:100vh;color-scheme:dark}
+    *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+    html,body{
+      margin:0;width:100%;height:100%;overflow:hidden;background:#000;
+      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Tahoma,Arial,sans-serif;
+      overscroll-behavior:none
+    }
+    #camerafeed{
+      position:fixed!important;left:0!important;top:0!important;
+      width:var(--app-w)!important;height:var(--app-h)!important;
+      display:block!important
+    }
+    .ui{position:fixed;inset:0;z-index:20;pointer-events:none;color:#fff}
+    .home-btn{
+      position:fixed;left:14px;top:max(14px,env(safe-area-inset-top));z-index:60;
+      pointer-events:auto;text-decoration:none;color:#fff;
+      background:rgba(4,5,6,.78);border:1px solid rgba(255,255,255,.13);
+      border-radius:999px;padding:9px 13px;font-size:12px;font-weight:900;
+      backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)
+    }
+    .top{
+      position:absolute;left:112px;right:14px;top:max(14px,env(safe-area-inset-top));
+      display:flex;justify-content:space-between;gap:8px;pointer-events:none
+    }
+    .pill{
+      min-height:38px;display:flex;align-items:center;gap:7px;
+      padding:0 12px;border-radius:999px;
+      background:rgba(5,6,7,.72);border:1px solid rgba(255,255,255,.12);
+      backdrop-filter:blur(13px);-webkit-backdrop-filter:blur(13px);
+      font-size:11px;font-weight:900
+    }
+    .status .dot{
+      width:7px;height:7px;border-radius:50%;background:#d95e65;
+      box-shadow:0 0 10px rgba(217,94,101,.8)
+    }
+    .status.ready .dot{background:#84efae;box-shadow:0 0 10px rgba(132,239,174,.75)}
+    .guide{
+      position:absolute;left:50%;top:82px;transform:translateX(-50%);
+      width:min(88vw,360px);padding:10px 14px;border-radius:16px;text-align:center;
+      background:rgba(3,4,5,.70);border:1px solid rgba(255,255,255,.11);
+      backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+      font-size:11px;line-height:1.55;color:#d8dadd
+    }
+    .guide b{display:block;color:#fff;font-size:12px;margin-bottom:2px}
+    .guide.hidden{display:none}
+    .placement{
+      position:absolute;right:16px;bottom:max(20px,env(safe-area-inset-bottom));
+      display:flex;gap:8px;pointer-events:auto
+    }
+    .action{
+      border:1px solid rgba(255,255,255,.14);border-radius:16px;
+      background:rgba(4,5,6,.78);color:#fff;
+      padding:12px 15px;font-weight:900;font-size:12px;
+      backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)
+    }
+    .action.primary{background:#eee;color:#090a0b}
+    .reticle{
+      position:absolute;left:50%;top:50%;width:26px;height:26px;
+      transform:translate(-50%,-50%);border:1px solid rgba(255,255,255,.82);
+      border-radius:50%;box-shadow:0 0 18px rgba(255,255,255,.18);
+      opacity:0;transition:opacity .2s
+    }
+    .reticle.on{opacity:1}
+    .reticle:before,.reticle:after{
+      content:"";position:absolute;left:50%;top:50%;background:rgba(255,255,255,.8)
+    }
+    .reticle:before{width:6px;height:1px;transform:translate(-50%,-50%)}
+    .reticle:after{width:1px;height:6px;transform:translate(-50%,-50%)}
+    .vignette{
+      position:absolute;inset:0;pointer-events:none;
+      background:radial-gradient(circle at center,transparent 48%,rgba(0,0,0,.20) 74%,rgba(20,0,0,.42) 100%);
+      opacity:.62
+    }
+    .toast{
+      position:absolute;left:50%;bottom:105px;transform:translate(-50%,12px);
+      padding:9px 13px;border-radius:999px;background:rgba(4,5,6,.82);
+      border:1px solid rgba(255,255,255,.12);font-size:11px;font-weight:800;
+      opacity:0;transition:.2s;white-space:nowrap
+    }
+    .toast.show{opacity:1;transform:translate(-50%,0)}
+    #intro{
+      position:fixed;inset:0;z-index:50;
+      display:flex;align-items:flex-end;justify-content:center;
+      padding:22px 18px max(30px,env(safe-area-inset-bottom));
+      background:
+        radial-gradient(circle at 50% 20%,rgba(90,17,25,.22),transparent 38%),
+        linear-gradient(#060708,#010101);
+      color:#fff
+    }
+    .card{
+      width:min(100%,520px);padding:25px;border-radius:26px;
+      background:rgba(255,255,255,.055);border:1px solid rgba(255,255,255,.10);
+      backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px)
+    }
+    .eyebrow{color:#d96a73;font-size:11px;font-weight:900;letter-spacing:.16em;margin-bottom:8px}
+    .card h1{font-size:29px;margin:0 0 9px}
+    .card p{margin:0 0 18px;color:#c9cbd0;font-size:13px;line-height:1.8}
+    .start{
+      width:100%;height:58px;border:0;border-radius:18px;
+      background:#eee;color:#08090a;font-size:16px;font-weight:950
+    }
+    .start:disabled{opacity:.46}
+    .tiny{margin-top:11px!important;margin-bottom:0!important;text-align:center;color:#878b91!important;font-size:10.5px!important}
+    .error{display:none;margin-top:12px;color:#ffb9bd;font-size:11px;line-height:1.6}
+  </style>
+</head>
+<body>
+  <canvas id="camerafeed"></canvas>
+  <a class="home-btn" href="./index.html">⌂ الرئيسية</a>
+
+  <div class="ui" id="gameUi">
+    <div class="vignette"></div>
+    <div class="top">
+      <div class="pill">👻 الرعب المتجول</div>
+      <div class="pill status" id="status"><span class="dot"></span><span id="statusText">جاهز</span></div>
+    </div>
+
+    <div class="guide" id="guide">
+      <b>حدد أرضية الغرفة</b>
+      حرّك الجوال ببطء حتى يستقر المؤشر، ثم ثبّت منطقة التجربة.
+    </div>
+
+    <div class="reticle" id="reticle"></div>
+    <div class="toast" id="toast"></div>
+
+    <div class="placement">
+      <button class="action primary" id="placeBtn">ثبّت المنطقة</button>
+      <button class="action" id="resetBtn">إعادة توزيع</button>
+    </div>
+  </div>
+
+  <div id="intro">
+    <div class="card">
+      <div class="eyebrow">ABODEN AR · HORROR</div>
+      <h1>الرعب المتجول</h1>
+      <p>شخصيتان مرعبتان تتحركان عشوائيًا داخل المساحة أمامك. واحدة تركض بأنيميشن حقيقي، والثانية تنزلق بحركة شبحية بطيئة.</p>
+      <button class="start" id="startBtn" disabled>جاري تجهيز المحرك…</button>
+      <div class="error" id="errorBox"></div>
+      <p class="tiny">يفضل مساحة فارغة نسبيًا وتحريك الجوال ببطء أثناء التتبع.</p>
+    </div>
+  </div>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
+
+    window.THREE=THREE;
+
+    const canvas=document.getElementById('camerafeed');
+    const intro=document.getElementById('intro');
+    const startBtn=document.getElementById('startBtn');
+    const errorBox=document.getElementById('errorBox');
+    const status=document.getElementById('status');
+    const statusText=document.getElementById('statusText');
+    const guide=document.getElementById('guide');
+    const reticleEl=document.getElementById('reticle');
+    const toast=document.getElementById('toast');
+    const placeBtn=document.getElementById('placeBtn');
+    const resetBtn=document.getElementById('resetBtn');
+
+    let xrReady=false;
+    let xrStarted=false;
+    let scene,camera,renderer;
+
+    let placed=false;
+    let surfaceReady=false;
+    let stableMs=0;
+    let lastTime=performance.now();
+
+    const raycaster=new THREE.Raycaster();
+    const centerNdc=new THREE.Vector2(0,0);
+    const floorPlane=new THREE.Plane(new THREE.Vector3(0,1,0),0);
+    const hitPoint=new THREE.Vector3();
+    const stablePoint=new THREE.Vector3();
+    const prevHit=new THREE.Vector3(999,999,999);
+
+    const playOrigin=new THREE.Vector3();
+    const playForward=new THREE.Vector3(0,0,-1);
+    const playRight=new THREE.Vector3(1,0,0);
+
+    const PLAY_MIN_DISTANCE=1.1;
+    const PLAY_MAX_DISTANCE=4.5;
+    const PLAY_HALF_ANGLE=THREE.MathUtils.degToRad(78);
+
+    const actors=[];
+    const mixers=[];
+
+    function syncViewport(){
+      const vv=window.visualViewport;
+      const w=Math.round(vv?.width||window.innerWidth);
+      const h=Math.round(vv?.height||window.innerHeight);
+      document.documentElement.style.setProperty('--app-w',w+'px');
+      document.documentElement.style.setProperty('--app-h',h+'px');
+      canvas.style.setProperty('width',w+'px','important');
+      canvas.style.setProperty('height',h+'px','important');
+      canvas.style.setProperty('left','0px','important');
+      canvas.style.setProperty('top','0px','important');
+    }
+    syncViewport();
+    addEventListener('resize',syncViewport,{passive:true});
+    visualViewport?.addEventListener('resize',syncViewport,{passive:true});
+    visualViewport?.addEventListener('scroll',syncViewport,{passive:true});
+
+    function notify(msg){
+      toast.textContent=msg;
+      toast.classList.add('show');
+      clearTimeout(window.__horrorToast);
+      window.__horrorToast=setTimeout(()=>toast.classList.remove('show'),1500);
+    }
+
+    function setStatus(text,ready=false){
+      statusText.textContent=text;
+      status.classList.toggle('ready',ready);
+    }
+
+    function cameraHorizontalForward(out){
+      camera.getWorldDirection(out);
+      out.y=0;
+      if(out.lengthSq()<.0001) out.set(0,0,-1);
+      return out.normalize();
+    }
+
+    async function loadGLB(path){
+      const loader=new GLTFLoader();
+      return await new Promise((resolve,reject)=>loader.load(path,resolve,undefined,reject));
+    }
+
+    function normalizeModel(raw,{height=1.55,rotateX=0,rotateY=0}={}){
+      const wrapper=new THREE.Group();
+      raw.rotation.x+=rotateX;
+      raw.rotation.y+=rotateY;
+      raw.updateMatrixWorld(true);
+
+      const box=new THREE.Box3().setFromObject(raw);
+      const size=new THREE.Vector3();
+      const center=new THREE.Vector3();
+      box.getSize(size);
+      box.getCenter(center);
+
+      raw.position.x-=center.x;
+      raw.position.z-=center.z;
+      raw.position.y-=box.min.y;
+      wrapper.add(raw);
+
+      raw.updateMatrixWorld(true);
+      const orientedBox=new THREE.Box3().setFromObject(wrapper);
+      const orientedSize=new THREE.Vector3();
+      orientedBox.getSize(orientedSize);
+
+      const s=height/Math.max(orientedSize.y,.001);
+      wrapper.scale.setScalar(s);
+
+      wrapper.traverse(o=>{
+        if(o.isMesh){
+          o.castShadow=true;
+          o.receiveShadow=true;
+        }
+      });
+
+      return wrapper;
+    }
+
+    function randomTarget(out){
+      const angle=THREE.MathUtils.randFloat(-PLAY_HALF_ANGLE,PLAY_HALF_ANGLE);
+      const distance=THREE.MathUtils.randFloat(PLAY_MIN_DISTANCE,PLAY_MAX_DISTANCE);
+      out.copy(playOrigin)
+        .addScaledVector(playForward,Math.cos(angle)*distance)
+        .addScaledVector(playRight,Math.sin(angle)*distance);
+      out.y=0;
+      return out;
+    }
+
+    function createActor(root,{speed=.35,turnRate=2.8,ghost=false,forwardOffset=0,mixer=null}={}){
+      const actor={
+        root,
+        speed,
+        turnRate,
+        ghost,
+        forwardOffset,
+        mixer,
+        target:new THREE.Vector3(),
+        velocity:new THREE.Vector3(),
+        pause:0,
+        bobSeed:Math.random()*Math.PI*2,
+        baseY:0,
+      };
+      randomTarget(root.position);
+      actor.baseY=root.position.y;
+      randomTarget(actor.target);
+      scene.add(root);
+      actors.push(actor);
+      if(mixer) mixers.push(mixer);
+      return actor;
+    }
+
+    async function loadCharacters(){
+      const [ghostGltf,hoodedGltf]=await Promise.all([
+        loadGLB('./assets/horror/ghostly_woman.glb'),
+        loadGLB('./assets/horror/hooded_horror_woman.glb')
+      ]);
+
+      // This Sketchfab model uses Z as its vertical axis, so rotate it into Three.js Y-up.
+      const ghost=normalizeModel(ghostGltf.scene,{height:1.52,rotateX:-Math.PI/2,rotateY:Math.PI});
+      createActor(ghost,{
+        speed:.24,
+        turnRate:1.8,
+        ghost:true,
+        forwardOffset:Math.PI
+      });
+
+      const hooded=normalizeModel(hoodedGltf.scene,{height:1.68,rotateY:0});
+      let mixer=null;
+      if(hoodedGltf.animations?.length){
+        mixer=new THREE.AnimationMixer(hooded);
+        const clip=hoodedGltf.animations.find(a=>/runfast/i.test(a.name))||hoodedGltf.animations[0];
+        const action=mixer.clipAction(clip);
+        action.timeScale=.62;
+        action.play();
+      }
+
+      createActor(hooded,{
+        speed:.50,
+        turnRate:3.2,
+        ghost:false,
+        forwardOffset:Math.PI,
+        mixer
+      });
+    }
+
+    function updateActors(dt,time){
+      const dir=new THREE.Vector3();
+
+      for(const a of actors){
+        if(a.mixer) a.mixer.update(dt);
+
+        if(a.pause>0){
+          a.pause-=dt;
+          if(a.ghost){
+            a.root.position.y=a.baseY+Math.sin(time*1.7+a.bobSeed)*.025;
+          }
+          continue;
+        }
+
+        dir.subVectors(a.target,a.root.position);
+        dir.y=0;
+        const distance=dir.length();
+
+        if(distance<.12){
+          a.pause=THREE.MathUtils.randFloat(.25,1.15);
+          randomTarget(a.target);
+          continue;
+        }
+
+        dir.divideScalar(distance);
+
+        const step=Math.min(distance,a.speed*dt);
+        a.root.position.addScaledVector(dir,step);
+
+        const targetYaw=Math.atan2(dir.x,dir.z)+a.forwardOffset;
+        const currentYaw=a.root.rotation.y;
+        let diff=targetYaw-currentYaw;
+        while(diff>Math.PI) diff-=Math.PI*2;
+        while(diff<-Math.PI) diff+=Math.PI*2;
+        a.root.rotation.y=currentYaw+diff*Math.min(1,dt*a.turnRate);
+
+        if(a.ghost){
+          a.root.position.y=a.baseY+Math.sin(time*1.55+a.bobSeed)*.035;
+          const spectral=0.88+Math.sin(time*1.1+a.bobSeed)*.035;
+          a.root.scale.x=a.root.scale.z=spectral*a.root.scale.y;
+        }else{
+          a.root.position.y=a.baseY;
+        }
+      }
+    }
+
+    function setPlayFrameFromCamera(position){
+      playOrigin.copy(position);
+      cameraHorizontalForward(playForward);
+      playRight.set(-playForward.z,0,playForward.x).normalize();
+    }
+
+    function distributeActors(){
+      for(const a of actors){
+        randomTarget(a.root.position);
+        a.root.position.y=0;
+        a.baseY=0;
+        randomTarget(a.target);
+        a.pause=THREE.MathUtils.randFloat(0,.5);
+      }
+    }
+
+    async function setupScene(){
+      const xrScene=XR8.Threejs.xrScene();
+      scene=xrScene.scene;
+      camera=xrScene.camera;
+      renderer=xrScene.renderer;
+
+      renderer.shadowMap.enabled=true;
+      renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+
+      scene.add(new THREE.HemisphereLight(0x7b8793,0x13090b,1.05));
+      const key=new THREE.DirectionalLight(0xffd8d8,.68);
+      key.position.set(1.5,4,-1.5);
+      scene.add(key);
+
+      // Slight cold/red contrast on virtual characters only.
+      const cold=new THREE.PointLight(0x6e8cff,.28,4,2);
+      cold.position.set(-2,1.6,-2);
+      scene.add(cold);
+      const red=new THREE.PointLight(0xb72f3c,.24,3.5,2);
+      red.position.set(2,1.2,-1);
+      scene.add(red);
+
+      try{
+        await loadCharacters();
+      }catch(err){
+        console.error(err);
+        errorBox.style.display='block';
+        errorBox.textContent='تعذر تحميل موديلات الرعب. تأكد من رفع الملفين داخل assets/horror بالأسماء المطلوبة.';
+        notify('موديلات الرعب غير موجودة في المستودع');
+      }
+
+      camera.position.set(0,1.5,2);
+      XR8.XrController.updateCameraProjectionMatrix({
+        origin:camera.position,
+        facing:camera.quaternion
+      });
+
+      setStatus('امسح الأرض',true);
+      requestAnimationFrame(loop);
+    }
+
+    function updatePlacement(dt){
+      if(placed){
+        reticleEl.classList.remove('on');
+        return;
+      }
+
+      raycaster.setFromCamera(centerNdc,camera);
+      const hit=raycaster.ray.intersectPlane(floorPlane,hitPoint);
+
+      if(!hit||hit.distanceTo(camera.position)>7){
+        reticleEl.classList.remove('on');
+        stableMs=0;
+        surfaceReady=false;
+        setStatus('ابحث عن الأرض',false);
+        return;
+      }
+
+      const delta=prevHit.distanceTo(hit);
+      if(delta<.018) stableMs+=dt*1000;
+      else stableMs=0;
+      prevHit.copy(hit);
+
+      if(stablePoint.lengthSq()===0) stablePoint.copy(hit);
+      else stablePoint.lerp(hit,.16);
+
+      reticleEl.classList.add('on');
+      surfaceReady=stableMs>650;
+      setStatus(surfaceReady?'السطح مستقر':'ثبّت الجوال قليلًا',surfaceReady);
+    }
+
+    function placeArea(){
+      if(!xrStarted)return;
+      if(!surfaceReady){
+        notify('انتظر حتى يستقر السطح');
+        return;
+      }
+
+      setPlayFrameFromCamera(stablePoint);
+      distributeActors();
+      actors.forEach(a=>a.root.visible=true);
+
+      placed=true;
+      guide.classList.add('hidden');
+      placeBtn.textContent='نقل المنطقة';
+      setStatus('الشخصيات تتحرك',true);
+      notify('تم تثبيت منطقة الرعب');
+      if(navigator.vibrate)navigator.vibrate(25);
+    }
+
+    function resetPlacement(){
+      placed=false;
+      surfaceReady=false;
+      stableMs=0;
+      prevHit.set(999,999,999);
+      stablePoint.set(0,0,0);
+      actors.forEach(a=>a.root.visible=false);
+      guide.classList.remove('hidden');
+      placeBtn.textContent='ثبّت المنطقة';
+      setStatus('أعد مسح الأرض',true);
+      try{XR8.XrController.recenter()}catch(err){console.warn(err)}
+    }
+
+    function redistribute(){
+      if(!placed){
+        resetPlacement();
+        return;
+      }
+      setPlayFrameFromCamera(playOrigin);
+      distributeActors();
+      notify('تم تغيير مواقع الشخصيات');
+    }
+
+    function loop(now){
+      requestAnimationFrame(loop);
+      if(!camera||!scene)return;
+      const dt=Math.min(1/30,(now-lastTime)/1000||.016);
+      lastTime=now;
+
+      updatePlacement(dt);
+      if(placed)updateActors(dt,now/1000);
+    }
+
+    placeBtn.addEventListener('click',()=>{
+      if(placed)resetPlacement();
+      else placeArea();
+    });
+    resetBtn.addEventListener('click',redistribute);
+
+    function worldModule(){
+      return{
+        name:'aboden-horror-world',
+        onStart:async()=>{
+          try{
+            await setupScene();
+            dispatchEvent(new Event('resize'));
+          }catch(err){
+            console.error(err);
+            notify('فشل تشغيل تجربة الرعب');
+          }
+        },
+        onException:error=>{
+          console.error(error);
+          notify('حدث خطأ في التتبع');
+        }
+      };
+    }
+
+    startBtn.addEventListener('click',()=>{
+      if(!xrReady||xrStarted)return;
+      xrStarted=true;
+      startBtn.disabled=true;
+      startBtn.textContent='جاري فتح الكاميرا…';
+      errorBox.style.display='none';
+
+      try{
+        intro.style.display='none';
+        XR8.run({canvas});
+        syncViewport();
+        setTimeout(syncViewport,120);
+        setTimeout(syncViewport,500);
+      }catch(err){
+        console.error(err);
+        xrStarted=false;
+        intro.style.display='flex';
+        startBtn.disabled=false;
+        startBtn.textContent='حاول مرة أخرى';
+        errorBox.style.display='block';
+        errorBox.textContent='تعذر تشغيل World Tracking. حدّث الصفحة وحاول مرة أخرى.';
+      }
+    });
+
+    function initializeXR(){
+      if(xrReady||!window.XR8||!window.THREE)return;
+      try{
+        XR8.XrController.configure({
+          disableWorldTracking:false,
+          enableLighting:true,
+          enableWorldPoints:true,
+          scale:'responsive'
+        });
+        XR8.addCameraPipelineModules([
+          XR8.GlTextureRenderer.pipelineModule(),
+          XR8.Threejs.pipelineModule(),
+          XR8.XrController.pipelineModule(),
+          worldModule()
+        ]);
+        xrReady=true;
+        startBtn.disabled=false;
+        startBtn.textContent='ابدأ التجربة';
+      }catch(err){
+        console.error(err);
+        errorBox.style.display='block';
+        errorBox.textContent='لم يكتمل تحميل محرك AR. حدّث الصفحة وحاول مرة أخرى.';
+      }
+    }
+
+    if(window.XR8)initializeXR();
+    else addEventListener('xrloaded',initializeXR,{once:true});
+
+    setTimeout(()=>{
+      if(!xrReady){
+        errorBox.style.display='block';
+        errorBox.textContent='المحرك ما زال يتحمل. إذا طال الانتظار حدّث الصفحة.';
+      }
+    },9000);
+  </script>
+</body>
+</html>
