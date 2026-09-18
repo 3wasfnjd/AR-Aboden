@@ -3,723 +3,305 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
-  <meta name="theme-color" content="#05070b">
-  <title>AR Aboden — Hajwala Physics</title>
-
-  <script src="https://cdn.jsdelivr.net/npm/@8thwall/engine-binary@1/dist/xr.js"
-          async crossorigin="anonymous" data-preload-chunks="slam"></script>
-
-  <script type="importmap">
-  {
-    "imports": {
-      "three": "https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.module.js",
-      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.185.1/examples/jsm/",
-      "crashcat": "https://esm.sh/crashcat@0.0.3"
-    }
-  }
-  </script>
-
+  <meta name="theme-color" content="#070b12">
+  <title>تجارب الواقع المعزز مع عبودين</title>
   <style>
     *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-    :root{--app-w:100vw;--app-h:100dvh}
-    html{margin:0;width:100%;height:100%;min-height:100%;background:#02050a;overflow:hidden}
-    body{
-      position:fixed;
-      left:0;top:0;
+    :root{
+      color-scheme:dark;
+      --bg:#070b12;
+      --panel:#0e1520;
+      --panel2:#111b28;
+      --line:rgba(255,255,255,.10);
+      --text:#f7f9fc;
+      --muted:#a9b3c2;
+      --accent:#6fd8ff;
+      --accent2:#86ffbd;
+    }
+    html,body{
       margin:0;
-      width:var(--app-w);
-      height:var(--app-h);
-      min-height:var(--app-h);
-      overflow:hidden;
-      overscroll-behavior:none;
-      background:#02050a;
+      min-height:100%;
+      background:
+        radial-gradient(circle at 50% -10%,rgba(62,118,183,.25),transparent 36%),
+        linear-gradient(180deg,#09101a 0%,var(--bg) 45%,#05080d 100%);
+      color:var(--text);
       font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Tahoma,Arial,sans-serif;
-      touch-action:none;
     }
-    #camerafeed{
-      position:fixed!important;
-      left:0!important;
-      top:0!important;
-      right:auto!important;
-      bottom:auto!important;
-      margin:0!important;
-      padding:0!important;
-      width:var(--app-w)!important;
-      height:var(--app-h)!important;
-      min-width:var(--app-w)!important;
-      min-height:var(--app-h)!important;
-      max-width:none!important;
-      max-height:none!important;
-      display:block!important;
-      z-index:0!important;
-      transform:none!important;
+    body{
+      min-height:100dvh;
+      overflow-x:hidden;
     }
-    .ui{position:fixed;left:0;top:0;width:var(--app-w);height:var(--app-h);z-index:20;color:#fff;pointer-events:none}
-    .top{position:absolute;top:max(14px,env(safe-area-inset-top));left:14px;right:14px;display:flex;align-items:center;justify-content:space-between;gap:10px}
-    .pill{background:rgba(5,10,17,.68);border:1px solid rgba(255,255,255,.14);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-radius:999px;padding:9px 12px;box-shadow:0 8px 28px rgba(0,0,0,.24)}
-    .brand{font-weight:900;letter-spacing:.7px;font-size:14px}
-    .status{display:flex;align-items:center;gap:7px;font-size:12px}
-    .dot{width:8px;height:8px;border-radius:50%;background:#f5c451;box-shadow:0 0 12px currentColor}
-    .status.ready .dot{background:#61eb8b}
-    .guide{position:absolute;left:50%;top:40%;transform:translate(-50%,-50%);width:min(86vw,390px);text-align:center;line-height:1.8;text-shadow:0 2px 14px rgba(0,0,0,.95);font-size:14px;padding:0 12px}
-    .guide b{display:block;font-size:19px;margin-bottom:5px}
-    .guide.hidden{display:none}
-    .toast{position:absolute;left:50%;top:18%;transform:translate(-50%,-8px);opacity:0;transition:.2s;background:rgba(5,10,17,.82);border:1px solid rgba(255,255,255,.15);border-radius:999px;padding:10px 15px;font-size:13px;white-space:nowrap;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
-    .toast.show{opacity:1;transform:translate(-50%,0)}
-    .mode{position:absolute;left:14px;right:14px;bottom:205px;text-align:center;font-size:11px;opacity:.78;text-shadow:0 2px 10px #000}
-    .controls{position:absolute;inset:0;display:none;pointer-events:none}
-    .joyBase{position:absolute;left:18px;bottom:max(22px,env(safe-area-inset-bottom));width:126px;height:126px;border-radius:50%;background:rgba(5,10,17,.58);border:1px solid rgba(255,255,255,.2);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);pointer-events:auto;touch-action:none}
-    .joyBase:before{content:"";position:absolute;inset:22px;border:1px dashed rgba(255,255,255,.22);border-radius:50%}
-    .joyKnob{position:absolute;left:50%;top:50%;width:56px;height:56px;margin:-28px 0 0 -28px;border-radius:50%;background:rgba(255,255,255,.94);box-shadow:0 6px 20px rgba(0,0,0,.28)}
-    .pedals{position:absolute;right:18px;bottom:max(22px,env(safe-area-inset-bottom));display:grid;grid-template-columns:74px 74px;gap:10px;pointer-events:auto}
-    .drive{height:68px;border:1px solid rgba(255,255,255,.18);border-radius:22px;color:#fff;background:rgba(5,10,17,.72);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);font-weight:900;font-size:13px;touch-action:none}
-    .drive.gas{background:rgba(20,110,55,.72)}
-    .drive.handbrake{grid-column:1/3;height:54px}
-    .drive.active{transform:scale(.96);background:rgba(255,255,255,.34)}
-    .placement{position:absolute;right:18px;top:calc(max(14px,env(safe-area-inset-top)) + 58px);display:flex;gap:8px;pointer-events:auto}
-    .smallBtn{border:1px solid rgba(255,255,255,.16);border-radius:16px;color:#fff;background:rgba(5,10,17,.68);padding:11px 14px;font-weight:800;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
-    .smallBtn.primary{background:#fff;color:#0b1018}
-    #intro{position:fixed;inset:0;z-index:40;background:radial-gradient(circle at 50% 34%,#1b2c45 0,#090e17 45%,#03060b 100%);display:flex;align-items:flex-end;justify-content:center;padding:24px 20px max(30px,env(safe-area-inset-bottom));color:#fff}
-    .card{width:min(100%,520px);background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);border-radius:28px;padding:24px;backdrop-filter:blur(15px);-webkit-backdrop-filter:blur(15px)}
-    .card h1{font-size:28px;margin:0 0 10px}
-    .card p{font-size:14px;line-height:1.85;margin:0 0 18px;color:#d6dce6}
-    .start{width:100%;height:58px;border:0;border-radius:18px;background:#fff;color:#091019;font-size:16px;font-weight:900}
-    .tiny{margin-top:11px!important;font-size:11px!important;color:#a9b2c1!important;text-align:center}
-    .error{display:none;margin-top:12px;color:#ffc4c4;font-size:12px;line-height:1.7}
-    @media(max-width:370px){
-      .joyBase{width:112px;height:112px}
-      .pedals{grid-template-columns:66px 66px}
-      .drive{height:62px}
+    .page{
+      width:min(1120px,100%);
+      margin:0 auto;
+      padding:max(22px,env(safe-area-inset-top)) 18px max(32px,env(safe-area-inset-bottom));
+    }
+    .topbar{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+      margin-bottom:34px;
+    }
+    .brand{
+      display:flex;
+      align-items:center;
+      gap:11px;
+      font-weight:900;
+      letter-spacing:.4px;
+    }
+    .brand-mark{
+      width:38px;
+      height:38px;
+      border-radius:12px;
+      display:grid;
+      place-items:center;
+      background:linear-gradient(145deg,#172638,#0d1621);
+      border:1px solid var(--line);
+      box-shadow:0 10px 30px rgba(0,0,0,.28);
+      font-size:18px;
+    }
+    .brand small{
+      display:block;
+      margin-top:2px;
+      color:var(--muted);
+      font-size:10px;
+      font-weight:700;
+      letter-spacing:1.4px;
+    }
+    .version{
+      padding:7px 10px;
+      border-radius:999px;
+      border:1px solid var(--line);
+      background:rgba(255,255,255,.04);
+      color:var(--muted);
+      font-size:11px;
+      white-space:nowrap;
+    }
+    .hero{
+      padding:12px 2px 30px;
+    }
+    .eyebrow{
+      color:var(--accent);
+      font-size:12px;
+      font-weight:900;
+      letter-spacing:.9px;
+      margin-bottom:10px;
+    }
+    h1{
+      margin:0;
+      max-width:780px;
+      font-size:clamp(32px,8vw,64px);
+      line-height:1.08;
+      letter-spacing:-1.2px;
+    }
+    .hero p{
+      margin:15px 0 0;
+      max-width:680px;
+      color:var(--muted);
+      font-size:clamp(14px,3.8vw,18px);
+      line-height:1.8;
+    }
+    .section-head{
+      display:flex;
+      justify-content:space-between;
+      align-items:end;
+      gap:12px;
+      margin:10px 0 16px;
+    }
+    .section-head h2{
+      margin:0;
+      font-size:20px;
+    }
+    .section-head span{
+      color:var(--muted);
+      font-size:12px;
+    }
+    .grid{
+      display:grid;
+      grid-template-columns:repeat(2,minmax(0,1fr));
+      gap:14px;
+    }
+    .card{
+      position:relative;
+      min-height:210px;
+      border:1px solid var(--line);
+      border-radius:24px;
+      background:
+        linear-gradient(150deg,rgba(255,255,255,.045),rgba(255,255,255,.012)),
+        var(--panel);
+      overflow:hidden;
+      text-decoration:none;
+      color:inherit;
+      padding:20px;
+      display:flex;
+      flex-direction:column;
+      justify-content:space-between;
+      box-shadow:0 18px 50px rgba(0,0,0,.22);
+    }
+    .card.active{
+      background:
+        radial-gradient(circle at 20% 0%,rgba(88,184,255,.18),transparent 38%),
+        linear-gradient(150deg,#111d2b,#0b111a 70%);
+    }
+    .card.active:active{transform:scale(.985)}
+    .card-top{
+      display:flex;
+      align-items:flex-start;
+      justify-content:space-between;
+      gap:12px;
+    }
+    .icon{
+      width:58px;
+      height:58px;
+      border-radius:18px;
+      display:grid;
+      place-items:center;
+      background:rgba(255,255,255,.07);
+      border:1px solid rgba(255,255,255,.10);
+      font-size:28px;
+    }
+    .badge{
+      padding:7px 10px;
+      border-radius:999px;
+      font-size:11px;
+      font-weight:900;
+      background:rgba(111,216,255,.12);
+      color:var(--accent);
+      border:1px solid rgba(111,216,255,.24);
+    }
+    .card h3{
+      margin:18px 0 6px;
+      font-size:23px;
+    }
+    .card p{
+      margin:0;
+      color:var(--muted);
+      line-height:1.7;
+      font-size:13px;
+    }
+    .card-bottom{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:12px;
+      margin-top:22px;
+    }
+    .open{
+      font-weight:900;
+      font-size:13px;
+    }
+    .arrow{
+      width:34px;
+      height:34px;
+      display:grid;
+      place-items:center;
+      border-radius:50%;
+      background:#fff;
+      color:#08111b;
+      font-size:17px;
+      font-weight:900;
+    }
+    .placeholder{
+      min-height:210px;
+      opacity:.58;
+      background:
+        linear-gradient(145deg,rgba(255,255,255,.03),rgba(255,255,255,.008)),
+        #0a1018;
+      border-style:dashed;
+    }
+    .placeholder .icon{
+      font-size:24px;
+      color:var(--muted);
+    }
+    .placeholder h3{
+      color:#d9e0e9;
+      font-size:18px;
+    }
+    .placeholder p{
+      font-size:12px;
+    }
+    footer{
+      margin-top:30px;
+      padding:18px 4px 4px;
+      color:#737f8e;
+      text-align:center;
+      font-size:11px;
+      letter-spacing:1px;
+    }
+    @media(max-width:640px){
+      .page{padding-left:14px;padding-right:14px}
+      .topbar{margin-bottom:24px}
+      .hero{padding-bottom:24px}
+      .grid{grid-template-columns:1fr}
+      .card,.placeholder{min-height:190px}
     }
   </style>
 </head>
 <body>
-  <canvas id="camerafeed"></canvas>
+  <main class="page">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark">AR</div>
+        <div>
+          عبودين
+          <small>ABODEN GAMES</small>
+        </div>
+      </div>
+      <div class="version">AR LAB</div>
+    </header>
 
-  <div class="ui">
-    <div class="top">
-      <div class="pill brand">ABODEN AR</div>
-      <div class="pill status" id="status"><span class="dot"></span><span id="statusText">جاهز</span></div>
+    <section class="hero">
+      <div class="eyebrow">تجارب الواقع المعزز</div>
+      <h1>تجارب الواقع المعزز مع عبودين</h1>
+      <p>اختر التجربة التي تريدها. كل تجربة تعمل بشكل مستقل، وسنضيف التجارب الجديدة هنا تباعًا.</p>
+    </section>
+
+    <div class="section-head">
+      <h2>التجارب</h2>
+      <span>1 تجربة متاحة</span>
     </div>
 
-    <div class="guide" id="guide">
-      <b>امسح الأرض بهدوء</b>
-      حرّك الجوال ببطء فوق السجادة أو الأرضية حتى تصبح الحالة «السطح مستقر»، ثم ثبّت الحلبة كاملة.
-    </div>
+    <section class="grid">
+      <a class="card active" href="./arena.html" aria-label="فتح تجربة الحلبة والتفحيط">
+        <div>
+          <div class="card-top">
+            <div class="icon">🏁</div>
+            <div class="badge">متاحة الآن</div>
+          </div>
+          <h3>الحلبة والتفحيط</h3>
+          <p>ثبّت حلبة أسفلت داخل المكان، قد السيارة داخلها، وجرّب الدرفت وآثار الإطارات ودخان الكفرات.</p>
+        </div>
+        <div class="card-bottom">
+          <span class="open">ابدأ التجربة</span>
+          <span class="arrow">←</span>
+        </div>
+      </a>
 
-    <div class="toast" id="toast"></div>
-    <div class="mode" id="modeText">حلبة أسفلت AR: سيارة أصغر + دخان هجولة + آثار إطارات</div>
-
-    <div class="controls" id="controls">
-      <div class="placement">
-        <button class="smallBtn primary" id="placeBtn">ثبّت الحلبة</button>
-        <button class="smallBtn" id="recenterBtn">معايرة</button>
+      <div class="card placeholder" aria-hidden="true">
+        <div>
+          <div class="card-top">
+            <div class="icon">＋</div>
+            <div class="badge">قريباً</div>
+          </div>
+          <h3>تجربة جديدة</h3>
+          <p>سيتم إضافة التجربة القادمة هنا.</p>
+        </div>
       </div>
 
-      <div class="joyBase" id="joyBase">
-        <div class="joyKnob" id="joyKnob"></div>
+      <div class="card placeholder" aria-hidden="true">
+        <div>
+          <div class="card-top">
+            <div class="icon">＋</div>
+            <div class="badge">قريباً</div>
+          </div>
+          <h3>تجربة جديدة</h3>
+          <p>مكان محجوز لتجربة واقع معزز جديدة.</p>
+        </div>
       </div>
+    </section>
 
-      <div class="pedals">
-        <button class="drive brake" id="brakeBtn">فرامل</button>
-        <button class="drive gas" id="gasBtn">بنزين</button>
-        <button class="drive handbrake" id="handbrakeBtn">هاندبريك</button>
-      </div>
-    </div>
-  </div>
-
-  <div id="intro">
-    <div class="card">
-      <h1>حلبة هجولة AR</h1>
-      <p>ثبّت الحلبة مرة واحدة على الأرض، وبعدها تولد السيارة داخلها وتبقى محصورة بحواجز فيزيائية حول الحلبة.</p>
-      <button class="start" id="startBtn" disabled>جاري تجهيز المحرك…</button>
-      <div class="error" id="errorBox"></div>
-      <p class="tiny">بعد تثبيت الحلبة: السيارة أصغر، الأرضية أسفلت، والهاندبريك يولّد دخان وآثار إطارات مثل هجولة.</p>
-    </div>
-  </div>
-
-  <script type="module">
-    import * as THREE from 'three';
-    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-    import { updateWorld } from 'crashcat';
-
-    import { Vehicle } from './js/Vehicle.js';
-    import { MobileControls } from './js/Controls.js';
-    import { SmokeTrails } from './js/Particles.js';
-    import { DriftMarks } from './js/DriftMarks.js';
-    import {
-      createVehicleWorld,
-      createArenaPhysics,
-      moveArenaPhysics,
-      createVehicleBody,
-      resetVehicleBody
-    } from './js/Physics.js';
-
-    window.THREE = THREE;
-
-    function syncVisualViewport(){
-      const vv = window.visualViewport;
-      const w = Math.round(vv?.width || window.innerWidth || document.documentElement.clientWidth);
-      const h = Math.round(vv?.height || window.innerHeight || document.documentElement.clientHeight);
-
-      document.documentElement.style.setProperty('--app-w', w + 'px');
-      document.documentElement.style.setProperty('--app-h', h + 'px');
-
-      const cameraCanvas = document.getElementById('camerafeed');
-      if (cameraCanvas){
-        cameraCanvas.style.setProperty('left','0px','important');
-        cameraCanvas.style.setProperty('top','0px','important');
-        cameraCanvas.style.setProperty('width',w + 'px','important');
-        cameraCanvas.style.setProperty('height',h + 'px','important');
-      }
-
-      // XR8 can update the canvas dimensions after the first frame.
-      // Re-apply the CSS size after its own resize pass.
-      requestAnimationFrame(()=>{
-        if (cameraCanvas){
-          cameraCanvas.style.setProperty('left','0px','important');
-          cameraCanvas.style.setProperty('top','0px','important');
-          cameraCanvas.style.setProperty('width',w + 'px','important');
-          cameraCanvas.style.setProperty('height',h + 'px','important');
-        }
-
-        if (renderer && renderer.setSize){
-          renderer.setSize(w,h,false);
-        }
-      });
-    }
-
-    syncVisualViewport();
-    window.addEventListener('resize',syncVisualViewport,{passive:true});
-    window.addEventListener('orientationchange',()=>{
-      setTimeout(syncVisualViewport,80);
-      setTimeout(syncVisualViewport,350);
-    },{passive:true});
-    if (window.visualViewport){
-      window.visualViewport.addEventListener('resize',syncVisualViewport,{passive:true});
-      window.visualViewport.addEventListener('scroll',syncVisualViewport,{passive:true});
-    }
-
-    const canvas = document.getElementById('camerafeed');
-    const intro = document.getElementById('intro');
-    const startBtn = document.getElementById('startBtn');
-    const errorBox = document.getElementById('errorBox');
-    const controlsEl = document.getElementById('controls');
-    const guide = document.getElementById('guide');
-    const status = document.getElementById('status');
-    const statusText = document.getElementById('statusText');
-    const toast = document.getElementById('toast');
-    const placeBtn = document.getElementById('placeBtn');
-    const recenterBtn = document.getElementById('recenterBtn');
-
-    const joyBase = document.getElementById('joyBase');
-    const joyKnob = document.getElementById('joyKnob');
-    const gasBtn = document.getElementById('gasBtn');
-    const brakeBtn = document.getElementById('brakeBtn');
-    const handbrakeBtn = document.getElementById('handbrakeBtn');
-
-    const controls = new MobileControls({
-      joyBase,
-      joyKnob,
-      gasBtn,
-      brakeBtn,
-      handbrakeBtn
-    });
-
-    let xrReady = false;
-    let xrStarted = false;
-    let scene, camera, renderer;
-    let reticle, shadowPlane;
-    let arenaGroup = null;
-    let arenaPhysics = null;
-    let vehicle = null;
-    let smokeTrails = null;
-    let driftMarks = null;
-    let world = null;
-    let body = null;
-    let placed = false;
-
-    const vehicleRadius = 0.10;
-    const CAR_LENGTH_METERS = 0.55;
-    const AR_EFFECT_SCALE = 0.12;
-    const ARENA_RADIUS = 2.0;
-    const ARENA_SEGMENTS = 28;
-    const ARENA_WALL_HEIGHT = 0.22;
-
-    const raycaster = new THREE.Raycaster();
-    const centerNdc = new THREE.Vector2(0, 0);
-    const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
-    const hitPoint = new THREE.Vector3();
-    const stablePoint = new THREE.Vector3();
-    const prevHit = new THREE.Vector3(999,999,999);
-
-    let reticleStableMs = 0;
-    let surfaceReady = false;
-    let lastTick = performance.now();
-
-    function notify(msg){
-      toast.textContent = msg;
-      toast.classList.add('show');
-      clearTimeout(window.__toastTimer);
-      window.__toastTimer = setTimeout(()=>toast.classList.remove('show'), 1500);
-    }
-
-    function setStatus(text, ready=false){
-      statusText.textContent = text;
-      status.classList.toggle('ready', ready);
-    }
-
-    function cameraYaw(){
-      const d = new THREE.Vector3();
-      camera.getWorldDirection(d);
-      d.y = 0;
-      if (d.lengthSq() < 0.0001) return 0;
-      d.normalize();
-      return Math.atan2(d.x, d.z);
-    }
-
-    async function loadCar(){
-      const loader = new GLTFLoader();
-      const paths = ['./assets/%20camaro.glb', './assets/camaro.glb'];
-
-      let model = null;
-      let lastError = null;
-
-      for (const path of paths){
-        try{
-          const gltf = await new Promise((resolve,reject)=>{
-            loader.load(path, resolve, undefined, reject);
-          });
-          model = gltf.scene || gltf.scenes?.[0];
-          if (model) break;
-        }catch(err){
-          lastError = err;
-        }
-      }
-
-      if (!model) throw lastError || new Error('Camaro model not found');
-
-      model.traverse((obj)=>{
-        if (obj.isMesh){
-          obj.castShadow = true;
-          obj.receiveShadow = true;
-        }
-      });
-
-      model.updateMatrixWorld(true);
-
-      const box = new THREE.Box3().setFromObject(model);
-      const size = new THREE.Vector3();
-      const center = new THREE.Vector3();
-      box.getSize(size);
-      box.getCenter(center);
-
-      model.position.x -= center.x;
-      model.position.z -= center.z;
-      model.position.y -= box.min.y;
-
-      const maxDim = Math.max(size.x,size.y,size.z) || 1;
-      model.scale.setScalar(CAR_LENGTH_METERS / maxDim);
-
-      model.updateMatrixWorld(true);
-      const scaled = new THREE.Box3().setFromObject(model);
-      if (scaled.min.y < 0) model.position.y += -scaled.min.y;
-
-      return model;
-    }
-
-    async function setupScene(){
-      const xrScene = XR8.Threejs.xrScene();
-      scene = xrScene.scene;
-      camera = xrScene.camera;
-      renderer = xrScene.renderer;
-
-      renderer.shadowMap.enabled = true;
-      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-
-      syncVisualViewport();
-      setTimeout(syncVisualViewport,50);
-      setTimeout(syncVisualViewport,250);
-
-      scene.add(new THREE.HemisphereLight(0xffffff,0x596779,1.45));
-      const key = new THREE.DirectionalLight(0xffffff,1.8);
-      key.position.set(2,5,2);
-      key.castShadow = true;
-      key.shadow.mapSize.set(1024,1024);
-      scene.add(key);
-
-      shadowPlane = new THREE.Mesh(
-        new THREE.PlaneGeometry(5.2,5.2),
-        new THREE.ShadowMaterial({opacity:.20})
-      );
-      shadowPlane.rotation.x = -Math.PI/2;
-      shadowPlane.position.y = 0;
-      shadowPlane.receiveShadow = true;
-      scene.add(shadowPlane);
-
-      reticle = new THREE.Group();
-
-      const centerRing = new THREE.Mesh(
-        new THREE.RingGeometry(.10,.125,40).rotateX(-Math.PI/2),
-        new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:.96,depthWrite:false})
-      );
-
-      const footprint = new THREE.Mesh(
-        new THREE.RingGeometry(ARENA_RADIUS - .035,ARENA_RADIUS,72).rotateX(-Math.PI/2),
-        new THREE.MeshBasicMaterial({color:0x5dd5ff,transparent:true,opacity:.70,depthWrite:false,side:THREE.DoubleSide})
-      );
-
-      reticle.add(centerRing,footprint);
-      reticle.position.y = .008;
-      reticle.visible = false;
-      scene.add(reticle);
-
-      arenaGroup = new THREE.Group();
-      arenaGroup.visible = false;
-
-      const textureLoader = new THREE.TextureLoader();
-      textureLoader.setCrossOrigin('anonymous');
-
-      const asphaltMap = textureLoader.load(
-        'https://raw.githubusercontent.com/3wasfnjd/hajwala/master/images/highway-asphalt.jpg'
-      );
-      const asphaltNormal = textureLoader.load(
-        'https://raw.githubusercontent.com/3wasfnjd/hajwala/master/images/highway-asphalt-normal.jpg'
-      );
-      const asphaltRoughness = textureLoader.load(
-        'https://raw.githubusercontent.com/3wasfnjd/hajwala/master/images/highway-asphalt-roughness.jpg'
-      );
-
-      for (const tex of [asphaltMap,asphaltNormal,asphaltRoughness]) {
-        tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-        tex.repeat.set(4,4);
-        tex.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
-      }
-      asphaltMap.colorSpace = THREE.SRGBColorSpace;
-
-      const arenaFloor = new THREE.Mesh(
-        new THREE.CircleGeometry(ARENA_RADIUS,72).rotateX(-Math.PI/2),
-        new THREE.MeshStandardMaterial({
-          map:asphaltMap,
-          normalMap:asphaltNormal,
-          roughnessMap:asphaltRoughness,
-          color:0xffffff,
-          roughness:1,
-          metalness:0,
-          transparent:true,
-          opacity:.97,
-          side:THREE.DoubleSide
-        })
-      );
-      arenaFloor.position.y = .004;
-      arenaFloor.receiveShadow = true;
-      arenaGroup.add(arenaFloor);
-
-      const innerRing = new THREE.Mesh(
-        new THREE.RingGeometry(ARENA_RADIUS*.54,ARENA_RADIUS*.56,72).rotateX(-Math.PI/2),
-        new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:.55,side:THREE.DoubleSide})
-      );
-      innerRing.position.y = .007;
-      arenaGroup.add(innerRing);
-
-      const centerMark = new THREE.Mesh(
-        new THREE.CircleGeometry(.08,32).rotateX(-Math.PI/2),
-        new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:.75,side:THREE.DoubleSide})
-      );
-      centerMark.position.y = .008;
-      arenaGroup.add(centerMark);
-
-      const wallThickness = .09;
-      const wallHeight = ARENA_WALL_HEIGHT;
-      const circumference = Math.PI * 2 * ARENA_RADIUS;
-      const segmentLength = circumference / ARENA_SEGMENTS * 1.10;
-
-      for (let i=0;i<ARENA_SEGMENTS;i++){
-        const a = i / ARENA_SEGMENTS * Math.PI * 2;
-        const wall = new THREE.Mesh(
-          new THREE.BoxGeometry(wallThickness,wallHeight,segmentLength),
-          new THREE.MeshStandardMaterial({
-            color: i % 2 === 0 ? 0xf2f2f2 : 0xffb000,
-            roughness:.72,
-            metalness:.06
-          })
-        );
-        wall.position.set(
-          Math.cos(a)*ARENA_RADIUS,
-          wallHeight*.5,
-          Math.sin(a)*ARENA_RADIUS
-        );
-        wall.rotation.y = -a;
-        wall.castShadow = true;
-        wall.receiveShadow = true;
-        arenaGroup.add(wall);
-      }
-
-      scene.add(arenaGroup);
-
-      world = createVehicleWorld();
-
-      const carModel = await loadCar();
-      vehicle = new Vehicle();
-      const carRoot = vehicle.init(carModel);
-      carRoot.visible = false;
-      scene.add(carRoot);
-
-      // Same effects used in hajwala, scaled down for this tabletop-size AR car.
-      smokeTrails = new SmokeTrails(scene, AR_EFFECT_SCALE, 0.55);
-      driftMarks = new DriftMarks(scene, 'ar-aboden-arena', AR_EFFECT_SCALE, 9);
-
-      camera.position.set(0,1.5,2.0);
-      XR8.XrController.updateCameraProjectionMatrix({
-        origin: camera.position,
-        facing: camera.quaternion
-      });
-
-      setStatus('امسح الأرض', true);
-      requestAnimationFrame(tickWorld);
-    }
-
-    function worldModule(){
-      return {
-        name:'aboden-hajwala-world',
-        onStart:async()=>{
-          try{
-            await setupScene();
-            window.dispatchEvent(new Event('resize'));
-          }catch(err){
-            console.error(err);
-            notify('فشل إعداد فيزياء السيارة');
-          }
-        },
-        onException:(error)=>{
-          console.error(error);
-          notify('حدث خطأ في التتبع');
-        }
-      };
-    }
-
-    function updatePlacement(dt){
-      if (placed){
-        reticle.visible = false;
-        return;
-      }
-
-      raycaster.setFromCamera(centerNdc,camera);
-      const hit = raycaster.ray.intersectPlane(groundPlane,hitPoint);
-
-      if (!hit || hit.distanceTo(camera.position) > 8){
-        reticle.visible = false;
-        reticleStableMs = 0;
-        surfaceReady = false;
-        setStatus('ابحث عن الأرض', false);
-        return;
-      }
-
-      const delta = prevHit.distanceTo(hit);
-      if (delta < .018) reticleStableMs += dt*1000;
-      else reticleStableMs = 0;
-
-      prevHit.copy(hit);
-
-      if (stablePoint.lengthSq()===0) stablePoint.copy(hit);
-      else stablePoint.lerp(hit,.16);
-
-      reticle.visible = true;
-      reticle.position.set(stablePoint.x,.008,stablePoint.z);
-      reticle.rotation.y += dt*.12;
-
-      surfaceReady = reticleStableMs > 700;
-      setStatus(surfaceReady ? 'السطح مستقر' : 'ثبّت الجوال قليلًا', surfaceReady);
-    }
-
-    function tickWorld(now){
-      requestAnimationFrame(tickWorld);
-      if (!camera || !scene || !vehicle || !world) return;
-
-      const dt = Math.min(1/30,(now-lastTick)/1000 || .016);
-      lastTick = now;
-
-      updatePlacement(dt);
-
-      if (!placed || !body) return;
-
-      // The arena stays fixed at its AR anchor.
-      // Only the car moves inside the arena through the physics body.
-      updateWorld(world, null, dt);
-
-      const input = controls.update();
-      vehicle.update(dt, input);
-
-      smokeTrails?.update(dt, vehicle);
-      driftMarks?.update(dt, vehicle);
-    }
-
-    function placeVehicle(){
-      if (!xrStarted || !vehicle) return;
-
-      if (!reticle || !reticle.visible){
-        notify('وجّه الكاميرا إلى الأرض أولًا');
-        return;
-      }
-
-      if (!surfaceReady){
-        notify('انتظر حتى يستقر المؤشر قليلًا');
-        return;
-      }
-
-      const arenaCenter = new THREE.Vector3(
-        reticle.position.x,
-        0,
-        reticle.position.z
-      );
-
-      if (!arenaPhysics){
-        arenaPhysics = createArenaPhysics(
-          world,
-          arenaCenter.x,
-          arenaCenter.z,
-          {
-            radius:ARENA_RADIUS,
-            segments:ARENA_SEGMENTS,
-            wallThickness:.09,
-            wallHeight:ARENA_WALL_HEIGHT,
-            floorMargin:.30
-          }
-        );
-      }else{
-        moveArenaPhysics(arenaPhysics,arenaCenter.x,arenaCenter.z);
-      }
-
-      arenaGroup.position.set(arenaCenter.x,0,arenaCenter.z);
-      arenaGroup.visible = true;
-      shadowPlane.position.set(arenaCenter.x,0,arenaCenter.z);
-
-      const spawn = new THREE.Vector3(
-        arenaCenter.x,
-        vehicleRadius,
-        arenaCenter.z
-      );
-
-      if (!body){
-        body = createVehicleBody(
-          world,
-          [spawn.x,spawn.y,spawn.z],
-          vehicleRadius
-        );
-        vehicle.attachPhysics(world,body,vehicleRadius);
-      }else{
-        resetVehicleBody(world,body,[spawn.x,spawn.y,spawn.z]);
-      }
-
-      const yaw = cameraYaw();
-      vehicle.place(spawn,yaw);
-
-      placed = true;
-      guide.classList.add('hidden');
-      placeBtn.textContent = 'نقل الحلبة';
-      setStatus('الحلبة مثبتة', true);
-      controls.reset();
-      notify('تم تثبيت الحلبة — ابدأ القيادة');
-
-      if (navigator.vibrate) navigator.vibrate(30);
-    }
-
-    function recenter(){
-      if (!xrStarted) return;
-
-      placed = false;
-      surfaceReady = false;
-      reticleStableMs = 0;
-      prevHit.set(999,999,999);
-      stablePoint.set(0,0,0);
-
-      controls.reset();
-
-      if (vehicle) vehicle.container.visible = false;
-      if (arenaGroup) arenaGroup.visible = false;
-
-      guide.classList.remove('hidden');
-      placeBtn.textContent = 'ثبّت الحلبة';
-      setStatus('أعد مسح الأرض', true);
-
-      try{
-        XR8.XrController.recenter();
-      }catch(err){
-        console.warn(err);
-      }
-
-      notify('أعد مسح الأرض ثم ثبّت الحلبة من جديد');
-    }
-
-    placeBtn.addEventListener('click',placeVehicle);
-    recenterBtn.addEventListener('click',recenter);
-
-    startBtn.addEventListener('click',async()=>{
-      if (!xrReady || xrStarted) return;
-
-      xrStarted = true;
-      startBtn.disabled = true;
-      startBtn.textContent = 'جاري فتح الكاميرا…';
-      errorBox.style.display='none';
-
-      try{
-        intro.style.display='none';
-        controlsEl.style.display='block';
-        setStatus('تشغيل SLAM…', false);
-        XR8.run({canvas});
-        syncVisualViewport();
-        setTimeout(syncVisualViewport,120);
-        setTimeout(syncVisualViewport,500);
-        setTimeout(syncVisualViewport,1200);
-      }catch(err){
-        console.error(err);
-        xrStarted = false;
-        controlsEl.style.display='none';
-        intro.style.display='flex';
-        errorBox.style.display='block';
-        errorBox.textContent='تعذر تشغيل World Tracking أو محرك الفيزياء. حدّث الصفحة وحاول مرة أخرى.';
-        startBtn.disabled=false;
-        startBtn.textContent='حاول مرة أخرى';
-      }
-    });
-
-    function initializeXR(){
-      if (xrReady || !window.XR8 || !window.THREE) return;
-
-      try{
-        XR8.XrController.configure({
-          disableWorldTracking:false,
-          enableLighting:true,
-          enableWorldPoints:true,
-          scale:'responsive'
-        });
-
-        XR8.addCameraPipelineModules([
-          XR8.GlTextureRenderer.pipelineModule(),
-          XR8.Threejs.pipelineModule(),
-          XR8.XrController.pipelineModule(),
-          worldModule()
-        ]);
-
-        xrReady = true;
-        startBtn.disabled = false;
-        startBtn.textContent = 'ابدأ مسح الأرض';
-      }catch(err){
-        console.error(err);
-        errorBox.style.display='block';
-        errorBox.textContent='لم يكتمل تحميل محرك AR. حدّث الصفحة وحاول مرة أخرى.';
-      }
-    }
-
-    if (window.XR8) initializeXR();
-    else window.addEventListener('xrloaded',initializeXR,{once:true});
-
-    setTimeout(()=>{
-      if (!xrReady){
-        errorBox.style.display='block';
-        errorBox.textContent='محرك AR يستغرق وقتًا أطول من المتوقع. تحقق من الاتصال ثم أعد تحميل الصفحة.';
-      }
-    },12000);
-  </script>
+    <footer>ABODEN GAMES · AUGMENTED REALITY LAB</footer>
+  </main>
 </body>
 </html>
