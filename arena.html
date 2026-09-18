@@ -55,7 +55,28 @@
       transform:none!important;
     }
     .ui{position:fixed;left:0;top:0;width:var(--app-w);height:var(--app-h);z-index:20;color:#fff;pointer-events:none}
-    .top{position:absolute;top:max(14px,env(safe-area-inset-top));left:14px;right:14px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+    .top{position:absolute;top:max(14px,env(safe-area-inset-top));left:112px;right:14px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+    .home-btn{
+      position:fixed;
+      left:14px;
+      top:max(14px,env(safe-area-inset-top));
+      z-index:60;
+      pointer-events:auto;
+      text-decoration:none;
+      color:#fff;
+      background:rgba(5,10,17,.76);
+      border:1px solid rgba(255,255,255,.16);
+      border-radius:999px;
+      padding:9px 13px;
+      font-size:12px;
+      font-weight:900;
+      line-height:1;
+      backdrop-filter:blur(14px);
+      -webkit-backdrop-filter:blur(14px);
+      box-shadow:0 8px 28px rgba(0,0,0,.24);
+      touch-action:manipulation;
+    }
+    .home-btn:active{transform:scale(.96)}
     .pill{background:rgba(5,10,17,.68);border:1px solid rgba(255,255,255,.14);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-radius:999px;padding:9px 12px;box-shadow:0 8px 28px rgba(0,0,0,.24)}
     .brand{font-weight:900;letter-spacing:.7px;font-size:14px}
     .status{display:flex;align-items:center;gap:7px;font-size:12px}
@@ -95,6 +116,7 @@
 </head>
 <body>
   <canvas id="camerafeed"></canvas>
+  <a class="home-btn" href="./index.html" aria-label="العودة إلى الصفحة الرئيسية">⌂ الرئيسية</a>
 
   <div class="ui">
     <div class="top">
