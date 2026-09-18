@@ -167,6 +167,14 @@
     .card h1{font-size:28px;margin:0 0 10px}
     .card p{font-size:14px;line-height:1.85;margin:0 0 18px;color:#d6dce6}
     .start{width:100%;height:58px;border:0;border-radius:18px;background:#fff;color:#091019;font-size:16px;font-weight:900}
+    .loadBox{display:none;margin:4px 0 16px}
+    .loadBox.show{display:block}
+    .loadMeta{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px;font-size:12px;color:#dbe5f3;font-weight:800}
+    .loadPercent{font-variant-numeric:tabular-nums;color:#fff}
+    .loadTrack{height:10px;border-radius:999px;overflow:hidden;background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.08)}
+    .loadFill{width:0%;height:100%;border-radius:inherit;background:linear-gradient(90deg,#72d9ff,#ffffff);transition:width .16s ease}
+    .loadTrack.indeterminate .loadFill{width:32%;animation:loadSweep 1.05s ease-in-out infinite}
+    @keyframes loadSweep{0%{transform:translateX(-115%)}100%{transform:translateX(340%)}}
     .tiny{margin-top:11px!important;font-size:11px!important;color:#a9b2c1!important;text-align:center}
     .error{display:none;margin-top:12px;color:#ffc4c4;font-size:12px;line-height:1.7}
     @media(max-width:370px){
@@ -222,6 +230,15 @@
     <div class="card">
       <h1>حلبة هجولة AR</h1>
       <p>حدد السطح أولًا، ثم كبّر أو صغّر الحلبة بالمعاينة حتى يناسبك حجمها، وبعدها ثبّتها وابدأ القيادة.</p>
+      <div class="loadBox" id="loadBox" aria-live="polite">
+        <div class="loadMeta">
+          <span id="loadLabel">جاري تجهيز التجربة…</span>
+          <span class="loadPercent" id="loadPercent">0%</span>
+        </div>
+        <div class="loadTrack" id="loadTrack">
+          <div class="loadFill" id="loadFill"></div>
+        </div>
+      </div>
       <button class="start" id="startBtn" disabled>جاري تجهيز المحرك…</button>
       <div class="error" id="errorBox"></div>
       <p class="tiny">التحكم مثل هجولة: الجويستك يحدد اتجاه السيارة ويدعس تلقائيًا، والهاندبريك مستقل للتفحيط.</p>
@@ -293,6 +310,11 @@
     const canvas = document.getElementById('camerafeed');
     const intro = document.getElementById('intro');
     const startBtn = document.getElementById('startBtn');
+    const loadBox = document.getElementById('loadBox');
+    const loadLabel = document.getElementById('loadLabel');
+    const loadPercent = document.getElementById('loadPercent');
+    const loadTrack = document.getElementById('loadTrack');
+    const loadFill = document.getElementById('loadFill');
     const errorBox = document.getElementById('errorBox');
     const controlsEl = document.getElementById('controls');
     const guide = document.getElementById('guide');
@@ -419,11 +441,36 @@
       return Math.atan2(d.x, d.z);
     }
 
+    function setLoadProgress(value,label,{indeterminate=false}={}){
+      const pct = THREE.MathUtils.clamp(Math.round(value),0,100);
+      loadBox.classList.add('show');
+      loadLabel.textContent = label;
+      loadPercent.textContent = indeterminate ? '…' : pct + '%';
+      loadTrack.classList.toggle('indeterminate',indeterminate);
+      if(!indeterminate) loadFill.style.width = pct + '%';
+    }
+
+    function updateFileProgress(event,start,span,label){
+      if(event?.total > 0){
+        const fileRatio = THREE.MathUtils.clamp(event.loaded / event.total,0,1);
+        setLoadProgress(start + fileRatio * span,label);
+      }else{
+        setLoadProgress(start,label,{indeterminate:true});
+      }
+    }
+
     async function loadArenaModel(){
       const loader = new GLTFLoader();
+      setLoadProgress(2,'تحميل الحلبة…');
       const gltf = await new Promise((resolve,reject)=>{
-        loader.load('./assets/arena_custom_ar.glb', resolve, undefined, reject);
+        loader.load(
+          './assets/arena_custom_ar.glb',
+          resolve,
+          (event)=>updateFileProgress(event,2,80,'تحميل الحلبة…'),
+          reject
+        );
       });
+      setLoadProgress(82,'تم تحميل الحلبة');
 
       const raw = gltf.scene || gltf.scenes?.[0];
       if(!raw) throw new Error('Custom arena model not found');
@@ -466,9 +513,16 @@
 
     async function loadCar(){
       const loader = new GLTFLoader();
+      setLoadProgress(84,'تحميل السيارة…');
       const gltf = await new Promise((resolve,reject)=>{
-        loader.load('./assets/car_carton_ar.glb', resolve, undefined, reject);
+        loader.load(
+          './assets/car_carton_ar.glb',
+          resolve,
+          (event)=>updateFileProgress(event,84,14,'تحميل السيارة…'),
+          reject
+        );
       });
+      setLoadProgress(98,'جاري تجهيز المشهد…');
 
       const rawModel = gltf.scene || gltf.scenes?.[0];
       if (!rawModel) throw new Error('Cartoon car model not found');
@@ -591,8 +645,14 @@
         facing: camera.quaternion
       });
 
+      setLoadProgress(100,'جاهز');
       setStatus('امسح الأرض', true);
       requestAnimationFrame(tickWorld);
+
+      requestAnimationFrame(()=>{
+        intro.style.display='none';
+        controlsEl.style.display='block';
+      });
     }
 
     function worldModule(){
@@ -604,7 +664,13 @@
             window.dispatchEvent(new Event('resize'));
           }catch(err){
             console.error(err);
-            notify('فشل إعداد فيزياء السيارة');
+            loadTrack.classList.remove('indeterminate');
+            loadLabel.textContent='تعذر إكمال التحميل';
+            loadPercent.textContent='!';
+            errorBox.style.display='block';
+            errorBox.textContent='تعذر تحميل الحلبة أو السيارة. تحقق من الاتصال ثم أعد تحميل الصفحة.';
+            startBtn.textContent='أعد تحميل الصفحة';
+            startBtn.disabled=true;
           }
         },
         onException:(error)=>{
@@ -818,8 +884,9 @@
       errorBox.style.display='none';
 
       try{
-        intro.style.display='none';
-        controlsEl.style.display='block';
+        controlsEl.style.display='none';
+        setLoadProgress(0,'تشغيل محرك الواقع المعزز…',{indeterminate:true});
+        startBtn.textContent = 'جاري التحميل…';
         setStatus('تشغيل SLAM…', false);
         XR8.run({canvas});
         syncVisualViewport();
