@@ -97,6 +97,48 @@
       padding:11px 14px;font-weight:850;
       backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
     }
+    .weapon-selector{
+      pointer-events:auto;
+      position:absolute;
+      left:50%;
+      bottom:max(16px,env(safe-area-inset-bottom));
+      transform:translateX(-50%);
+      display:flex;
+      direction:rtl;
+      gap:7px;
+      padding:6px;
+      border-radius:19px;
+      background:rgba(5,10,17,.76);
+      border:1px solid rgba(255,255,255,.14);
+      backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+      box-shadow:0 10px 32px rgba(0,0,0,.30);
+    }
+    .weapon-btn{
+      width:78px;height:68px;
+      border-radius:14px;
+      border:1px solid rgba(255,255,255,.12);
+      background:rgba(255,255,255,.045);
+      color:#cfd8e5;
+      padding:5px 6px 4px;
+      display:flex;flex-direction:column;
+      align-items:center;justify-content:center;gap:2px;
+      font-size:10px;font-weight:900;
+      touch-action:none;
+    }
+    .weapon-btn img{
+      display:block;width:62px;height:39px;object-fit:contain;
+      pointer-events:none;
+    }
+    .weapon-btn.selected{
+      color:#fff;
+      border-color:rgba(111,216,255,.85);
+      background:rgba(66,157,255,.17);
+      box-shadow:0 0 0 2px rgba(79,184,255,.12),0 0 18px rgba(50,159,255,.16);
+    }
+    .weapon-btn[data-weapon="homing"].selected{
+      border-color:rgba(85,235,255,.92);
+      background:rgba(40,202,225,.16);
+    }
     .hitflash{
       position:absolute;inset:0;
       border:0 solid rgba(255,255,255,0);
@@ -156,21 +198,32 @@
     </div>
 
     <div class="guide" id="guide">
-      <b>المس أي مكان لإطلاق صاروخ</b>
-      نقطة اللمس هي اتجاه التصويب. الصاروخ يطير فعليًا داخل الغرفة وينفجر عند اصطدامه بمنطاد.
+      <b>اختر الصاروخ ثم المس للإطلاق</b>
+      المباشر يطير لنقطة اللمس، والتتبّع يلتقط أقرب منطاد لاتجاه لمستك ويلف نحوه أثناء الطيران.
     </div>
 
     <div class="toast" id="toast"></div>
     <div class="hitflash" id="hitflash"></div>
 
     <button class="recenter" id="recenterBtn">إعادة توزيع</button>
+
+    <div class="weapon-selector" aria-label="اختيار نوع الصاروخ">
+      <button class="weapon-btn selected" id="directWeaponBtn" data-weapon="direct" type="button">
+        <img id="directWeaponImg" alt="الصاروخ المباشر">
+        <span>مباشر</span>
+      </button>
+      <button class="weapon-btn" id="homingWeaponBtn" data-weapon="homing" type="button">
+        <img id="homingWeaponImg" alt="صاروخ التتبع">
+        <span>تتبّع</span>
+      </button>
+    </div>
   </div>
 
   <div id="intro">
     <div class="card">
       <div class="balloon"></div>
       <h1>صيد المناطيد</h1>
-      <p>بعد تشغيل الكاميرا ستنتشر المناطيد داخل الغرفة. المس أي مكان على الشاشة لإطلاق صاروخ باتجاه نقطة اللمس وتفجير المناطيد.</p>
+      <p>بعد تشغيل الكاميرا ستنتشر المناطيد داخل الغرفة. اختر الصاروخ المباشر أو صاروخ التتبّع، ثم المس أي مكان للإطلاق.</p>
       <button class="start" id="startBtn" disabled>جاري تجهيز AR…</button>
       <div class="error" id="errorBox"></div>
       <p class="tiny">تم استخدام نسخة AR خفيفة من موديل المنطاد الذي رفعته، مع نفس نظام الحركة والتصويب.</p>
@@ -190,6 +243,10 @@
     const scoreEl = document.getElementById('score');
     const guide = document.getElementById('guide');
     const recenterBtn = document.getElementById('recenterBtn');
+    const directWeaponBtn = document.getElementById('directWeaponBtn');
+    const homingWeaponBtn = document.getElementById('homingWeaponBtn');
+    const directWeaponImg = document.getElementById('directWeaponImg');
+    const homingWeaponImg = document.getElementById('homingWeaponImg');
     const toast = document.getElementById('toast');
     const hitflash = document.getElementById('hitflash');
 
@@ -198,6 +255,7 @@
     let scene, camera, renderer;
     let score = 0;
     let lastTime = performance.now();
+    let selectedRocketType = 'direct';
 
     const balloons = [];
     const explosions = [];
@@ -665,6 +723,42 @@
       window.__balloonToast = setTimeout(()=>toast.classList.remove('show'),1100);
     }
 
+
+    function rocketThumbData(homing=false){
+      const accent=homing?'#52e9ff':'#ff684f';
+      const trail=homing?'#4fdfff':'#ffb347';
+      const curve=homing
+        ? '<path d="M10 36 C25 7 58 7 78 23" fill="none" stroke="#52e9ff" stroke-width="3" stroke-linecap="round" stroke-dasharray="4 4"/><circle cx="80" cy="23" r="8" fill="none" stroke="#52e9ff" stroke-width="2"/>'
+        : '<path d="M8 30 L31 30" stroke="#ffb347" stroke-width="4" stroke-linecap="round"/>';
+      const svg='<svg xmlns="http://www.w3.org/2000/svg" width="96" height="54" viewBox="0 0 96 54">'
+        +'<rect width="96" height="54" rx="12" fill="#0c1520"/>'
+        +curve
+        +'<g transform="translate(48 27) rotate(90)">'
+        +'<path d="M-16 0 L7 -7 L18 0 L7 7 Z" fill="'+accent+'"/>'
+        +'<rect x="-12" y="-4" width="19" height="8" rx="4" fill="#dce7f2"/>'
+        +'<path d="M-12 -4 L-20 -10 L-16 0 L-20 10 L-12 4 Z" fill="#7c8ea3"/>'
+        +'<path d="M-20 -2 L-29 0 L-20 2 Z" fill="'+trail+'"/>'
+        +'</g></svg>';
+      return 'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg);
+    }
+
+    directWeaponImg.src=rocketThumbData(false);
+    homingWeaponImg.src=rocketThumbData(true);
+
+    function selectRocketType(type){
+      selectedRocketType=type==='homing'?'homing':'direct';
+      directWeaponBtn.classList.toggle('selected',selectedRocketType==='direct');
+      homingWeaponBtn.classList.toggle('selected',selectedRocketType==='homing');
+      notify(selectedRocketType==='homing'?'صاروخ التتبّع جاهز':'الصاروخ المباشر جاهز');
+    }
+
+    directWeaponBtn.addEventListener('pointerdown',(e)=>{
+      e.preventDefault();e.stopPropagation();selectRocketType('direct');
+    });
+    homingWeaponBtn.addEventListener('pointerdown',(e)=>{
+      e.preventDefault();e.stopPropagation();selectRocketType('homing');
+    });
+
     function randomPoint(out){
       out.set(
         roomCenter.x + THREE.MathUtils.randFloatSpread(PLAY_HALF_X*2),
@@ -856,7 +950,7 @@
       }
     }
 
-    function createRocketVisual(){
+    function createRocketVisual(type='direct'){
       ensureFxTextures();
       const group = new THREE.Group();
       const modelHolder=new THREE.Group();
@@ -884,7 +978,7 @@
       group.add(modelHolder);
 
       const outerFlame=new THREE.Sprite(new THREE.SpriteMaterial({
-        map:fireTexture,color:0xff7420,transparent:true,opacity:.92,
+        map:fireTexture,color:type==='homing'?0x48dfff:0xff7420,transparent:true,opacity:.92,
         depthWrite:false,blending:THREE.AdditiveBlending
       }));
       outerFlame.name='rocketFlameOuter';
@@ -893,7 +987,7 @@
       group.add(outerFlame);
 
       const coreFlame=new THREE.Sprite(new THREE.SpriteMaterial({
-        map:flashTexture,color:0xfff0ad,transparent:true,opacity:1,
+        map:flashTexture,color:type==='homing'?0xd7fbff:0xfff0ad,transparent:true,opacity:1,
         depthWrite:false,blending:THREE.AdditiveBlending
       }));
       coreFlame.name='rocketFlameCore';
@@ -901,11 +995,54 @@
       coreFlame.scale.set(.045,.085,.045);
       group.add(coreFlame);
 
-      const glow=new THREE.PointLight(0xff8a35,.55,.55,2);
+      const glow=new THREE.PointLight(type==='homing'?0x55eaff:0xff8a35,.55,.55,2);
       glow.position.y=-.10;
       group.add(glow);
 
+      if(type==='homing'){
+        const tracker=new THREE.Mesh(
+          new THREE.TorusGeometry(.052,.006,8,20),
+          new THREE.MeshBasicMaterial({color:0x5feaff,transparent:true,opacity:.88})
+        );
+        tracker.name='homingTrackerRing';
+        tracker.rotation.x=Math.PI*.5;
+        tracker.position.y=-.015;
+        group.add(tracker);
+      }
+
       return group;
+    }
+
+    function acquireHomingTarget(origin,direction){
+      let best=null;
+      let bestScore=-Infinity;
+      const targetPoint=new THREE.Vector3();
+      const toTarget=new THREE.Vector3();
+
+      for(const b of balloons){
+        if(!b.visible) continue;
+
+        targetPoint.copy(b.position);
+        targetPoint.y+=.22;
+        toTarget.subVectors(targetPoint,origin);
+
+        const distance=toTarget.length();
+        if(distance<.001) continue;
+
+        toTarget.divideScalar(distance);
+        const alignment=direction.dot(toTarget);
+
+        // Keep the lock inside a broad cone around the tapped direction.
+        if(alignment<.55) continue;
+
+        const score=alignment*3-distance*.035;
+        if(score>bestScore){
+          bestScore=score;
+          best=b;
+        }
+      }
+
+      return best;
     }
 
     function launchRocket(clientX,clientY){
@@ -923,7 +1060,10 @@
       const start = camera.getWorldPosition(new THREE.Vector3())
         .addScaledVector(direction,.14);
 
-      const rocket = createRocketVisual();
+      const type=selectedRocketType;
+      const target=type==='homing'?acquireHomingTarget(start,direction):null;
+
+      const rocket = createRocketVisual(type);
       rocket.position.copy(start);
 
       const up = new THREE.Vector3(0,1,0);
@@ -933,16 +1073,20 @@
       rockets.push({
         object:rocket,
         direction,
-        speed:2.25,
-        maxSpeed:7.8,
-        acceleration:10.5,
-        life:2.8,
+        type,
+        target,
+        turnRate:type==='homing'?5.4:0,
+        speed:type==='homing'?2.0:2.25,
+        maxSpeed:type==='homing'?7.0:7.8,
+        acceleration:type==='homing'?8.8:10.5,
+        life:type==='homing'?3.6:2.8,
         trailTimer:0,
         age:0
       });
 
       launchBurst(start,direction);
       playLaunchSound(THREE.MathUtils.clamp(tapNdc.x*.7,-.7,.7));
+      if(type==='homing') notify(target?'تم التقاط الهدف':'لا يوجد هدف قريب — سيكمل مستقيم');
       guide.classList.add('hidden');
       if(navigator.vibrate) navigator.vibrate(12);
     }
@@ -974,6 +1118,29 @@
         if(r.life<=0){
           removeRocket(i);
           continue;
+        }
+
+        if(r.type==='homing'){
+          if(!r.target || !r.target.visible){
+            r.target=acquireHomingTarget(r.object.position,r.direction);
+          }
+
+          if(r.target && r.target.visible){
+            const targetPoint=r.target.position.clone();
+            targetPoint.y+=.22;
+            const desired=targetPoint.sub(r.object.position).normalize();
+            const blend=1-Math.exp(-r.turnRate*dt);
+            r.direction.lerp(desired,blend).normalize();
+
+            const up=new THREE.Vector3(0,1,0);
+            r.object.quaternion.setFromUnitVectors(up,r.direction);
+
+            const ring=r.object.getObjectByName('homingTrackerRing');
+            if(ring){
+              ring.rotation.z+=dt*7.5;
+              ring.material.opacity=.62+Math.sin(r.age*18)*.20;
+            }
+          }
         }
 
         r.speed=Math.min(r.maxSpeed,r.speed+r.acceleration*dt);
