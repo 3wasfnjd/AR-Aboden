@@ -38,15 +38,72 @@ export function createVehicleWorld() {
   return world;
 }
 
-export function createGroundCollider(world, centerX = 0, centerZ = 0, halfExtent = 1000) {
-  return rigidBody.create(world, {
-    shape: box.create({ halfExtents: [halfExtent, 0.02, halfExtent] }),
-    motionType: MotionType.STATIC,
-    objectLayer: world._OL_STATIC,
-    position: [centerX, -0.02, centerZ],
-    friction: 5.0,
-    restitution: 0.0,
-  });
+export function createRollingGround(world, centerX = 0, centerZ = 0, options = {}) {
+  const tileSize = options.tileSize || 8;
+  const radius = options.radius || 1; // 1 = 3x3 tiles
+  const overlap = options.overlap ?? 0.35;
+
+  const manager = {
+    world,
+    tileSize,
+    radius,
+    overlap,
+    cellX: Number.NaN,
+    cellZ: Number.NaN,
+    tiles: [],
+  };
+
+  const half = tileSize * 0.5 + overlap;
+
+  for (let gz = -radius; gz <= radius; gz++) {
+    for (let gx = -radius; gx <= radius; gx++) {
+      const body = rigidBody.create(world, {
+        shape: box.create({ halfExtents: [half, 0.02, half] }),
+        motionType: MotionType.STATIC,
+        objectLayer: world._OL_STATIC,
+        position: [0, -0.02, 0],
+        friction: 5.0,
+        restitution: 0.0,
+      });
+
+      manager.tiles.push({ gx, gz, body });
+    }
+  }
+
+  updateRollingGround(manager, centerX, centerZ, true);
+  return manager;
+}
+
+export function updateRollingGround(manager, x, z, force = false) {
+  if (!manager) return false;
+
+  const { world, tileSize, radius } = manager;
+  const cellX = Math.floor(x / tileSize);
+  const cellZ = Math.floor(z / tileSize);
+
+  if (!force && cellX === manager.cellX && cellZ === manager.cellZ) {
+    return false;
+  }
+
+  manager.cellX = cellX;
+  manager.cellZ = cellZ;
+
+  for (const tile of manager.tiles) {
+    const tx = (cellX + tile.gx) * tileSize + tileSize * 0.5;
+    const tz = (cellZ + tile.gz) * tileSize + tileSize * 0.5;
+
+    rigidBody.setPosition(
+      world,
+      tile.body,
+      [tx, -0.02, tz],
+      false
+    );
+
+    rigidBody.setLinearVelocity?.(world, tile.body, [0, 0, 0]);
+    rigidBody.setAngularVelocity?.(world, tile.body, [0, 0, 0]);
+  }
+
+  return true;
 }
 
 export function createVehicleBody(world, position, radius = 0.13) {
