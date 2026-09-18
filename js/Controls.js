@@ -1,22 +1,19 @@
-const DEADZONE = 0.12;
+const DEADZONE = 0.15;
 
 export class MobileControls {
-  constructor({ joyBase, joyKnob, gasBtn, brakeBtn, handbrakeBtn }) {
+  constructor({ steerZone, joyBase, joyKnob, handbrakeBtn }) {
+    this.steerZone = steerZone || joyBase;
     this.joyBase = joyBase;
     this.joyKnob = joyKnob;
-    this.gasBtn = gasBtn;
-    this.brakeBtn = brakeBtn;
     this.handbrakeBtn = handbrakeBtn;
 
     this.pointerId = null;
-    this.steer = 0;
-    this.gas = false;
-    this.brake = false;
+    this.touchActive = false;
+    this.touchDirX = 0;
+    this.touchDirY = 0;
     this.handbrake = false;
 
     this._bindJoystick();
-    this._bindHoldButton(gasBtn, 'gas');
-    this._bindHoldButton(brakeBtn, 'brake');
     this._bindHoldButton(handbrakeBtn, 'handbrake');
 
     const clear = () => this.reset();
@@ -27,53 +24,70 @@ export class MobileControls {
   }
 
   _bindJoystick() {
+    const steerRange = 40;
+
     const update = (e) => {
-      const r = this.joyBase.getBoundingClientRect();
-      const cx = r.left + r.width / 2;
-      const cy = r.top + r.height / 2;
-      const max = r.width * 0.31;
+      const rect = this.joyBase.getBoundingClientRect();
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
 
-      let dx = e.clientX - cx;
-      let dy = e.clientY - cy;
-      const len = Math.hypot(dx, dy);
+      let dx = (e.clientX - cx) / steerRange;
+      let dy = (e.clientY - cy) / steerRange;
+      const mag = Math.hypot(dx, dy);
 
-      if (len > max) {
-        dx = (dx / len) * max;
-        dy = (dy / len) * max;
+      if (mag > 1) {
+        dx /= mag;
+        dy /= mag;
       }
 
-      const normalized = dx / max;
-      this.steer = Math.abs(normalized) > DEADZONE ? normalized : 0;
-      this.joyKnob.style.transform = `translate(${dx}px,${dy}px)`;
+      this.touchDirX = dx;
+      this.touchDirY = dy;
+      this.joyKnob.style.transform =
+        `translate(${this.touchDirX * 60}px,${this.touchDirY * 60}px)`;
+    };
+
+    const resetSteer = () => {
+      this.pointerId = null;
+      this.touchActive = false;
+      this.touchDirX = 0;
+      this.touchDirY = 0;
+      this.joyKnob.style.transform = '';
+      this.joyBase.classList.remove('active');
     };
 
     const end = (e) => {
       if (e && this.pointerId !== null && e.pointerId !== this.pointerId) return;
-      this.pointerId = null;
-      this.steer = 0;
-      this.joyKnob.style.transform = 'translate(0,0)';
+      resetSteer();
     };
 
-    this.joyBase.addEventListener('pointerdown', (e) => {
+    this.steerZone.addEventListener('pointerdown', (e) => {
+      if (e.target.closest('button,.game-hud')) return;
       if (this.pointerId !== null) return;
+
       e.preventDefault();
+      this.steerZone.setPointerCapture?.(e.pointerId);
       this.pointerId = e.pointerId;
-      this.joyBase.setPointerCapture?.(e.pointerId);
+      this.touchActive = true;
+      this.touchDirX = 0;
+      this.touchDirY = 0;
+      this.joyBase.classList.add('active');
       update(e);
     });
 
-    this.joyBase.addEventListener('pointermove', (e) => {
+    this.steerZone.addEventListener('pointermove', (e) => {
       if (e.pointerId !== this.pointerId) return;
       e.preventDefault();
       update(e);
     });
 
-    this.joyBase.addEventListener('pointerup', end);
-    this.joyBase.addEventListener('pointercancel', end);
-    this.joyBase.addEventListener('lostpointercapture', end);
+    this.steerZone.addEventListener('pointerup', end);
+    this.steerZone.addEventListener('pointercancel', end);
+    this.steerZone.addEventListener('lostpointercapture', end);
   }
 
   _bindHoldButton(button, property) {
+    if (!button) return;
+
     const press = (e) => {
       e.preventDefault();
       e.stopPropagation();
@@ -100,25 +114,47 @@ export class MobileControls {
 
   reset() {
     this.pointerId = null;
-    this.steer = 0;
-    this.gas = false;
-    this.brake = false;
+    this.touchActive = false;
+    this.touchDirX = 0;
+    this.touchDirY = 0;
     this.handbrake = false;
-    this.joyKnob.style.transform = 'translate(0,0)';
-    this.gasBtn.classList.remove('active');
-    this.brakeBtn.classList.remove('active');
-    this.handbrakeBtn.classList.remove('active');
+
+    this.joyKnob.style.transform = '';
+    this.joyBase.classList.remove('active');
+    this.handbrakeBtn?.classList.remove('active');
   }
 
   update() {
+    let x = 0;
     let z = 0;
-    if (this.gas && !this.brake) z = 1;
-    else if (this.brake && !this.gas) z = -1;
+
+    if (this.touchActive) {
+      const jx = this.touchDirX;
+      const jy = this.touchDirY;
+      const mag = Math.hypot(jx, jy);
+
+      if (mag > DEADZONE) {
+        // Same direct 2-axis driving style as Hajwala:
+        // left/right = steering, joystick up = forward, down = reverse/brake.
+        x = jx;
+        z = -jy;
+
+        const driveMag = Math.min(1, mag);
+        x = THREE.MathUtils.clamp(x, -1, 1);
+        z = THREE.MathUtils.clamp(z, -1, 1);
+
+        // Preserve analog strength near center instead of forcing full throttle.
+        if (driveMag < 1) {
+          x *= driveMag;
+          z *= driveMag;
+        }
+      }
+    }
 
     return {
-      x: this.steer,
+      x,
       z,
-      touchActive: false,
+      touchActive: this.touchActive,
       handbrake: this.handbrake,
     };
   }
