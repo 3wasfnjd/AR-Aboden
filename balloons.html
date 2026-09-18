@@ -268,11 +268,11 @@
     const tapNdc = new THREE.Vector2();
 
     const BALLOON_COUNT = 16;
-    const PLAY_MIN_DISTANCE = 0.85;
-    const PLAY_MAX_DISTANCE = 3.45;
-    const PLAY_HALF_ANGLE = THREE.MathUtils.degToRad(82);
-    const PLAY_MIN_Y = 0.55;
-    const PLAY_MAX_Y = 2.65;
+    const PLAY_MIN_DISTANCE = 0.95;
+    const PLAY_MAX_DISTANCE = 5.8;
+    const PLAY_HALF_ANGLE = THREE.MathUtils.degToRad(86);
+    const PLAY_MIN_Y = 0.50;
+    const PLAY_MAX_Y = 3.10;
 
     const roomCenter = new THREE.Vector3();
     const playForward = new THREE.Vector3(0,0,-1);
@@ -779,9 +779,20 @@
     }
 
     function randomPoint(out){
-      // Front hemisphere only: random left/right angle, random near/far distance.
+      // Front hemisphere only, but deliberately mix near / mid / far targets
+      // so homing rockets have visually satisfying long tracking runs.
       const angle=THREE.MathUtils.randFloat(-PLAY_HALF_ANGLE,PLAY_HALF_ANGLE);
-      const distance=THREE.MathUtils.randFloat(PLAY_MIN_DISTANCE,PLAY_MAX_DISTANCE);
+
+      const roll=Math.random();
+      let distance;
+      if(roll<.28){
+        distance=THREE.MathUtils.randFloat(4.2,PLAY_MAX_DISTANCE); // far
+      }else if(roll<.68){
+        distance=THREE.MathUtils.randFloat(2.2,4.4);             // mid
+      }else{
+        distance=THREE.MathUtils.randFloat(PLAY_MIN_DISTANCE,2.4); // near
+      }
+
       const forwardDistance=Math.cos(angle)*distance;
       const sideDistance=Math.sin(angle)*distance;
 
@@ -832,8 +843,8 @@
 
         // Nudge the next movement back toward the middle of the playable sector.
         _zoneTarget.copy(roomCenter)
-          .addScaledVector(playForward,THREE.MathUtils.randFloat(1.45,2.45))
-          .addScaledVector(playRight,THREE.MathUtils.randFloatSpread(1.5));
+          .addScaledVector(playForward,THREE.MathUtils.randFloat(2.1,4.6))
+          .addScaledVector(playRight,THREE.MathUtils.randFloatSpread(3.2));
         _zoneTarget.y=THREE.MathUtils.randFloat(PLAY_MIN_Y,PLAY_MAX_Y);
 
         u.targetVelocity.subVectors(_zoneTarget,balloon.position);
@@ -1149,7 +1160,7 @@
         speed:type==='homing'?2.0:2.25,
         maxSpeed:type==='homing'?7.0:7.8,
         acceleration:type==='homing'?8.8:10.5,
-        life:type==='homing'?3.6:2.8,
+        life:type==='homing'?4.4:2.8,
         trailTimer:0,
         age:0
       });
