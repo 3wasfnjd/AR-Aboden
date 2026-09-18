@@ -231,8 +231,7 @@
     let fireTexture = null;
     let flashTexture = null;
 
-    // Real CC0 recordings are the primary sound layer. WebAudio-generated
-    // transients are only used to add weight on phone speakers and as fallback.
+    // Real CC0 recordings only — no synthesized launch/impact layers.
     // Launch: qubodup / Freesound 182794, CC0.
     // Explosion pack: EZduzziteh / OpenGameArt "Explosions", CC0.
     const SOUND_URLS = {
@@ -353,59 +352,14 @@
       return true;
     }
 
-    function noiseBurst({pan=0,gain=.12,highpass=700,lowpass=5000,duration=.12}={}){
-      const ctx=ensureAudio();
-      if(!ctx) return;
-      const frames=Math.max(1,Math.floor(ctx.sampleRate*duration));
-      const buffer=ctx.createBuffer(1,frames,ctx.sampleRate);
-      const data=buffer.getChannelData(0);
-      for(let i=0;i<frames;i++){
-        const env=Math.pow(1-i/frames,1.65);
-        data[i]=(Math.random()*2-1)*env;
-      }
-
-      const src=ctx.createBufferSource();
-      src.buffer=buffer;
-      const hp=ctx.createBiquadFilter();
-      hp.type='highpass'; hp.frequency.value=highpass;
-      const lp=ctx.createBiquadFilter();
-      lp.type='lowpass'; lp.frequency.value=lowpass;
-      const out=makeAudioOutput(pan,gain);
-      src.connect(hp); hp.connect(lp); lp.connect(out);
-      src.start();
-    }
-
-    function lowThump({pan=0,gain=.18,startHz=95,endHz=38,duration=.35}={}){
-      const ctx=ensureAudio();
-      if(!ctx) return;
-      const osc=ctx.createOscillator();
-      const out=makeAudioOutput(pan,gain);
-      const now=ctx.currentTime;
-      osc.type='sine';
-      osc.frequency.setValueAtTime(startHz,now);
-      osc.frequency.exponentialRampToValueAtTime(endHz,now+duration);
-      out.gain.setValueAtTime(.0001,now);
-      out.gain.exponentialRampToValueAtTime(gain,now+.006);
-      out.gain.exponentialRampToValueAtTime(.0001,now+duration);
-      osc.connect(out);
-      osc.start(now);
-      osc.stop(now+duration+.02);
-    }
-
     function playLaunchSound(pan=0){
       ensureAudio();
       preloadSoundAssets();
 
-      // This source is a real military-style rocket launch. We deliberately use
-      // a short, slightly faster excerpt so it reads as a compact projectile,
-      // not a large space-launch vehicle.
-      const real=playRecorded(soundBuffers.launch,{
+      // Real launch recording only. Slight playback-rate trim keeps the
+      // perceived scale closer to a compact projectile.
+      playRecorded(soundBuffers.launch,{
         pan,gain:.58,rate:1.18,offset:0,duration:1.25
-      });
-
-      lowThump({pan,gain:real?.10:.22,startHz:108,endHz:48,duration:.22});
-      noiseBurst({
-        pan,gain:real?.065:.16,highpass:900,lowpass:5200,duration:.095
       });
     }
 
@@ -415,19 +369,11 @@
 
       const pan=worldAudioPan(position);
       const distanceGain=distanceAudioGain(position);
-      const real=playRecorded(soundBuffers.explosion,{
-        pan,gain:.82*distanceGain,rate:THREE.MathUtils.randFloat(.94,1.04)
-      });
 
-      // Short crack + low pressure wave under the recording. Kept restrained
-      // when the real sample is available; stronger only if loading failed.
-      noiseBurst({
-        pan,gain:(real?.08:.19)*distanceGain,
-        highpass:1300,lowpass:7600,duration:.065
-      });
-      lowThump({
-        pan,gain:(real?.14:.30)*distanceGain,
-        startHz:82,endHz:31,duration:.52
+      // Real explosion recording only; spatial pan and distance attenuation
+      // remain, but no synthesized thump/noise is layered underneath.
+      playRecorded(soundBuffers.explosion,{
+        pan,gain:.82*distanceGain,rate:THREE.MathUtils.randFloat(.94,1.04)
       });
     }
 
