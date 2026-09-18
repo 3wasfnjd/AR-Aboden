@@ -12,6 +12,14 @@
     crossorigin="anonymous"
     data-preload-chunks="slam"></script>
 
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.183.2/build/three.module.js"
+    }
+  }
+  </script>
+
   <style>
     *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
     html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#02050a;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Tahoma,Arial,sans-serif;touch-action:none}
@@ -87,7 +95,7 @@
   </div>
 
   <script type="module">
-    import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.183.2/build/three.module.js';
+    import * as THREE from 'three';
     import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.183.2/examples/jsm/loaders/GLTFLoader.js';
     window.THREE = THREE;
 
