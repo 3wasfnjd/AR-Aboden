@@ -149,33 +149,58 @@ export class Vehicle {
     this.inputZ = THREE.MathUtils.clamp(input.z || 0, -1, 1);
     this.handbrake = !!input.handbrake;
 
-    let direction = Math.sign(this.linearSpeed);
-    if (direction === 0) direction = Math.abs(this.inputZ) > 0.1 ? Math.sign(this.inputZ) : 1;
-
-    const steeringGrip = THREE.MathUtils.clamp(Math.abs(this.linearSpeed), 0.2, 1.0);
-    const effectiveGrip = this.handbrake ? 1.0 : steeringGrip;
-    const turnMultiplier = this.handbrake ? 6.5 : 4.0;
-    const targetAngular = -this.inputX * effectiveGrip * turnMultiplier * direction;
-
-    this.angularSpeed = THREE.MathUtils.lerp(this.angularSpeed, targetAngular, Math.min(1, dt * 4));
-    this.container.rotateY(this.angularSpeed * dt);
-
-    const targetSpeed = this.inputZ;
-
-    if (targetSpeed < 0 && this.linearSpeed > 0.01) {
-      this.linearSpeed = THREE.MathUtils.lerp(this.linearSpeed, 0, Math.min(1, dt * 8));
-    } else if (targetSpeed < 0) {
-      this.linearSpeed = THREE.MathUtils.lerp(
-        this.linearSpeed,
-        targetSpeed * MAX_SPEED * REVERSE_SPEED_SCALE,
-        Math.min(1, dt * 2)
+    if (input.touchActive && (this.inputX !== 0 || this.inputZ !== 0)) {
+      // Same touch-driving model as Hajwala:
+      // joystick selects a world-space heading and the car auto-accelerates.
+      const targetAngle = Math.atan2(this.inputX, this.inputZ);
+      targetQuat.setFromAxisAngle(up, targetAngle);
+      const touchTurnRate = this.handbrake ? 6 : 3;
+      this.container.quaternion.slerp(
+        targetQuat,
+        1 - Math.exp(-touchTurnRate * dt)
       );
-    } else {
+
+      forward.set(0, 0, 1).applyQuaternion(this.container.quaternion);
+      forward.y = 0;
+      forward.normalize();
+
+      const cross = forward.x * this.inputZ - forward.z * this.inputX;
+      this.inputX = THREE.MathUtils.clamp(-cross * 2, -1, 1);
+
       this.linearSpeed = THREE.MathUtils.lerp(
         this.linearSpeed,
-        targetSpeed * MAX_SPEED,
+        MAX_SPEED,
         Math.min(1, dt * 1.5)
       );
+    } else {
+      let direction = Math.sign(this.linearSpeed);
+      if (direction === 0) direction = Math.abs(this.inputZ) > 0.1 ? Math.sign(this.inputZ) : 1;
+
+      const steeringGrip = THREE.MathUtils.clamp(Math.abs(this.linearSpeed), 0.2, 1.0);
+      const effectiveGrip = this.handbrake ? 1.0 : steeringGrip;
+      const turnMultiplier = this.handbrake ? 6.5 : 4.0;
+      const targetAngular = -this.inputX * effectiveGrip * turnMultiplier * direction;
+
+      this.angularSpeed = THREE.MathUtils.lerp(this.angularSpeed, targetAngular, Math.min(1, dt * 4));
+      this.container.rotateY(this.angularSpeed * dt);
+
+      const targetSpeed = this.inputZ;
+
+      if (targetSpeed < 0 && this.linearSpeed > 0.01) {
+        this.linearSpeed = THREE.MathUtils.lerp(this.linearSpeed, 0, Math.min(1, dt * 8));
+      } else if (targetSpeed < 0) {
+        this.linearSpeed = THREE.MathUtils.lerp(
+          this.linearSpeed,
+          targetSpeed * MAX_SPEED * REVERSE_SPEED_SCALE,
+          Math.min(1, dt * 2)
+        );
+      } else {
+        this.linearSpeed = THREE.MathUtils.lerp(
+          this.linearSpeed,
+          targetSpeed * MAX_SPEED,
+          Math.min(1, dt * 1.5)
+        );
+      }
     }
 
     this.linearSpeed *= Math.max(0, 1 - LINEAR_DAMP * dt);
