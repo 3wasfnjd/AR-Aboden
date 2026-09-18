@@ -231,6 +231,206 @@
     let fireTexture = null;
     let flashTexture = null;
 
+    // Real CC0 recordings are the primary sound layer. WebAudio-generated
+    // transients are only used to add weight on phone speakers and as fallback.
+    // Launch: qubodup / Freesound 182794, CC0.
+    // Explosion pack: EZduzziteh / OpenGameArt "Explosions", CC0.
+    const SOUND_URLS = {
+      launch:'https://raw.githubusercontent.com/DougTanner/BrokenEnginePublic/main/Projects/BrokenEngineSandbox/Data/Audio/Missile/182794__qubodup__rocket-launch.wav',
+      explosion:'https://raw.githubusercontent.com/cainus/thunder-tank/main/public/assets/opengameart/explosions-ezduzziteh/explosion1.ogg'
+    };
+
+    let audioCtx = null;
+    let audioMaster = null;
+    let audioCompressor = null;
+    let soundLoadPromise = null;
+    const soundBuffers = {launch:null, explosion:null};
+
+    function ensureAudio(){
+      if(!audioCtx){
+        const Ctx = window.AudioContext || window.webkitAudioContext;
+        if(!Ctx) return null;
+
+        audioCtx = new Ctx();
+
+        audioCompressor = audioCtx.createDynamicsCompressor();
+        audioCompressor.threshold.value = -9;
+        audioCompressor.knee.value = 10;
+        audioCompressor.ratio.value = 4;
+        audioCompressor.attack.value = .002;
+        audioCompressor.release.value = .24;
+
+        audioMaster = audioCtx.createGain();
+        audioMaster.gain.value = .82;
+        audioMaster.connect(audioCompressor);
+        audioCompressor.connect(audioCtx.destination);
+      }
+
+      if(audioCtx.state === 'suspended'){
+        audioCtx.resume().catch(()=>{});
+      }
+      return audioCtx;
+    }
+
+    async function decodeRemoteSound(url){
+      const ctx=ensureAudio();
+      if(!ctx) throw new Error('WebAudio unavailable');
+      const res=await fetch(url,{mode:'cors',cache:'force-cache'});
+      if(!res.ok) throw new Error('Audio HTTP '+res.status);
+      const bytes=await res.arrayBuffer();
+      return await ctx.decodeAudioData(bytes.slice(0));
+    }
+
+    function preloadSoundAssets(){
+      if(soundLoadPromise) return soundLoadPromise;
+      soundLoadPromise=Promise.allSettled([
+        decodeRemoteSound(SOUND_URLS.launch).then(b=>soundBuffers.launch=b),
+        decodeRemoteSound(SOUND_URLS.explosion).then(b=>soundBuffers.explosion=b)
+      ]).then(results=>{
+        if(results[0].status!=='fulfilled') console.warn('Real launch SFX fallback:',results[0].reason);
+        if(results[1].status!=='fulfilled') console.warn('Real explosion SFX fallback:',results[1].reason);
+        return results;
+      });
+      return soundLoadPromise;
+    }
+
+    function worldAudioPan(position){
+      if(!camera || !position) return 0;
+      const local=position.clone();
+      camera.worldToLocal(local);
+      const depth=Math.max(.35,Math.abs(local.z));
+      return THREE.MathUtils.clamp(local.x/depth,-.85,.85);
+    }
+
+    function distanceAudioGain(position){
+      if(!camera || !position) return 1;
+      const camPos=camera.getWorldPosition(new THREE.Vector3());
+      const d=camPos.distanceTo(position);
+      return THREE.MathUtils.clamp(1/(1+.14*d*d),.34,1);
+    }
+
+    function makeAudioOutput(pan=0,gain=1){
+      const ctx=ensureAudio();
+      if(!ctx || !audioMaster) return null;
+
+      const g=ctx.createGain();
+      g.gain.value=gain;
+
+      if(ctx.createStereoPanner){
+        const p=ctx.createStereoPanner();
+        p.pan.value=THREE.MathUtils.clamp(pan,-1,1);
+        g.connect(p);
+        p.connect(audioMaster);
+      }else{
+        g.connect(audioMaster);
+      }
+      return g;
+    }
+
+    function playRecorded(buffer,{pan=0,gain=1,rate=1,offset=0,duration=null}={}){
+      const ctx=ensureAudio();
+      if(!ctx || !buffer) return false;
+
+      const src=ctx.createBufferSource();
+      const out=makeAudioOutput(pan,gain);
+      if(!out) return false;
+
+      src.buffer=buffer;
+      src.playbackRate.value=rate;
+      src.connect(out);
+
+      const maxDuration=Math.max(.05,(buffer.duration-offset)/Math.max(rate,.01));
+      const playDuration=duration==null?maxDuration:Math.min(duration,maxDuration);
+
+      const now=ctx.currentTime;
+      out.gain.setValueAtTime(0.0001,now);
+      out.gain.exponentialRampToValueAtTime(Math.max(.0001,gain),now+.008);
+      out.gain.setValueAtTime(Math.max(.0001,gain),now+Math.max(.01,playDuration-.08));
+      out.gain.exponentialRampToValueAtTime(.0001,now+playDuration);
+
+      src.start(now,offset,playDuration*rate);
+      src.stop(now+playDuration+.03);
+      return true;
+    }
+
+    function noiseBurst({pan=0,gain=.12,highpass=700,lowpass=5000,duration=.12}={}){
+      const ctx=ensureAudio();
+      if(!ctx) return;
+      const frames=Math.max(1,Math.floor(ctx.sampleRate*duration));
+      const buffer=ctx.createBuffer(1,frames,ctx.sampleRate);
+      const data=buffer.getChannelData(0);
+      for(let i=0;i<frames;i++){
+        const env=Math.pow(1-i/frames,1.65);
+        data[i]=(Math.random()*2-1)*env;
+      }
+
+      const src=ctx.createBufferSource();
+      src.buffer=buffer;
+      const hp=ctx.createBiquadFilter();
+      hp.type='highpass'; hp.frequency.value=highpass;
+      const lp=ctx.createBiquadFilter();
+      lp.type='lowpass'; lp.frequency.value=lowpass;
+      const out=makeAudioOutput(pan,gain);
+      src.connect(hp); hp.connect(lp); lp.connect(out);
+      src.start();
+    }
+
+    function lowThump({pan=0,gain=.18,startHz=95,endHz=38,duration=.35}={}){
+      const ctx=ensureAudio();
+      if(!ctx) return;
+      const osc=ctx.createOscillator();
+      const out=makeAudioOutput(pan,gain);
+      const now=ctx.currentTime;
+      osc.type='sine';
+      osc.frequency.setValueAtTime(startHz,now);
+      osc.frequency.exponentialRampToValueAtTime(endHz,now+duration);
+      out.gain.setValueAtTime(.0001,now);
+      out.gain.exponentialRampToValueAtTime(gain,now+.006);
+      out.gain.exponentialRampToValueAtTime(.0001,now+duration);
+      osc.connect(out);
+      osc.start(now);
+      osc.stop(now+duration+.02);
+    }
+
+    function playLaunchSound(pan=0){
+      ensureAudio();
+      preloadSoundAssets();
+
+      // This source is a real military-style rocket launch. We deliberately use
+      // a short, slightly faster excerpt so it reads as a compact projectile,
+      // not a large space-launch vehicle.
+      const real=playRecorded(soundBuffers.launch,{
+        pan,gain:.58,rate:1.18,offset:0,duration:1.25
+      });
+
+      lowThump({pan,gain:real?.10:.22,startHz:108,endHz:48,duration:.22});
+      noiseBurst({
+        pan,gain:real?.065:.16,highpass:900,lowpass:5200,duration:.095
+      });
+    }
+
+    function playExplosionSound(position){
+      ensureAudio();
+      preloadSoundAssets();
+
+      const pan=worldAudioPan(position);
+      const distanceGain=distanceAudioGain(position);
+      const real=playRecorded(soundBuffers.explosion,{
+        pan,gain:.82*distanceGain,rate:THREE.MathUtils.randFloat(.94,1.04)
+      });
+
+      // Short crack + low pressure wave under the recording. Kept restrained
+      // when the real sample is available; stronger only if loading failed.
+      noiseBurst({
+        pan,gain:(real?.08:.19)*distanceGain,
+        highpass:1300,lowpass:7600,duration:.065
+      });
+      lowThump({
+        pan,gain:(real?.14:.30)*distanceGain,
+        startHz:82,endHz:31,duration:.52
+      });
+    }
+
     function makeSoftTexture(kind='smoke',size=128){
       const canvas=document.createElement('canvas');
       canvas.width=canvas.height=size;
@@ -796,6 +996,7 @@
       });
 
       launchBurst(start,direction);
+      playLaunchSound(THREE.MathUtils.clamp(tapNdc.x*.7,-.7,.7));
       guide.classList.add('hidden');
       if(navigator.vibrate) navigator.vibrate(12);
     }
@@ -901,6 +1102,7 @@
       const position=hitPoint?hitPoint.clone():balloon.position.clone();
 
       impactExplosion(position);
+      playExplosionSound(position);
 
       // A few colored fragments preserve the visual identity of the balloon
       // while the fire/smoke system supplies the blast.
@@ -1036,6 +1238,11 @@
 
     startBtn.addEventListener('click',()=>{
       if(!xrReady||xrStarted) return;
+
+      // iOS/Safari requires AudioContext to be created/resumed from a user gesture.
+      ensureAudio();
+      preloadSoundAssets();
+
       xrStarted=true;
       startBtn.disabled=true;
       startBtn.textContent='جاري فتح الكاميرا…';
