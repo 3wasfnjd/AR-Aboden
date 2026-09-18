@@ -421,24 +421,43 @@
 
     async function loadCar(){
       const loader = new GLTFLoader();
-      const paths = ['./assets/%20camaro.glb', './assets/camaro.glb'];
 
-      let model = null;
+      // New cartoon car first. Keep Camaro only as a safe fallback until
+      // the replacement model has been visually verified on-device.
+      const sources = [
+        {path:'./assets/car_carton_ar.glb', yaw:Math.PI, label:'Cartoon car'},
+        {path:'./assets/%20camaro.glb', yaw:0, label:'Camaro fallback'},
+        {path:'./assets/camaro.glb', yaw:0, label:'Camaro fallback'}
+      ];
+
+      let rawModel = null;
+      let loadedSource = null;
       let lastError = null;
 
-      for (const path of paths){
+      for (const source of sources){
         try{
           const gltf = await new Promise((resolve,reject)=>{
-            loader.load(path, resolve, undefined, reject);
+            loader.load(source.path, resolve, undefined, reject);
           });
-          model = gltf.scene || gltf.scenes?.[0];
-          if (model) break;
+          rawModel = gltf.scene || gltf.scenes?.[0];
+          if (rawModel){
+            loadedSource = source;
+            break;
+          }
         }catch(err){
           lastError = err;
         }
       }
 
-      if (!model) throw lastError || new Error('Camaro model not found');
+      if (!rawModel) throw lastError || new Error('Car model not found');
+
+      // The uploaded cartoon car is authored facing -Z while Vehicle.js
+      // drives toward +Z. Rotate only the replacement model 180 degrees.
+      // Use a wrapper so the imported GLB's authored root transforms stay intact.
+      const model = new THREE.Group();
+      model.name = 'car-visual-root';
+      model.add(rawModel);
+      rawModel.rotation.y += loadedSource?.yaw || 0;
 
       model.traverse((obj)=>{
         if (obj.isMesh){
@@ -466,6 +485,7 @@
       const scaled = new THREE.Box3().setFromObject(model);
       if (scaled.min.y < 0) model.position.y += -scaled.min.y;
 
+      console.info('[AR-Aboden] Loaded car:', loadedSource?.label || loadedSource?.path);
       return model;
     }
 
