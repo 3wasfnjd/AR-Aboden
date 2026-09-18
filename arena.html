@@ -419,6 +419,51 @@
       return Math.atan2(d.x, d.z);
     }
 
+    async function loadArenaModel(){
+      const loader = new GLTFLoader();
+      const gltf = await new Promise((resolve,reject)=>{
+        loader.load('./assets/arena_custom_ar.glb', resolve, undefined, reject);
+      });
+
+      const raw = gltf.scene || gltf.scenes?.[0];
+      if(!raw) throw new Error('Custom arena model not found');
+
+      // Preserve the authored model transform and normalize only through wrappers.
+      const centered = new THREE.Group();
+      centered.name = 'custom-arena-centered';
+      centered.add(raw);
+
+      raw.updateMatrixWorld(true);
+      const box = new THREE.Box3().setFromObject(raw);
+      const center = new THREE.Vector3();
+      const size = new THREE.Vector3();
+      box.getCenter(center);
+      box.getSize(size);
+
+      raw.position.x -= center.x;
+      raw.position.z -= center.z;
+      raw.position.y -= box.min.y;
+
+      centered.updateMatrixWorld(true);
+      const normalizedBox = new THREE.Box3().setFromObject(centered);
+      const normalizedSize = new THREE.Vector3();
+      normalizedBox.getSize(normalizedSize);
+
+      const diameter = Math.max(normalizedSize.x, normalizedSize.z) || 1;
+      const root = new THREE.Group();
+      root.name = 'custom-arena-root';
+      root.add(centered);
+      root.scale.setScalar((ARENA_RADIUS * 2) / diameter);
+
+      root.traverse((obj)=>{
+        if(!obj.isMesh) return;
+        obj.castShadow = true;
+        obj.receiveShadow = true;
+      });
+
+      return root;
+    }
+
     async function loadCar(){
       const loader = new GLTFLoader();
       const gltf = await new Promise((resolve,reject)=>{
@@ -750,6 +795,18 @@
         flood.castShadow=false;
         arenaGroup.add(flood);
       });
+
+      // Prefer the imported custom arena. Keep the procedural arena only
+      // as a temporary fallback until the GLB is present in the repository.
+      const legacyArenaVisuals = [...arenaGroup.children];
+      try{
+        const importedArena = await loadArenaModel();
+        legacyArenaVisuals.forEach(obj=>{ obj.visible = false; });
+        arenaGroup.add(importedArena);
+        console.info('[AR-Aboden] Loaded custom arena model');
+      }catch(err){
+        console.warn('[AR-Aboden] Custom arena unavailable; using procedural fallback',err);
+      }
 
       scene.add(arenaGroup);
       updatePlacementScaleVisuals();
