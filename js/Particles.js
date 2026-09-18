@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 
-const POOL_SIZE = 1280;
+const POOL_SIZE = 384;
 const PARTICLES_PER_EMIT = 3;
 const EMIT_JITTER = 0.15;
 const BASE_SIZE = 1;
