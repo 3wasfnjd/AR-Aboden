@@ -4,18 +4,17 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
   <meta name="theme-color" content="#05070b">
-  <title>AR Aboden — Ground Tracking</title>
+  <title>AR Aboden — Hajwala Physics</title>
 
-  <script
-    src="https://cdn.jsdelivr.net/npm/@8thwall/engine-binary@1/dist/xr.js"
-    async
-    crossorigin="anonymous"
-    data-preload-chunks="slam"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@8thwall/engine-binary@1/dist/xr.js"
+          async crossorigin="anonymous" data-preload-chunks="slam"></script>
 
   <script type="importmap">
   {
     "imports": {
-      "three": "https://cdn.jsdelivr.net/npm/three@0.183.2/build/three.module.js"
+      "three": "https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.185.1/examples/jsm/",
+      "crashcat": "https://esm.sh/crashcat@0.0.3"
     }
   }
   </script>
@@ -31,20 +30,24 @@
     .status{display:flex;align-items:center;gap:7px;font-size:12px}
     .dot{width:8px;height:8px;border-radius:50%;background:#f5c451;box-shadow:0 0 12px currentColor}
     .status.ready .dot{background:#61eb8b}
-    .guide{position:absolute;left:50%;top:41%;transform:translate(-50%,-50%);width:min(86vw,390px);text-align:center;line-height:1.8;text-shadow:0 2px 14px rgba(0,0,0,.95);font-size:14px;padding:0 12px}
+    .guide{position:absolute;left:50%;top:40%;transform:translate(-50%,-50%);width:min(86vw,390px);text-align:center;line-height:1.8;text-shadow:0 2px 14px rgba(0,0,0,.95);font-size:14px;padding:0 12px}
     .guide b{display:block;font-size:19px;margin-bottom:5px}
     .guide.hidden{display:none}
     .toast{position:absolute;left:50%;top:18%;transform:translate(-50%,-8px);opacity:0;transition:.2s;background:rgba(5,10,17,.82);border:1px solid rgba(255,255,255,.15);border-radius:999px;padding:10px 15px;font-size:13px;white-space:nowrap;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
     .toast.show{opacity:1;transform:translate(-50%,0)}
-    .mode{position:absolute;left:14px;right:14px;bottom:196px;text-align:center;font-size:11px;opacity:.72;text-shadow:0 2px 10px #000}
-    .controls{position:absolute;left:0;right:0;bottom:max(20px,env(safe-area-inset-bottom));height:165px;pointer-events:none;display:none}
-    .joyBase{position:absolute;left:24px;bottom:6px;width:120px;height:120px;border-radius:50%;background:rgba(5,10,17,.58);border:1px solid rgba(255,255,255,.18);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);pointer-events:auto;touch-action:none}
+    .mode{position:absolute;left:14px;right:14px;bottom:205px;text-align:center;font-size:11px;opacity:.78;text-shadow:0 2px 10px #000}
+    .controls{position:absolute;inset:0;display:none;pointer-events:none}
+    .joyBase{position:absolute;left:18px;bottom:max(22px,env(safe-area-inset-bottom));width:126px;height:126px;border-radius:50%;background:rgba(5,10,17,.58);border:1px solid rgba(255,255,255,.2);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);pointer-events:auto;touch-action:none}
     .joyBase:before{content:"";position:absolute;inset:22px;border:1px dashed rgba(255,255,255,.22);border-radius:50%}
-    .joyKnob{position:absolute;left:50%;top:50%;width:54px;height:54px;margin:-27px 0 0 -27px;border-radius:50%;background:rgba(255,255,255,.94);box-shadow:0 6px 20px rgba(0,0,0,.28)}
-    .actions{position:absolute;right:18px;bottom:4px;display:grid;grid-template-columns:72px 72px;gap:10px;pointer-events:auto}
-    .action{height:58px;border:1px solid rgba(255,255,255,.16);border-radius:18px;color:#fff;background:rgba(5,10,17,.72);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);font-weight:900;font-size:13px}
-    .action.primary{grid-column:1/3;background:#fff;color:#0b1018}
-    .action:active{transform:scale(.96)}
+    .joyKnob{position:absolute;left:50%;top:50%;width:56px;height:56px;margin:-28px 0 0 -28px;border-radius:50%;background:rgba(255,255,255,.94);box-shadow:0 6px 20px rgba(0,0,0,.28)}
+    .pedals{position:absolute;right:18px;bottom:max(22px,env(safe-area-inset-bottom));display:grid;grid-template-columns:74px 74px;gap:10px;pointer-events:auto}
+    .drive{height:68px;border:1px solid rgba(255,255,255,.18);border-radius:22px;color:#fff;background:rgba(5,10,17,.72);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);font-weight:900;font-size:13px;touch-action:none}
+    .drive.gas{background:rgba(20,110,55,.72)}
+    .drive.handbrake{grid-column:1/3;height:54px}
+    .drive.active{transform:scale(.96);background:rgba(255,255,255,.34)}
+    .placement{position:absolute;right:18px;top:calc(max(14px,env(safe-area-inset-top)) + 58px);display:flex;gap:8px;pointer-events:auto}
+    .smallBtn{border:1px solid rgba(255,255,255,.16);border-radius:16px;color:#fff;background:rgba(5,10,17,.68);padding:11px 14px;font-weight:800;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
+    .smallBtn.primary{background:#fff;color:#0b1018}
     #intro{position:fixed;inset:0;z-index:40;background:radial-gradient(circle at 50% 34%,#1b2c45 0,#090e17 45%,#03060b 100%);display:flex;align-items:flex-end;justify-content:center;padding:24px 20px max(30px,env(safe-area-inset-bottom));color:#fff}
     .card{width:min(100%,520px);background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);border-radius:28px;padding:24px;backdrop-filter:blur(15px);-webkit-backdrop-filter:blur(15px)}
     .card h1{font-size:28px;margin:0 0 10px}
@@ -52,8 +55,11 @@
     .start{width:100%;height:58px;border:0;border-radius:18px;background:#fff;color:#091019;font-size:16px;font-weight:900}
     .tiny{margin-top:11px!important;font-size:11px!important;color:#a9b2c1!important;text-align:center}
     .error{display:none;margin-top:12px;color:#ffc4c4;font-size:12px;line-height:1.7}
-    .engine{position:absolute;right:16px;bottom:max(6px,env(safe-area-inset-bottom));font-size:9px;opacity:.45}
-    @media(max-width:360px){.joyBase{width:106px;height:106px}.actions{grid-template-columns:66px 66px}.action{height:54px}}
+    @media(max-width:370px){
+      .joyBase{width:112px;height:112px}
+      .pedals{grid-template-columns:66px 66px}
+      .drive{height:62px}
+    }
   </style>
 </head>
 <body>
@@ -66,62 +72,92 @@
     </div>
 
     <div class="guide" id="guide">
-      <b>ابحث عن الأرض</b>
-      وجّه الكاميرا إلى الأرضية وحرّك الجوال ببطء لثانيتين أو ثلاث حتى يثبت المؤشر.
+      <b>امسح الأرض بهدوء</b>
+      حرّك الجوال ببطء فوق السجادة أو الأرضية حتى تصبح الحالة «السطح مستقر»، ثم ضع السيارة.
     </div>
 
     <div class="toast" id="toast"></div>
-    <div class="mode">World Tracking / SLAM — السيارة مثبتة على مستوى الأرض Y=0</div>
+    <div class="mode" id="modeText">فيزياء هجولة: جسم ديناميكي مستقل عن الكاميرا + احتكاك + فرامل يد</div>
 
     <div class="controls" id="controls">
-      <div class="joyBase" id="joyBase"><div class="joyKnob" id="joyKnob"></div></div>
-      <div class="actions">
-        <button class="action primary" id="placeBtn">ضع على الأرض</button>
-        <button class="action" id="jumpBtn">قفز</button>
-        <button class="action" id="recenterBtn">معايرة</button>
+      <div class="placement">
+        <button class="smallBtn primary" id="placeBtn">ضع السيارة</button>
+        <button class="smallBtn" id="recenterBtn">معايرة</button>
+      </div>
+
+      <div class="joyBase" id="joyBase">
+        <div class="joyKnob" id="joyKnob"></div>
+      </div>
+
+      <div class="pedals">
+        <button class="drive brake" id="brakeBtn">فرامل</button>
+        <button class="drive gas" id="gasBtn">بنزين</button>
+        <button class="drive handbrake" id="handbrakeBtn">هاندبريك</button>
       </div>
     </div>
-    <div class="engine">8th Wall Engine</div>
   </div>
 
   <div id="intro">
     <div class="card">
-      <h1>تثبيت حقيقي على الأرض</h1>
-      <p>هذه النسخة تستخدم SLAM و6DoF بدل تثبيت السيارة أمام الكاميرا. وجّه الجوال إلى أرضية واضحة، حرّكه ببطء، ثم ضع السيارة وتحرك حوله.</p>
-      <button class="start" id="startBtn" disabled>جاري تجهيز محرك AR…</button>
+      <h1>AR بفيزياء هجولة</h1>
+      <p>هذه النسخة تستفيد من منطق <b>Vehicle.js / Physics.js / Controls.js</b> في مستودع hajwala: السيارة لم تعد تتحرك بمجرد تغيير position؛ أصبحت مربوطة بجسم فيزيائي مستقل.</p>
+      <button class="start" id="startBtn" disabled>جاري تجهيز المحرك…</button>
       <div class="error" id="errorBox"></div>
-      <p class="tiny">الأرضيات ذات التفاصيل والملمس الواضح تعطي تتبعًا أفضل من الأسطح اللامعة أو السادة.</p>
+      <p class="tiny">بعد وضع السيارة: الجويستك للتوجيه، بنزين وفرامل منفصلان، والهاندبريك يعطي التفافًا أشد ويخفض السرعة.</p>
     </div>
   </div>
 
   <script type="module">
     import * as THREE from 'three';
-    import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.183.2/examples/jsm/loaders/GLTFLoader.js';
+    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+    import { updateWorld } from 'crashcat';
+
+    import { Vehicle } from './js/Vehicle.js';
+    import { MobileControls } from './js/Controls.js';
+    import {
+      createVehicleWorld,
+      createVehicleBody,
+      resetVehicleBody
+    } from './js/Physics.js';
+
     window.THREE = THREE;
 
     const canvas = document.getElementById('camerafeed');
     const intro = document.getElementById('intro');
     const startBtn = document.getElementById('startBtn');
     const errorBox = document.getElementById('errorBox');
-    const controls = document.getElementById('controls');
+    const controlsEl = document.getElementById('controls');
     const guide = document.getElementById('guide');
     const status = document.getElementById('status');
     const statusText = document.getElementById('statusText');
     const toast = document.getElementById('toast');
     const placeBtn = document.getElementById('placeBtn');
-    const jumpBtn = document.getElementById('jumpBtn');
     const recenterBtn = document.getElementById('recenterBtn');
+
     const joyBase = document.getElementById('joyBase');
     const joyKnob = document.getElementById('joyKnob');
+    const gasBtn = document.getElementById('gasBtn');
+    const brakeBtn = document.getElementById('brakeBtn');
+    const handbrakeBtn = document.getElementById('handbrakeBtn');
+
+    const controls = new MobileControls({
+      joyBase,
+      joyKnob,
+      gasBtn,
+      brakeBtn,
+      handbrakeBtn
+    });
 
     let xrReady = false;
     let xrStarted = false;
     let scene, camera, renderer;
-    let robot, robotVisual, reticle, shadowPlane;
+    let reticle, shadowPlane;
+    let vehicle = null;
+    let world = null;
+    let body = null;
     let placed = false;
-    let joyX = 0, joyY = 0;
-    let jumping = false, jumpStart = 0;
-    let lastTick = performance.now();
+
+    const vehicleRadius = 0.13;
 
     const raycaster = new THREE.Raycaster();
     const centerNdc = new THREE.Vector2(0, 0);
@@ -129,18 +165,10 @@
     const hitPoint = new THREE.Vector3();
     const stablePoint = new THREE.Vector3();
     const prevHit = new THREE.Vector3(999,999,999);
-    const desiredPos = new THREE.Vector3();
-    const smoothCamPos = new THREE.Vector3();
-    const camComp = new THREE.Vector3();
-    let smoothCamReady = false;
+
     let reticleStableMs = 0;
     let surfaceReady = false;
-    let smoothedControlYaw = 0;
-    let yawReady = false;
-    const forward = new THREE.Vector3();
-    const right = new THREE.Vector3();
-    const move = new THREE.Vector3();
-    const up = new THREE.Vector3(0, 1, 0);
+    let lastTick = performance.now();
 
     function notify(msg){
       toast.textContent = msg;
@@ -154,74 +182,63 @@
       status.classList.toggle('ready', ready);
     }
 
-    async function makeRobot(){
-      const root = new THREE.Group();
-      root.visible = false;
+    function cameraYaw(){
+      const d = new THREE.Vector3();
+      camera.getWorldDirection(d);
+      d.y = 0;
+      if (d.lengthSq() < 0.0001) return 0;
+      d.normalize();
+      return Math.atan2(d.x, d.z);
+    }
 
+    async function loadCar(){
       const loader = new GLTFLoader();
-      let model;
-      try{
-        // The uploaded GitHub filename currently begins with a space.
-        const gltf = await new Promise((resolve,reject)=>{
-          loader.load('./assets/%20camaro.glb', resolve, undefined, reject);
-        });
-        model = gltf.scene || gltf.scenes?.[0];
-        if (!model) throw new Error('Empty GLB scene');
+      const paths = ['./assets/%20camaro.glb', './assets/camaro.glb'];
 
-        model.traverse((obj)=>{
-          if (obj.isMesh){
-            obj.castShadow = true;
-            obj.receiveShadow = true;
-          }
-        });
+      let model = null;
+      let lastError = null;
 
-        // Normalize pivot: centered in X/Z and resting exactly on ground Y=0.
-        const box = new THREE.Box3().setFromObject(model);
-        const size = new THREE.Vector3();
-        const center = new THREE.Vector3();
-        box.getSize(size);
-        box.getCenter(center);
-
-        model.position.x -= center.x;
-        model.position.z -= center.z;
-        model.position.y -= box.min.y;
-
-        // Uploaded Camaro is ~4 units long. Make it ~0.85m long in AR.
-        const maxDim = Math.max(size.x,size.y,size.z) || 1;
-        model.scale.setScalar(0.85 / maxDim);
-
-        // Recompute after scaling and enforce wheels/body above the floor.
-        const scaledBox = new THREE.Box3().setFromObject(model);
-        if (scaledBox.min.y < 0) model.position.y += -scaledBox.min.y;
-
-        robotVisual = model;
-        root.add(model);
-      }catch(err){
-        console.error('camaro.glb failed to load', err);
-
-        // Visible fallback only if the GLB cannot be loaded.
-        const fallback = new THREE.Group();
-        const bodyMat = new THREE.MeshStandardMaterial({color:0x2878ff,roughness:.35,metalness:.15});
-        const darkMat = new THREE.MeshStandardMaterial({color:0x111827,roughness:.55});
-        const body = new THREE.Mesh(new THREE.BoxGeometry(.52,.16,.28), bodyMat);
-        body.position.y=.14;
-        const cabin = new THREE.Mesh(new THREE.BoxGeometry(.27,.15,.22), darkMat);
-        cabin.position.y=.27;
-        fallback.add(body,cabin);
-        robotVisual=fallback;
-        root.add(fallback);
+      for (const path of paths){
+        try{
+          const gltf = await new Promise((resolve,reject)=>{
+            loader.load(path, resolve, undefined, reject);
+          });
+          model = gltf.scene || gltf.scenes?.[0];
+          if (model) break;
+        }catch(err){
+          lastError = err;
+        }
       }
 
-      const baseRing = new THREE.Mesh(
-        new THREE.TorusGeometry(.24,.01,10,42),
-        new THREE.MeshBasicMaterial({color:0x67c7ff,transparent:true,opacity:.58})
-      );
-      baseRing.rotation.x = Math.PI/2;
-      baseRing.position.y = .01;
-      root.add(baseRing);
-      root.userData.baseRing = baseRing;
+      if (!model) throw lastError || new Error('Camaro model not found');
 
-      return root;
+      model.traverse((obj)=>{
+        if (obj.isMesh){
+          obj.castShadow = true;
+          obj.receiveShadow = true;
+        }
+      });
+
+      model.updateMatrixWorld(true);
+
+      const box = new THREE.Box3().setFromObject(model);
+      const size = new THREE.Vector3();
+      const center = new THREE.Vector3();
+      box.getSize(size);
+      box.getCenter(center);
+
+      model.position.x -= center.x;
+      model.position.z -= center.z;
+      model.position.y -= box.min.y;
+
+      const maxDim = Math.max(size.x,size.y,size.z) || 1;
+      model.scale.setScalar(0.85 / maxDim);
+
+      model.updateMatrixWorld(true);
+      const scaled = new THREE.Box3().setFromObject(model);
+      if (scaled.min.y < 0) model.position.y += -scaled.min.y;
+
+      return model;
     }
 
     async function setupScene(){
@@ -233,8 +250,8 @@
       renderer.shadowMap.enabled = true;
       renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
-      scene.add(new THREE.HemisphereLight(0xffffff,0x596779,1.5));
-      const key = new THREE.DirectionalLight(0xffffff,1.7);
+      scene.add(new THREE.HemisphereLight(0xffffff,0x596779,1.45));
+      const key = new THREE.DirectionalLight(0xffffff,1.8);
       key.position.set(2,5,2);
       key.castShadow = true;
       key.shadow.mapSize.set(1024,1024);
@@ -242,7 +259,7 @@
 
       shadowPlane = new THREE.Mesh(
         new THREE.PlaneGeometry(50,50),
-        new THREE.ShadowMaterial({opacity:.24})
+        new THREE.ShadowMaterial({opacity:.20})
       );
       shadowPlane.rotation.x = -Math.PI/2;
       shadowPlane.position.y = 0;
@@ -251,16 +268,20 @@
 
       reticle = new THREE.Mesh(
         new THREE.RingGeometry(.10,.125,40).rotateX(-Math.PI/2),
-        new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:.9})
+        new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:.92})
       );
-      reticle.position.y = .006;
+      reticle.position.y = .008;
       reticle.visible = false;
       scene.add(reticle);
 
-      robot = await makeRobot();
-      scene.add(robot);
+      world = createVehicleWorld();
 
-      // Non-zero initial Y is required for 6DoF world tracking.
+      const carModel = await loadCar();
+      vehicle = new Vehicle();
+      const carRoot = vehicle.init(carModel);
+      carRoot.visible = false;
+      scene.add(carRoot);
+
       camera.position.set(0,1.5,2.0);
       XR8.XrController.updateCameraProjectionMatrix({
         origin: camera.position,
@@ -273,10 +294,15 @@
 
     function worldModule(){
       return {
-        name:'aboden-ground-world',
+        name:'aboden-hajwala-world',
         onStart:async()=>{
-          await setupScene();
-          window.dispatchEvent(new Event('resize'));
+          try{
+            await setupScene();
+            window.dispatchEvent(new Event('resize'));
+          }catch(err){
+            console.error(err);
+            notify('فشل إعداد فيزياء السيارة');
+          }
         },
         onException:(error)=>{
           console.error(error);
@@ -285,198 +311,135 @@
       };
     }
 
-    function normalizeAngle(a){
-      while (a > Math.PI) a -= Math.PI * 2;
-      while (a < -Math.PI) a += Math.PI * 2;
-      return a;
-    }
-
-    function dampAngle(current,target,amount){
-      return current + normalizeAngle(target-current) * amount;
-    }
-
-    function cameraYaw(){
-      camera.getWorldDirection(forward);
-      forward.y=0;
-      if (forward.lengthSq()<.0001) return smoothedControlYaw || 0;
-      forward.normalize();
-      return Math.atan2(forward.x,forward.z);
-    }
-
-    function tickWorld(now){
-      requestAnimationFrame(tickWorld);
-      if (!camera || !scene || !robot) return;
-
-      const dt = Math.min(.05,(now-lastTick)/1000 || .016);
-      lastTick = now;
-
-      // Smooth camera translation. We only use the tiny high-frequency difference
-      // as compensation so intentional phone movement still feels immediate.
-      if (!smoothCamReady){
-        smoothCamPos.copy(camera.position);
-        smoothCamReady=true;
-      }else{
-        smoothCamPos.lerp(camera.position,.20);
+    function updatePlacement(dt){
+      if (placed){
+        reticle.visible = false;
+        return;
       }
 
       raycaster.setFromCamera(centerNdc,camera);
       const hit = raycaster.ray.intersectPlane(groundPlane,hitPoint);
 
-      if (hit && hit.distanceTo(camera.position) < 8){
-        const delta = prevHit.distanceTo(hit);
-        if (delta < .018) reticleStableMs += dt*1000;
-        else reticleStableMs = 0;
-        prevHit.copy(hit);
-
-        if (stablePoint.lengthSq()===0) stablePoint.copy(hit);
-        else stablePoint.lerp(hit,.16);
-
-        reticle.visible = true;
-        reticle.position.set(stablePoint.x,.008,stablePoint.z);
-        reticle.rotation.z += dt*.55;
-
-        surfaceReady = reticleStableMs > 650;
-        if (!placed){
-          setStatus(surfaceReady ? 'السطح مستقر' : 'ثبّت الجوال قليلًا', surfaceReady);
-        }
-      }else{
+      if (!hit || hit.distanceTo(camera.position) > 8){
         reticle.visible = false;
         reticleStableMs = 0;
         surfaceReady = false;
-        if (!placed) setStatus('ابحث عن الأرض',false);
-      }
-
-      if (!placed) return;
-
-      robot.userData.baseRing.rotation.z += dt*.9;
-
-      const mag=Math.min(1,Math.hypot(joyX,joyY));
-      if (mag>.05){
-        const rawYaw=cameraYaw();
-        if (!yawReady){
-          smoothedControlYaw=rawYaw;
-          yawReady=true;
-        }else{
-          smoothedControlYaw=dampAngle(smoothedControlYaw,rawYaw,.055);
-        }
-
-        forward.set(Math.sin(smoothedControlYaw),0,Math.cos(smoothedControlYaw));
-        right.crossVectors(forward,up).normalize();
-        move.copy(forward).multiplyScalar(joyY).addScaledVector(right,joyX);
-
-        if (move.lengthSq()>.0001){
-          move.normalize();
-          desiredPos.addScaledVector(move,.65*mag*dt);
-          desiredPos.y=0;
-          const wantedYaw=Math.atan2(move.x,move.z);
-          robot.rotation.y=dampAngle(robot.rotation.y,wantedYaw,.18);
-        }
-      }else{
-        yawReady=false;
-      }
-
-      // Small counter-jitter correction for SLAM camera translation.
-      camComp.copy(camera.position).sub(smoothCamPos);
-      camComp.y=0;
-      if (camComp.length()>.018) camComp.setLength(.018);
-
-      const displayPos=new THREE.Vector3().copy(desiredPos).add(camComp);
-      robot.position.lerp(displayPos,.34);
-      robot.position.y=0;
-
-      if (jumping){
-        const t=Math.min(1,(now-jumpStart)/600);
-        robotVisual.position.y=Math.sin(t*Math.PI)*.22;
-        if (t>=1){
-          jumping=false;
-          robotVisual.position.y=0;
-        }
-      }
-    }
-
-    function placeRobot(){
-      if (!xrStarted || !robot) return;
-      if (!reticle || !reticle.visible){
-        notify('وجّه الكاميرا إلى الأرض أولاً');
+        setStatus('ابحث عن الأرض', false);
         return;
       }
+
+      const delta = prevHit.distanceTo(hit);
+      if (delta < .018) reticleStableMs += dt*1000;
+      else reticleStableMs = 0;
+
+      prevHit.copy(hit);
+
+      if (stablePoint.lengthSq()===0) stablePoint.copy(hit);
+      else stablePoint.lerp(hit,.16);
+
+      reticle.visible = true;
+      reticle.position.set(stablePoint.x,.008,stablePoint.z);
+      reticle.rotation.z += dt*.55;
+
+      surfaceReady = reticleStableMs > 700;
+      setStatus(surfaceReady ? 'السطح مستقر' : 'ثبّت الجوال قليلًا', surfaceReady);
+    }
+
+    function tickWorld(now){
+      requestAnimationFrame(tickWorld);
+      if (!camera || !scene || !vehicle || !world) return;
+
+      const dt = Math.min(1/30,(now-lastTick)/1000 || .016);
+      lastTick = now;
+
+      updatePlacement(dt);
+
+      if (!placed || !body) return;
+
+      // Critical difference from the previous prototype:
+      // car movement is now driven ONLY by the physics body.
+      // Camera motion never edits the car's world position.
+      updateWorld(world, null, dt);
+
+      const input = controls.update();
+      vehicle.update(dt, input);
+    }
+
+    function placeVehicle(){
+      if (!xrStarted || !vehicle) return;
+
+      if (!reticle || !reticle.visible){
+        notify('وجّه الكاميرا إلى الأرض أولًا');
+        return;
+      }
+
       if (!surfaceReady){
         notify('انتظر حتى يستقر المؤشر قليلًا');
         return;
       }
-      desiredPos.set(reticle.position.x,0,reticle.position.z);
-      robot.position.copy(desiredPos);
-      robot.rotation.y = cameraYaw();
-      robot.visible = true;
+
+      const spawn = new THREE.Vector3(
+        reticle.position.x,
+        vehicleRadius,
+        reticle.position.z
+      );
+
+      if (!body){
+        body = createVehicleBody(
+          world,
+          [spawn.x,spawn.y,spawn.z],
+          vehicleRadius
+        );
+        vehicle.attachPhysics(world,body,vehicleRadius);
+      }else{
+        resetVehicleBody(world,body,[spawn.x,spawn.y,spawn.z]);
+      }
+
+      const yaw = cameraYaw();
+      vehicle.place(spawn,yaw);
+
       placed = true;
       guide.classList.add('hidden');
-      placeBtn.textContent = 'نقل هنا';
+      placeBtn.textContent = 'نقل السيارة';
       setStatus('السيارة مثبتة', true);
-      notify('تم تثبيت السيارة على الأرض');
-      if (navigator.vibrate) navigator.vibrate(30);
-    }
+      controls.reset();
+      notify('تم تثبيت السيارة — ابدأ القيادة');
 
-    function jump(){
-      if (!placed || jumping) return;
-      jumping = true;
-      jumpStart = performance.now();
-      if (navigator.vibrate) navigator.vibrate(20);
+      if (navigator.vibrate) navigator.vibrate(30);
     }
 
     function recenter(){
       if (!xrStarted) return;
+
       placed = false;
       surfaceReady = false;
       reticleStableMs = 0;
       prevHit.set(999,999,999);
       stablePoint.set(0,0,0);
-      smoothCamReady = false;
-      if (robot) robot.visible = false;
+
+      controls.reset();
+
+      if (vehicle) vehicle.container.visible = false;
+
       guide.classList.remove('hidden');
-      placeBtn.textContent = 'ضع على الأرض';
+      placeBtn.textContent = 'ضع السيارة';
       setStatus('أعد مسح الأرض', true);
-      try{ XR8.XrController.recenter(); }catch(e){ console.warn(e); }
-      notify('أعد توجيه الجوال للأرض وحركه ببطء');
-    }
 
-    function updateJoystick(e){
-      const r = joyBase.getBoundingClientRect();
-      const cx = r.left + r.width/2;
-      const cy = r.top + r.height/2;
-      let dx = e.clientX-cx;
-      let dy = e.clientY-cy;
-      const max = r.width*.32;
-      const len = Math.hypot(dx,dy);
-      if (len > max){
-        dx = dx/len*max;
-        dy = dy/len*max;
+      try{
+        XR8.XrController.recenter();
+      }catch(err){
+        console.warn(err);
       }
-      joyX = dx/max;
-      joyY = -dy/max;
-      joyKnob.style.transform = 'translate('+dx+'px,'+dy+'px)';
+
+      notify('أعد مسح الأرض ببطء');
     }
 
-    function stopJoystick(){
-      joyX=0; joyY=0;
-      joyKnob.style.transform='translate(0,0)';
-    }
-
-    joyBase.addEventListener('pointerdown',e=>{
-      joyBase.setPointerCapture(e.pointerId);
-      updateJoystick(e);
-    });
-    joyBase.addEventListener('pointermove',e=>{
-      if (joyBase.hasPointerCapture(e.pointerId)) updateJoystick(e);
-    });
-    joyBase.addEventListener('pointerup',stopJoystick);
-    joyBase.addEventListener('pointercancel',stopJoystick);
-
-    placeBtn.addEventListener('click',placeRobot);
-    jumpBtn.addEventListener('click',jump);
+    placeBtn.addEventListener('click',placeVehicle);
     recenterBtn.addEventListener('click',recenter);
 
     startBtn.addEventListener('click',async()=>{
       if (!xrReady || xrStarted) return;
+
       xrStarted = true;
       startBtn.disabled = true;
       startBtn.textContent = 'جاري فتح الكاميرا…';
@@ -484,16 +447,16 @@
 
       try{
         intro.style.display='none';
-        controls.style.display='block';
+        controlsEl.style.display='block';
         setStatus('تشغيل SLAM…', false);
         XR8.run({canvas});
       }catch(err){
         console.error(err);
         xrStarted = false;
-        controls.style.display='none';
+        controlsEl.style.display='none';
         intro.style.display='flex';
         errorBox.style.display='block';
-        errorBox.textContent='تعذر بدء World Tracking. أعد تحميل الصفحة وتأكد من السماح للكاميرا وحساسات الحركة.';
+        errorBox.textContent='تعذر تشغيل World Tracking أو محرك الفيزياء. حدّث الصفحة وحاول مرة أخرى.';
         startBtn.disabled=false;
         startBtn.textContent='حاول مرة أخرى';
       }
@@ -501,6 +464,7 @@
 
     function initializeXR(){
       if (xrReady || !window.XR8 || !window.THREE) return;
+
       try{
         XR8.XrController.configure({
           disableWorldTracking:false,
@@ -527,7 +491,7 @@
     }
 
     if (window.XR8) initializeXR();
-    else window.addEventListener('xrloaded', initializeXR, {once:true});
+    else window.addEventListener('xrloaded',initializeXR,{once:true});
 
     setTimeout(()=>{
       if (!xrReady){
