@@ -385,7 +385,15 @@
       return out;
     }
 
-    function createActor(root,{speed=.35,turnRate=2.8,ghost=false,forwardOffset=0,mixer=null,laneSide=0}={}){
+    function createActor(root,{
+      speed=.28,
+      turnRate=2.0,
+      ghost=false,
+      forwardOffset=0,
+      mixer=null,
+      action=null,
+      laneSide=0
+    }={}){
       const actor={
         root,
         speed,
@@ -393,10 +401,12 @@
         ghost,
         forwardOffset,
         mixer,
+        action,
         laneSide,
         target:new THREE.Vector3(),
-        velocity:new THREE.Vector3(),
+        currentSpeed:0,
         pause:0,
+        waitingForTarget:false,
         bobSeed:Math.random()*Math.PI*2,
         baseY:0,
       };
@@ -419,33 +429,36 @@
         loadGLB('./assets/horror/hooded_horror_woman.glb')
       ]);
 
-      // The optimized ghost model is already Y-up. The previous -90° X
-      // correction laid it on its side in AR, so keep X untouched.
-      const ghost=normalizeModel(ghostGltf.scene,{height:1.92,modelYaw:Math.PI});
+      // Human-proportioned visual sizes. Kept large enough to read clearly
+      // from the farther roaming distance without looking giant.
+      const ghost=normalizeModel(ghostGltf.scene,{height:1.70,modelYaw:Math.PI});
       createActor(ghost,{
         speed:.22,
-        turnRate:1.8,
+        turnRate:1.45,
         ghost:true,
         forwardOffset:Math.PI,
         laneSide:-1
       });
 
-      const hooded=normalizeModel(hoodedGltf.scene,{height:2.02,modelYaw:0});
+      const hooded=normalizeModel(hoodedGltf.scene,{height:1.78,modelYaw:0});
       let mixer=null;
+      let action=null;
+
       if(hoodedGltf.animations?.length){
         mixer=new THREE.AnimationMixer(hooded);
         const clip=hoodedGltf.animations.find(a=>/runfast/i.test(a.name))||hoodedGltf.animations[0];
-        const action=mixer.clipAction(clip);
-        action.timeScale=.62;
+        action=mixer.clipAction(clip);
+        action.timeScale=.34;
         action.play();
       }
 
       createActor(hooded,{
-        speed:.42,
-        turnRate:3.0,
+        speed:.28,
+        turnRate:2.15,
         ghost:false,
         forwardOffset:Math.PI,
         mixer,
+        action,
         laneSide:1
       });
     }
@@ -454,40 +467,78 @@
       const dir=new THREE.Vector3();
 
       for(const a of actors){
-        if(a.mixer) a.mixer.update(dt);
+        let distance=0;
+        let hasDirection=false;
+        let desiredSpeed=0;
 
         if(a.pause>0){
-          a.pause-=dt;
-          if(a.ghost){
-            a.root.position.y=a.baseY+Math.sin(time*1.7+a.bobSeed)*.025;
+          a.pause=Math.max(0,a.pause-dt);
+
+          if(a.pause===0 && a.waitingForTarget){
+            randomTarget(a.target,a);
+            a.waitingForTarget=false;
           }
-          continue;
+        }else{
+          dir.subVectors(a.target,a.root.position);
+          dir.y=0;
+          distance=dir.length();
+
+          if(distance<.20){
+            a.pause=THREE.MathUtils.randFloat(.55,1.45);
+            a.waitingForTarget=true;
+          }else{
+            dir.divideScalar(distance);
+            hasDirection=true;
+
+            // Ease naturally near the destination instead of stopping dead.
+            const slowDown=THREE.MathUtils.smoothstep(distance,.20,1.15);
+            desiredSpeed=a.speed*(.32+.68*slowDown);
+          }
         }
 
-        dir.subVectors(a.target,a.root.position);
-        dir.y=0;
-        const distance=dir.length();
+        // Human-like acceleration/deceleration instead of constant speed.
+        const response=desiredSpeed>a.currentSpeed ? 2.4 : 4.2;
+        const speedBlend=1-Math.exp(-response*dt);
+        a.currentSpeed=THREE.MathUtils.lerp(a.currentSpeed,desiredSpeed,speedBlend);
 
-        if(distance<.12){
-          a.pause=THREE.MathUtils.randFloat(.25,1.15);
-          randomTarget(a.target,a);
-          continue;
+        if(hasDirection && a.currentSpeed>.002){
+          const targetYaw=Math.atan2(dir.x,dir.z)+a.forwardOffset;
+          const currentYaw=a.root.rotation.y;
+
+          let diff=targetYaw-currentYaw;
+          while(diff>Math.PI) diff-=Math.PI*2;
+          while(diff<-Math.PI) diff+=Math.PI*2;
+
+          const turnBlend=1-Math.exp(-a.turnRate*dt);
+          a.root.rotation.y=currentYaw+diff*turnBlend;
+
+          const step=Math.min(distance,a.currentSpeed*dt);
+          a.root.position.addScaledVector(dir,step);
         }
 
-        dir.divideScalar(distance);
+        const speedRatio=a.speed>0 ? THREE.MathUtils.clamp(a.currentSpeed/a.speed,0,1) : 0;
 
-        const step=Math.min(distance,a.speed*dt);
-        a.root.position.addScaledVector(dir,step);
+        if(a.action){
+          // Slow the supplied RunFast cycle into a believable fast-walk /
+          // stalking cadence and tie it to actual world movement.
+          a.action.paused=speedRatio<.04;
+          if(!a.action.paused){
+            const targetTimeScale=.28+.24*speedRatio;
+            a.action.timeScale=THREE.MathUtils.lerp(
+              a.action.timeScale,
+              targetTimeScale,
+              1-Math.exp(-5*dt)
+            );
+          }
+        }
 
-        const targetYaw=Math.atan2(dir.x,dir.z)+a.forwardOffset;
-        const currentYaw=a.root.rotation.y;
-        let diff=targetYaw-currentYaw;
-        while(diff>Math.PI) diff-=Math.PI*2;
-        while(diff<-Math.PI) diff+=Math.PI*2;
-        a.root.rotation.y=currentYaw+diff*Math.min(1,dt*a.turnRate);
+        if(a.mixer) a.mixer.update(dt);
 
         if(a.ghost){
-          a.root.position.y=a.baseY+Math.sin(time*1.55+a.bobSeed)*.035;
+          // This model has no skeleton/animation clips, so keep its root
+          // motion restrained: a subtle vertical float only, no stretching.
+          const amp=.005+.010*speedRatio;
+          a.root.position.y=a.baseY+Math.sin(time*1.35+a.bobSeed)*amp;
         }else{
           a.root.position.y=a.baseY;
         }
@@ -501,8 +552,7 @@
     }
 
     function distributeActors(){
-      // Start the two characters on opposite sides and keep subsequent
-      // roaming targets in those separate lanes.
+      // Start on opposite sides, then roam naturally within each lane.
       for(const a of actors){
         const side=a.laneSide||1;
         const startAngle=side*THREE.MathUtils.degToRad(
@@ -516,8 +566,15 @@
 
         a.root.position.y=playOrigin.y;
         a.baseY=playOrigin.y;
+        a.currentSpeed=0;
+        a.waitingForTarget=false;
         randomTarget(a.target,a);
-        a.pause=THREE.MathUtils.randFloat(.15,.65);
+        a.pause=THREE.MathUtils.randFloat(.25,.85);
+
+        if(a.action){
+          a.action.paused=true;
+          a.action.timeScale=.34;
+        }
       }
     }
 
