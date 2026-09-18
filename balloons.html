@@ -293,6 +293,7 @@
     let smokeTexture = null;
     let fireTexture = null;
     let flashTexture = null;
+    let hajwalaSmokeRequested = false;
 
     // Real CC0 recordings only — no synthesized launch/impact layers.
     // Launch: qubodup / Freesound 182794, CC0.
@@ -488,9 +489,28 @@
     }
 
     function ensureFxTextures(){
+      // Immediate procedural fallback, then transparently upgrade new smoke
+      // particles to Hajwala's existing smoke sprite once it has loaded.
       smokeTexture ||= makeSoftTexture('smoke');
       fireTexture ||= makeSoftTexture('fire');
       flashTexture ||= makeSoftTexture('flash');
+
+      if(!hajwalaSmokeRequested){
+        hajwalaSmokeRequested=true;
+        const loader=new THREE.TextureLoader();
+        loader.setCrossOrigin('anonymous');
+        loader.load(
+          'https://raw.githubusercontent.com/3wasfnjd/hajwala/master/sprites/smoke.png',
+          tex=>{
+            tex.minFilter=THREE.LinearFilter;
+            tex.magFilter=THREE.LinearFilter;
+            tex.generateMipmaps=false;
+            smokeTexture=tex;
+          },
+          undefined,
+          err=>console.warn('Hajwala smoke texture fallback active:',err)
+        );
+      }
     }
 
     function addFxSprite({
@@ -515,7 +535,7 @@
         sprite,type,velocity:velocity.clone(),life,maxLife:life,
         startSize:size,growth,baseOpacity:opacity,drag,buoyancy,gravity
       });
-      if(fxParticles.length>260){
+      if(fxParticles.length>340){
         const old=fxParticles.shift();
         scene.remove(old.sprite);
         old.sprite.material.dispose();
@@ -1082,7 +1102,7 @@
 
       if(type==='homing'){
         const tracker=new THREE.Mesh(
-          new THREE.TorusGeometry(.052,.006,8,20),
+          new THREE.TorusGeometry(.039,.0045,8,20),
           new THREE.MeshBasicMaterial({color:0x5feaff,transparent:true,opacity:.88})
         );
         tracker.name='homingTrackerRing';
@@ -1242,26 +1262,49 @@
           core.material.opacity=.82+Math.random()*.18;
         }
 
-        // Continuous smoke trail. New puffs inherit a little backwards momentum,
-        // then slow down and rise instead of following the missile rigidly.
+        // Missile smoke trail. Homing rockets deliberately leave a longer,
+        // curved trail so their steering path can be seen for a couple seconds.
+        // This uses the same smoke.png asset used by the Hajwala project.
         r.trailTimer+=dt;
-        const interval=r.age<.20?.020:.032;
+        const homingTrail=r.type==='homing';
+        const interval=homingTrail
+          ? (r.age<.18?.026:.050)
+          : (r.age<.20?.024:.040);
+
         while(r.trailTimer>=interval){
           r.trailTimer-=interval;
-          const rear=r.object.position.clone().addScaledVector(r.direction,-.12);
-          rear.x+=THREE.MathUtils.randFloatSpread(.018);
-          rear.y+=THREE.MathUtils.randFloatSpread(.018);
-          rear.z+=THREE.MathUtils.randFloatSpread(.018);
 
-          const v=r.direction.clone().multiplyScalar(THREE.MathUtils.randFloat(-.46,-.24));
-          v.x+=THREE.MathUtils.randFloatSpread(.09);
-          v.y+=THREE.MathUtils.randFloat(.03,.14);
-          v.z+=THREE.MathUtils.randFloatSpread(.09);
+          const rear=r.object.position.clone().addScaledVector(
+            r.direction,
+            homingTrail?-.13:-.12
+          );
+
+          const jitter=homingTrail?.014:.018;
+          rear.x+=THREE.MathUtils.randFloatSpread(jitter);
+          rear.y+=THREE.MathUtils.randFloatSpread(jitter);
+          rear.z+=THREE.MathUtils.randFloatSpread(jitter);
+
+          const v=r.direction.clone().multiplyScalar(
+            homingTrail
+              ? THREE.MathUtils.randFloat(-.34,-.16)
+              : THREE.MathUtils.randFloat(-.42,-.22)
+          );
+
+          const spread=homingTrail?.060:.085;
+          v.x+=THREE.MathUtils.randFloatSpread(spread);
+          v.y+=THREE.MathUtils.randFloat(homingTrail?.025:.03,homingTrail?.10:.13);
+          v.z+=THREE.MathUtils.randFloatSpread(spread);
+
           spawnSmokePuff(
-            rear,v,
-            THREE.MathUtils.randFloat(.040,.060),
-            THREE.MathUtils.randFloat(.55,.88),
-            Math.random()<.38
+            rear,
+            v,
+            homingTrail
+              ? THREE.MathUtils.randFloat(.038,.055)
+              : THREE.MathUtils.randFloat(.034,.050),
+            homingTrail
+              ? THREE.MathUtils.randFloat(1.65,2.25)
+              : THREE.MathUtils.randFloat(.48,.78),
+            homingTrail ? Math.random()<.58 : Math.random()<.28
           );
         }
 
