@@ -257,8 +257,7 @@
     const UPSTREAM='https://cdn.jsdelivr.net/gh/artcodev/three-ilda@6044b91d120cc01f73bdaebed4f7e4d03feb0d2f/examples/public/ilda/';
     const SAUDI_DURATION=36.049;
     const SAUDI_FPS=18;
-    const SAUDI_AUDIO_CHUNKS=10;
-    const SAUDI_AUDIO_BASE='./assets/laser/saudi_anthem_';
+    const SAUDI_AUDIO_URL='./assets/laser/saudi_anthem.mp3';
     const SHOWS=[
       {id:'saudi',name:'السعودية',kind:'custom',audio:true},
       {id:'sylvester',name:'Sylvester',file:'sylvest.ild'},
@@ -311,11 +310,11 @@
     let switchingShow=false;
 
     const assetCache=new Map();
-    const saudiAudio=new Audio();
+    const saudiAudio=new Audio(SAUDI_AUDIO_URL);
     saudiAudio.preload='auto';
     saudiAudio.volume=.82;
     saudiAudio.loop=false;
-    let saudiAudioUrl=null;
+    saudiAudio.crossOrigin='anonymous';
     let saudiAudioPromise=null;
     let saudiLastFrame=-1;
     let saudiAudioReady=false;
@@ -985,26 +984,36 @@
     async function ensureSaudiAudio(){
       if(saudiAudioReady) return saudiAudio;
       if(saudiAudioPromise) return saudiAudioPromise;
-      saudiAudioPromise=(async()=>{
-        const parts=await Promise.all(
-          Array.from({length:SAUDI_AUDIO_CHUNKS},(_,i)=>{
-            const n=String(i).padStart(2,'0');
-            return fetch(SAUDI_AUDIO_BASE+n+'.b64',{cache:'force-cache'}).then(r=>{
-              if(!r.ok) throw new Error('Audio chunk '+n+' failed');
-              return r.text();
-            });
-          })
-        );
-        const b64=parts.join('').replace(/\s+/g,'');
-        const binary=atob(b64);
-        const bytes=new Uint8Array(binary.length);
-        for(let i=0;i<binary.length;i++) bytes[i]=binary.charCodeAt(i);
-        saudiAudioUrl=URL.createObjectURL(new Blob([bytes],{type:'audio/mpeg'}));
-        saudiAudio.src=saudiAudioUrl;
+
+      saudiAudioPromise=new Promise((resolve,reject)=>{
+        const done=()=>{
+          cleanup();
+          saudiAudioReady=true;
+          resolve(saudiAudio);
+        };
+        const fail=()=>{
+          cleanup();
+          saudiAudioPromise=null;
+          reject(new Error('Saudi anthem audio failed to load'));
+        };
+        const cleanup=()=>{
+          saudiAudio.removeEventListener('canplaythrough',done);
+          saudiAudio.removeEventListener('loadeddata',done);
+          saudiAudio.removeEventListener('error',fail);
+        };
+
+        if(saudiAudio.readyState>=2){
+          saudiAudioReady=true;
+          resolve(saudiAudio);
+          return;
+        }
+
+        saudiAudio.addEventListener('canplaythrough',done,{once:true});
+        saudiAudio.addEventListener('loadeddata',done,{once:true});
+        saudiAudio.addEventListener('error',fail,{once:true});
         saudiAudio.load();
-        saudiAudioReady=true;
-        return saudiAudio;
-      })();
+      });
+
       return saudiAudioPromise;
     }
 
@@ -1061,7 +1070,21 @@
         if(initial) setLoadProgress(36,'بناء قصة السعودية…');
         const asset=buildSaudiAsset();
         assetCache.set(showId,asset);
-        ensureSaudiAudio().catch(err=>console.warn('[ABODEN LASER] audio preload',err));
+        ensureSaudiAudio()
+        .then(async audio=>{
+          // Prime iOS/Safari audio while this click still has user activation.
+          try{
+            audio.muted=true;
+            await audio.play();
+            audio.pause();
+            audio.currentTime=0;
+            audio.muted=false;
+          }catch(err){
+            audio.muted=false;
+            console.warn('[ABODEN LASER] audio unlock',err);
+          }
+        })
+        .catch(err=>console.warn('[ABODEN LASER] audio preload',err));
         if(initial) setLoadProgress(76,'تجهيز المشاهد والموسيقى…');
         return asset;
       }
