@@ -255,7 +255,12 @@
     window.THREE=THREE;
 
     const UPSTREAM='https://cdn.jsdelivr.net/gh/artcodev/three-ilda@6044b91d120cc01f73bdaebed4f7e4d03feb0d2f/examples/public/ilda/';
+    const SAUDI_DURATION=36.049;
+    const SAUDI_FPS=18;
+    const SAUDI_AUDIO_CHUNKS=10;
+    const SAUDI_AUDIO_BASE='./assets/laser/saudi_anthem_';
     const SHOWS=[
+      {id:'saudi',name:'السعودية',kind:'custom',audio:true},
       {id:'sylvester',name:'Sylvester',file:'sylvest.ild'},
       {id:'dolphin',name:'Dolphin',file:'DOLPHIN.ILD'},
       {id:'paperair',name:'Paper Air',file:'paperair.ild'},
@@ -302,10 +307,19 @@
     let stableMs=0;
     let lastTime=performance.now();
     let rigScale=1;
-    let currentShowId='sylvester';
+    let currentShowId='saudi';
     let switchingShow=false;
 
     const assetCache=new Map();
+    const saudiAudio=new Audio();
+    saudiAudio.preload='auto';
+    saudiAudio.volume=.82;
+    saudiAudio.loop=false;
+    let saudiAudioUrl=null;
+    let saudiAudioPromise=null;
+    let saudiLastFrame=-1;
+    let saudiAudioReady=false;
+
     const raycaster=new THREE.Raycaster();
     const centerNdc=new THREE.Vector2(0,0);
     const floorPlane=new THREE.Plane(new THREE.Vector3(0,1,0),0);
@@ -666,10 +680,391 @@
       return {root,laserOrigin};
     }
 
+
+    const SAUDI_GREEN=[.08,1,.30];
+    const SAUDI_WHITE=[.82,1,.90];
+    const SAUDI_GOLD=[1,.66,.18];
+
+    function clamp01(v){return Math.max(0,Math.min(1,v));}
+    function smooth01(v){
+      v=clamp01(v);
+      return v*v*(3-2*v);
+    }
+    function phase(t,a,b){return smooth01((t-a)/(b-a));}
+    function fadeWindow(t,a,b,c,d){
+      return phase(t,a,b)*(1-phase(t,c,d));
+    }
+    function poly(...pts){return pts;}
+    function arc(cx,cy,rx,ry,a0,a1,n=18){
+      const p=[];
+      for(let i=0;i<=n;i++){
+        const a=a0+(a1-a0)*(i/n);
+        p.push([cx+Math.cos(a)*rx,cy+Math.sin(a)*ry]);
+      }
+      return p;
+    }
+    function transformStrokes(strokes,{x=0,y=0,sx=1,sy=sx,rot=0}={}){
+      const cs=Math.cos(rot),sn=Math.sin(rot);
+      return strokes.map(stroke=>stroke.map(([px,py])=>{
+        px*=sx;py*=sy;
+        return [px*cs-py*sn+x,px*sn+py*cs+y];
+      }));
+    }
+    function trimStrokes(strokes,p){
+      p=clamp01(p);
+      const counts=strokes.map(s=>Math.max(0,s.length-1));
+      const total=counts.reduce((a,b)=>a+b,0);
+      let left=total*p;
+      const out=[];
+      for(let i=0;i<strokes.length;i++){
+        const s=strokes[i],segments=counts[i];
+        if(left<=0) break;
+        if(left>=segments){out.push(s);left-=segments;continue;}
+        const take=Math.max(1,Math.floor(left));
+        const f=left-take;
+        const part=s.slice(0,Math.min(s.length,take+1));
+        if(f>0&&take+1<s.length){
+          const a=s[take],b=s[take+1];
+          part.push([a[0]+(b[0]-a[0])*f,a[1]+(b[1]-a[1])*f]);
+        }
+        if(part.length>1) out.push(part);
+        break;
+      }
+      return out;
+    }
+    function densify(stroke,step=.045){
+      if(stroke.length<2) return stroke;
+      const out=[stroke[0]];
+      for(let i=1;i<stroke.length;i++){
+        const a=stroke[i-1],b=stroke[i];
+        const dx=b[0]-a[0],dy=b[1]-a[1];
+        const n=Math.max(1,Math.ceil(Math.hypot(dx,dy)/step));
+        for(let j=1;j<=n;j++) out.push([a[0]+dx*j/n,a[1]+dy*j/n]);
+      }
+      return out;
+    }
+
+    function emblemStrokes(){
+      const s=[];
+      // Crossed swords with curved blades and compact handles.
+      s.push(poly([-.73,-.32],[-.54,-.29],[-.32,-.19],[-.08,-.04],[.19,.13],[.48,.25],[.72,.29]));
+      s.push(poly([.73,-.32],[.54,-.29],[.32,-.19],[.08,-.04],[-.19,.13],[-.48,.25],[-.72,.29]));
+      s.push(poly([-.69,-.37],[-.60,-.29],[-.65,-.22]));
+      s.push(poly([[.69,-.37][0],[.69,-.37][1]],[.60,-.29],[.65,-.22]));
+      // Palm trunk.
+      s.push(poly([-.035,-.05],[-.025,.12],[-.018,.31],[0,.50],[.018,.31],[.025,.12],[.035,-.05]));
+      // Crown and fronds.
+      s.push(poly([0,.48],[-.15,.54],[-.32,.50],[-.48,.38]));
+      s.push(poly([0,.48],[-.10,.60],[-.22,.68],[-.34,.67]));
+      s.push(poly([0,.48],[-.03,.63],[-.04,.76]));
+      s.push(poly([0,.48],[.15,.54],[.32,.50],[.48,.38]));
+      s.push(poly([0,.48],[.10,.60],[.22,.68],[.34,.67]));
+      s.push(poly([0,.48],[.03,.63],[.04,.76]));
+      s.push(poly([-.02,.40],[-.18,.42],[-.30,.35]));
+      s.push(poly([[.02,.40][0],[.02,.40][1]],[.18,.42],[.30,.35]));
+      return s;
+    }
+
+    function diriyahStrokes(){
+      const s=[];
+      s.push(poly([-.95,-.55],[.95,-.55]));
+      // Left Najdi mud-brick block.
+      s.push(poly([-.88,-.55],[-.88,.20],[-.79,.20],[-.79,.29],[-.69,.29],[-.69,.20],[-.58,.20],[-.58,-.55]));
+      s.push(poly([-.82,-.16],[-.82,.05],[-.70,.05],[-.70,-.16]));
+      // Main tower with crenellations.
+      s.push(poly([-.53,-.55],[-.53,.48],[-.43,.48],[-.43,.58],[-.32,.58],[-.32,.48],[-.21,.48],[-.21,.58],[-.10,.58],[-.10,.48],[.02,.48],[.02,-.55]));
+      s.push(arc([-.255,-.55][0],[-.255,-.55][1],.105,.28,0,Math.PI,16).map(([x,y])=>[x,y]));
+      s.push(poly([-.43,.12],[-.34,.12],[-.34,.24],[-.43,.24]));
+      s.push(poly([-.17,.12],[-.08,.12],[-.08,.24],[-.17,.24]));
+      // Right block and stepped roofline.
+      s.push(poly([[.08,-.55][0],[.08,-.55][1]],[.08,.10],[.18,.10],[.18,.20],[.29,.20],[.29,.31],[.41,.31],[.41,.20],[.53,.20],[.53,-.55]));
+      s.push(poly([.60,-.55],[.60,.38],[.71,.38],[.71,.48],[.82,.48],[.82,.38],[.91,.38],[.91,-.55]));
+      s.push(arc(.755,-.55,.09,.25,0,Math.PI,14));
+      // Najdi triangular wall motifs.
+      for(const x of [-.47,-.36,-.25,-.14,.15,.26,.37,.65,.76,.86]){
+        s.push(poly([x-.025,-.01],[x,.045],[x+.025,-.01]));
+      }
+      return s;
+    }
+
+    function camelStrokes(walk=0){
+      const lift=Math.sin(walk*Math.PI*2)*.035;
+      return [
+        poly([-.76,-.10],[-.68,.02],[-.57,.11],[-.45,.16],[-.30,.17],[-.15,.13],[-.04,.20],[.07,.38],[.18,.43],[.28,.30],[.36,.12],[.46,.05],[.56,.12],[.60,.30],[.59,.49],[.64,.62],[.74,.69],[.83,.66],[.88,.59],[.80,.54],[.72,.55],[.68,.46],[.69,.28],[.65,.08],[.55,-.08],[.38,-.15],[.15,-.16],[-.10,-.14],[-.35,-.12],[-.56,-.15],[-.76,-.10]),
+        poly([.61,.42],[.68,.44],[.72,.42]),
+        poly([-.50,-.13],[-.50,-.43+lift],[-.43,-.58+lift],[-.38,-.58+lift]),
+        poly([-.25,-.15],[-.18,-.40-lift],[-.12,-.58-lift],[-.07,-.58-lift]),
+        poly([.27,-.15],[.31,-.39+lift],[.37,-.57+lift],[.43,-.57+lift]),
+        poly([.48,-.10],[.52,-.38-lift],[.56,-.56-lift],[.61,-.56-lift]),
+        poly([-.73,-.08],[-.84,.02],[-.90,.12]),
+        poly([.79,.67],[.82,.74],[.85,.70])
+      ];
+    }
+
+    function horseStrokes(run=0){
+      const k=Math.sin(run*Math.PI*2);
+      return [
+        poly([-.82,-.01],[-.70,.14],[-.50,.24],[-.25,.27],[-.02,.23],[.18,.29],[.34,.43],[.43,.61],[.54,.73],[.68,.70],[.76,.61],[.72,.55],[.62,.54],[.55,.45],[.52,.31],[.42,.15],[.24,.02],[.02,-.07],[-.25,-.08],[-.53,-.06],[-.72,-.10],[-.82,-.01]),
+        poly([.48,.58],[.55,.80],[.60,.66]),
+        poly([.55,.73],[.64,.84],[.65,.69]),
+        poly([.66,.61],[.73,.63],[.76,.60]),
+        poly([-.60,-.06],[-.47,-.28],[-.38,-.49-.05*k],[-.23,-.58-.08*k]),
+        poly([-.34,-.08],[-.27,-.31],[-.12,-.46+.06*k],[.02,-.52+.09*k]),
+        poly([.20,-.02],[.25,-.23],[.39,-.42-.07*k],[.53,-.47-.08*k]),
+        poly([.39,.09],[.47,-.11],[.58,-.28+.07*k],[.70,-.33+.09*k]),
+        poly([-.76,.08],[-.90,.22],[-.95,.10],[-.87,-.05]),
+        poly([.37,.45],[.24,.54],[.10,.50],[-.02,.42])
+      ];
+    }
+
+    function raysStrokes(rot=0){
+      const s=[];
+      for(let i=0;i<12;i++){
+        const a=rot+i*Math.PI*2/12;
+        const r0=.34,r1=i%2?1.00:.88;
+        s.push(poly([Math.cos(a)*r0,Math.sin(a)*r0],[Math.cos(a)*r1,Math.sin(a)*r1]));
+      }
+      return s;
+    }
+
+    const SAUDI_TEXT_PATH_D='m 976.5599,73.2 h 26.82 V 210 h -26.82 z M 891.24004,210 q -0.9,0 -0.9,-0.9 v -19.98 q 0,-0.72 0.9,-0.72 h 22.5 V 73.2 h 26.82 V 210 Z m -59.0401,0 q -15.3,0 -28.26,-13.5 -10.08,13.5 -30.06,13.5 h -70.56 q -0.9,0 -0.9,-0.9 v -19.98 q 0,-0.72 0.9,-0.72 h 22.5 v -53.46 h 26.82 v 53.46 h 15.3 q 9,0 13.14,-4.86 4.14,-5.04 4.14,-16.02 v -32.58 h 26.82 v 34.74 q 0,4.32 -0.54,8.1 4.5,5.94 8.82,8.28 4.32,2.34 11.34,2.34 h 11.16 v -67.5 h 26.82 v 67.5 h 23.4 q 0.9,0 0.9,0.72 v 19.98 q 0,0.9 -0.9,0.9 z m -149.94004,0 q -8.46,0 -17.64,-2.88 -9.18,-2.88 -15.66,-7.2 -16.56,10.08 -33.48,10.08 h -20.88 q -0.9,0 -0.9,-0.9 v -19.98 q 0,-0.72 0.9,-0.72 h 18 q 4.14,0 9,-0.9 4.86,-1.08 7.92,-2.52 -5.4,-4.14 -11.34,-13.14 -5.94,-8.82 -10.44,-19.26 -4.32,-10.62 -5.94,-20.34 10.62,-8.82 24.3,-13.86 13.68,-5.04 26.28,-5.04 25.74,0 45.18,10.8 0,12.96 -3.6,24.66 -3.6,11.7 -10.26,21.06 -6.48,9.18 -15.48,14.94 6.66,3.6 16.2,3.6 h 20.7 q 0.9,0 0.9,0.72 v 19.98 q 0,0.9 -0.9,0.9 z m -32.94,-36.18 q 21.06,-12.6 22.68,-35.64 -7.92,-3.24 -20.34,-3.24 -5.76,0 -12.42,1.98 -6.66,1.98 -10.62,4.86 2.7,9.9 8.1,18.72 5.58,8.64 12.6,13.32 z M 526.37978,253.2 q -12.24,0 -21.24,-1.98 -8.82,-1.8 -17.1,-6.66 l 10.44,-19.62 q 7.38,3.78 13.86,5.22 6.48,1.62 13.5,1.62 10.26,0 15.66,-5.4 5.58,-5.22 5.58,-13.14 V 210 h -17.82 q -19.26,0 -29.7,-10.8 -10.26,-10.98 -10.26,-31.14 0,-15.3 7.38,-25.74 7.56,-10.62 20.52,-16.02 12.96,-5.4 29.34,-5.4 h 27.36 v 67.5 h 22.5 q 0.9,0 0.9,0.72 v 19.98 q 0,0.9 -0.9,0.9 h -22.5 v 3.24 q -0.18,18.18 -12.6,28.98 -12.42,10.98 -34.92,10.98 z m 20.7,-64.8 v -45.9 h -5.76 q -11.52,0 -18,6.48 -6.48,6.48 -6.48,18.36 0,21.06 17.82,21.06 z m -169.73989,0 h 60.12 q -3.78,-16.56 -9,-26.82 -5.4,-10.26 -13.68,-17.64 -8.1,-7.56 -19.98,-12.42 l 10.08,-25.2 q 24.12,9.72 38.7,29.88 14.58,20.16 21.06,52.92 V 210 h -87.3 z M 295.62003,210 q -0.9,0 -0.9,-0.9 v -19.98 q 0,-0.72 0.9,-0.72 h 31.5 v -67.5 h 26.82 V 210 Z m 14.58,45 q -5.58,0 -8.82,-3.6 -3.24,-3.42 -3.24,-9.36 0,-5.94 3.24,-9.54 3.24,-3.42 8.82,-3.42 5.58,0 8.64,3.42 3.24,3.42 3.24,9.54 0,6.12 -3.24,9.54 -3.24,3.42 -8.64,3.42 z m 30.6,0 q -5.58,0 -8.82,-3.6 -3.24,-3.42 -3.24,-9.36 0,-5.94 3.24,-9.54 3.24,-3.42 8.82,-3.42 5.58,0 8.64,3.42 3.24,3.6 3.24,9.54 0,5.94 -3.24,9.36 -3.24,3.6 -8.64,3.6 z M 231.35991,100.74 q -5.58,0 -8.82,-3.42 -3.24,-3.6 -3.24,-9.54 0,-6.12 3.24,-9.54 3.24,-3.42 8.82,-3.42 5.58,0 8.64,3.42 3.24,3.42 3.24,9.54 0,6.12 -3.24,9.54 -3.24,3.42 -8.64,3.42 z m 30.6,0 q -5.58,0 -8.82,-3.42 -3.24,-3.6 -3.24,-9.54 0,-6.12 3.24,-9.54 3.24,-3.42 8.82,-3.42 5.58,0 8.64,3.42 3.24,3.42 3.24,9.54 0,5.94 -3.24,9.54 -3.24,3.42 -8.64,3.42 z m -19.08,109.26 q -25.02,0 -38.88,-11.52 -13.68,-11.7 -13.68,-32.58 0,-14.58 6.84,-24.48 6.84,-10.08 18.72,-15.3 11.88,-5.22 27,-5.22 h 5.04 v -8.82 h 27 v 76.32 h 22.5 q 0.9,0 0.9,0.72 v 19.98 q 0,0.9 -0.9,0.9 z m 5.22,-21.6 v -45.9 h -4.68 q -12.24,0 -18.9,6.12 -6.66,5.94 -6.66,17.46 0,10.62 6.48,16.56 6.48,5.76 18.72,5.76 z';
+
+    function buildSaudiTextStrokes(){
+      const ns='http://www.w3.org/2000/svg';
+      const svg=document.createElementNS(ns,'svg');
+      const path=document.createElementNS(ns,'path');
+      svg.setAttribute('width','1');svg.setAttribute('height','1');
+      svg.style.cssText='position:absolute;width:1px;height:1px;opacity:0;pointer-events:none';
+      path.setAttribute('d',SAUDI_TEXT_PATH_D);
+      svg.appendChild(path);
+      document.body.appendChild(svg);
+
+      const total=path.getTotalLength();
+      const raw=[];
+      const step=7;
+      for(let d=0;d<=total;d+=step){
+        const p=path.getPointAtLength(Math.min(d,total));
+        raw.push([(p.x-596)/455,(165-p.y)/130]);
+      }
+      svg.remove();
+
+      const strokes=[];
+      let current=[];
+      for(const p of raw){
+        if(current.length&&Math.hypot(p[0]-current[current.length-1][0],p[1]-current[current.length-1][1])>.12){
+          if(current.length>1) strokes.push(current);
+          current=[];
+        }
+        current.push(p);
+      }
+      if(current.length>1) strokes.push(current);
+      return transformStrokes(strokes,{sx:.93,sy:.72,y:-.03});
+    }
+
+    function addFrameStroke(points,color,brightness,positions,colors,blank){
+      const d=densify(points);
+      if(d.length<2||brightness<=.005) return;
+      const [r,g,b]=color.map(v=>v*brightness);
+      // Four blank points protect against the scanner blanking offset and hide jumps.
+      const first=d[0];
+      for(let i=0;i<4;i++){
+        positions.push(first[0],first[1],0);
+        colors.push(r,g,b);
+        blank.push(1);
+      }
+      for(const p of d){
+        positions.push(p[0],p[1],0);
+        colors.push(r,g,b);
+        blank.push(0);
+      }
+      const last=d[d.length-1];
+      positions.push(last[0],last[1],0,last[0],last[1],0);
+      colors.push(r,g,b,r,g,b);
+      blank.push(0,0);
+    }
+
+    function makeSaudiFrame(index,t,textStrokes){
+      const layers=[];
+      const emblem=emblemStrokes();
+      const diriyah=diriyahStrokes();
+
+      // 0–5s: crossed swords + palm draw on.
+      if(t<6.2){
+        const reveal=phase(t,.20,2.8);
+        const pulse=.88+.10*Math.sin(t*2.4);
+        layers.push({strokes:trimStrokes(emblem,reveal),color:SAUDI_GREEN,b:fadeWindow(t,0,.25,5.0,6.2)*pulse});
+      }
+
+      // 4.8–12.6s: Diriyah grows into view.
+      if(t>4.5&&t<13.0){
+        const p=phase(t,4.8,6.5);
+        const rise=(1-p)*-.12;
+        layers.push({strokes:trimStrokes(transformStrokes(diriyah,{y:rise}),p),color:SAUDI_GOLD,b:fadeWindow(t,4.5,5.5,11.6,13.0)});
+        if(t>7.0) layers.push({strokes:[poly([-.98,-.58],[.98,-.58])],color:SAUDI_WHITE,b:.34*fadeWindow(t,7,7.4,11.7,12.7)});
+      }
+
+      // 11.7–18.7s: camel crosses the scene.
+      if(t>11.3&&t<19.2){
+        const p=phase(t,11.7,18.0);
+        const x=.62-p*.78;
+        const bob=Math.sin((t-11.7)*3.5)*.025;
+        const camel=transformStrokes(camelStrokes((t-11.7)*.75),{x,y:bob,sx:.82,sy:.82});
+        layers.push({strokes:camel,color:SAUDI_GOLD,b:fadeWindow(t,11.3,12.0,18.0,19.2)});
+        const dune=[arc(-.45,-.53,.62,.12,Math.PI*.08,Math.PI*.92,24),arc(.52,-.56,.58,.10,Math.PI*.10,Math.PI*.90,24)];
+        layers.push({strokes:dune,color:SAUDI_GREEN,b:.28*fadeWindow(t,12,12.6,17.7,18.8)});
+      }
+
+      // 18–26.8s: Arabian horse runs in with a brighter, faster beat.
+      if(t>17.4&&t<27.0){
+        const p=phase(t,18.0,25.6);
+        const x=.48-p*.60;
+        const bob=Math.sin((t-18)*5.2)*.022;
+        const horse=transformStrokes(horseStrokes((t-18)*1.2),{x,y:bob,sx:.88,sy:.88});
+        layers.push({strokes:horse,color:SAUDI_WHITE,b:fadeWindow(t,17.4,18.2,25.9,27.0)});
+        // Motion streaks stay subtle so the animal remains readable.
+        const streaks=[
+          poly([-.95,-.12],[-.57,-.12]),
+          poly([-.88,.05],[-.58,.05]),
+          poly([-.80,.21],[-.61,.21])
+        ];
+        layers.push({strokes:streaks,color:SAUDI_GREEN,b:.38*fadeWindow(t,19,20,25.1,26.4)});
+      }
+
+      // 25.8–31.4s: radial climax and emblem return.
+      if(t>25.4&&t<31.8){
+        layers.push({strokes:raysStrokes((t-25.4)*.18),color:SAUDI_GREEN,b:.42*fadeWindow(t,25.4,26.2,29.3,30.5)});
+        const e=transformStrokes(emblem,{sx:.62,sy:.62,y:.24});
+        layers.push({strokes:trimStrokes(e,phase(t,27.0,29.2)),color:SAUDI_GREEN,b:fadeWindow(t,26.7,27.4,30.6,31.8)});
+      }
+
+      // 30–36s: final Arabic word, with a compact emblem above it.
+      if(t>29.6){
+        const p=phase(t,30.0,33.4);
+        const txt=trimStrokes(transformStrokes(textStrokes,{sx:.95,sy:.95,y:-.20}),p);
+        layers.push({strokes:txt,color:SAUDI_GREEN,b:fadeWindow(t,29.6,30.2,35.65,36.05)});
+        const mini=transformStrokes(emblem,{sx:.31,sy:.31,y:.59});
+        layers.push({strokes:mini,color:SAUDI_WHITE,b:.72*fadeWindow(t,30.4,31.0,35.7,36.05)});
+      }
+
+      // A short blackout gap between story beats sharpens transitions.
+      const positions=[],colors=[],blank=[];
+      for(const layer of layers){
+        if(layer.b<=.005) continue;
+        for(const stroke of layer.strokes) addFrameStroke(stroke,layer.color,layer.b,positions,colors,blank);
+      }
+      if(blank.length<2){
+        positions.push(0,0,0,.001,0,0);
+        colors.push(0,0,0,0,0,0);
+        blank.push(1,1);
+      }
+      return {
+        number:index,name:'SAUDI '+String(index).padStart(4,'0'),projector:0,
+        count:blank.length,
+        position:new Float32Array(positions),
+        color:new Float32Array(colors),
+        blank:new Uint8Array(blank)
+      };
+    }
+
+    function buildSaudiAsset(){
+      const textStrokes=buildSaudiTextStrokes();
+      const frameCount=Math.ceil(SAUDI_DURATION*SAUDI_FPS)+1;
+      const frames=[];
+      let totalPoints=0,blanked=0;
+      for(let i=0;i<frameCount;i++){
+        const t=Math.min(SAUDI_DURATION,i/SAUDI_FPS);
+        const frame=makeSaudiFrame(i,t,textStrokes);
+        frames.push(frame);
+        totalPoints+=frame.count;
+        for(const v of frame.blank) blanked+=v;
+      }
+      const tracks=new Map([[0,frames]]);
+      return {frames,tracks,totalPoints,blanked,paletteFallbacks:0,eof:true,bytes:0,custom:true,duration:SAUDI_DURATION,fps:SAUDI_FPS};
+    }
+
+    async function ensureSaudiAudio(){
+      if(saudiAudioReady) return saudiAudio;
+      if(saudiAudioPromise) return saudiAudioPromise;
+      saudiAudioPromise=(async()=>{
+        const parts=await Promise.all(
+          Array.from({length:SAUDI_AUDIO_CHUNKS},(_,i)=>{
+            const n=String(i).padStart(2,'0');
+            return fetch(SAUDI_AUDIO_BASE+n+'.b64',{cache:'force-cache'}).then(r=>{
+              if(!r.ok) throw new Error('Audio chunk '+n+' failed');
+              return r.text();
+            });
+          })
+        );
+        const b64=parts.join('').replace(/\s+/g,'');
+        const binary=atob(b64);
+        const bytes=new Uint8Array(binary.length);
+        for(let i=0;i<binary.length;i++) bytes[i]=binary.charCodeAt(i);
+        saudiAudioUrl=URL.createObjectURL(new Blob([bytes],{type:'audio/mpeg'}));
+        saudiAudio.src=saudiAudioUrl;
+        saudiAudio.load();
+        saudiAudioReady=true;
+        return saudiAudio;
+      })();
+      return saudiAudioPromise;
+    }
+
+    async function startSaudiPlayback(restart=false){
+      if(currentShowId!=='saudi') return;
+      try{
+        await ensureSaudiAudio();
+        if(restart){
+          saudiAudio.currentTime=0;
+          saudiLastFrame=-1;
+          if(laserShow) laserShow.seekFrame(0);
+        }
+        await saudiAudio.play();
+        playBtn.innerHTML='Ⅱ<span>إيقاف</span>';
+        setStatus('السعودية · موسيقى متزامنة',true);
+      }catch(err){
+        console.warn('[ABODEN LASER] Audio playback',err);
+        playBtn.innerHTML='▶<span>تشغيل</span>';
+        notify('اضغط تشغيل لبدء الموسيقى');
+      }
+    }
+
+    function stopSaudiPlayback(reset=false){
+      saudiAudio.pause();
+      if(reset&&saudiAudioReady){
+        try{saudiAudio.currentTime=0;}catch{}
+        saudiLastFrame=-1;
+      }
+    }
+
+    function syncSaudiTimeline(force=false){
+      if(currentShowId!=='saudi'||!laserShow) return;
+      const time=Math.min(SAUDI_DURATION-.001,Math.max(0,saudiAudioReady?saudiAudio.currentTime:0));
+      const frame=Math.min(laserShow.frameCount-1,Math.floor(time*SAUDI_FPS));
+      if(force||frame!==saudiLastFrame){
+        saudiLastFrame=frame;
+        laserShow.seekFrame(frame);
+      }
+    }
+
+    saudiAudio.addEventListener('ended',()=>{
+      if(currentShowId!=='saudi') return;
+      syncSaudiTimeline(true);
+      playBtn.innerHTML='▶<span>إعادة</span>';
+      setStatus('السعودية · انتهى العرض',true);
+    });
+
     async function loadAsset(showId,{initial=false}={}){
       if(assetCache.has(showId)) return assetCache.get(showId);
       const item=SHOWS.find(s=>s.id===showId);
-      if(!item) throw new Error('Unknown ILDA show');
+      if(!item) throw new Error('Unknown laser show');
+
+      if(item.kind==='custom'){
+        if(initial) setLoadProgress(36,'بناء قصة السعودية…');
+        const asset=buildSaudiAsset();
+        assetCache.set(showId,asset);
+        ensureSaudiAudio().catch(err=>console.warn('[ABODEN LASER] audio preload',err));
+        if(initial) setLoadProgress(76,'تجهيز المشاهد والموسيقى…');
+        return asset;
+      }
 
       const loader=new ILDALoader();
       const asset=await new Promise((resolve,reject)=>{
@@ -721,14 +1116,34 @@
       setStatus('تحميل '+item.name+'…',false);
 
       try{
+        if(currentShowId==='saudi') stopSaudiPlayback(true);
+
         const asset=await loadAsset(id);
         laserShow.setData(asset);
-        laserShow.playing=true;
         currentShowId=id;
-        playBtn.innerHTML='Ⅱ<span>إيقاف</span>';
+        saudiLastFrame=-1;
+
+        if(id==='saudi'){
+          laserShow.playing=false;
+          laserShow.pointRate=10000;
+          laserShow.lightDecay=.90;
+          laserShow.intensity=1.15;
+          laserShow.beamIntensity=.54;
+          syncSaudiTimeline(true);
+          if(placed) await startSaudiPlayback(true);
+          else playBtn.innerHTML='▶<span>بعد التثبيت</span>';
+        }else{
+          laserShow.playing=true;
+          laserShow.pointRate=8000;
+          laserShow.lightDecay=.95;
+          laserShow.intensity=1;
+          laserShow.beamIntensity=.5;
+          playBtn.innerHTML='Ⅱ<span>إيقاف</span>';
+        }
+
         refreshShowButtons();
         setStatus(item.name+(pipelineReady?' · Bloom':'') ,true);
-        notify('تم تشغيل '+item.name);
+        notify(id==='saudi'?'تم تجهيز قصة السعودية':'تم تشغيل '+item.name);
       }catch(err){
         console.error(err);
         setStatus('تعذر تحميل العرض',false);
@@ -818,6 +1233,18 @@
       laserShow.intensity=1;
       laserShow.lightDecay=.95;
       laserShow.pointRate=8000;
+
+      if(currentShowId==='saudi'){
+        laserShow.playing=false;
+        laserShow.pointRate=10000;
+        laserShow.lightDecay=.90;
+        laserShow.intensity=1.15;
+        laserShow.beamIntensity=.54;
+        laserShow.seekFrame(0);
+        saudiLastFrame=0;
+        playBtn.innerHTML='▶<span>بعد التثبيت</span>';
+      }
+
       laserRig.add(laserShow);
       laserScene.add(laserRig);
 
@@ -931,9 +1358,12 @@
       placeBtn.textContent='إعادة التثبيت';
       setStatus(SHOWS.find(s=>s.id===currentShowId)?.name||'العرض يعمل',true);
       notify('تم تثبيت جهاز الليزر');
+
+      if(currentShowId==='saudi') startSaudiPlayback(true);
     }
 
     function resetPlacement(){
+      if(currentShowId==='saudi') stopSaudiPlayback(false);
       placed=false;
       surfaceReady=false;
       stableMs=0;
@@ -964,8 +1394,27 @@
       if(projectorRig) projectorRig.rotation.y=laserRig.rotation.y;
     }
 
-    function togglePlay(){
+    async function togglePlay(){
       if(!laserShow) return;
+
+      if(currentShowId==='saudi'){
+        if(!placed){
+          notify('ثبّت جهاز الليزر أولًا');
+          return;
+        }
+        if(saudiAudio.ended||saudiAudio.currentTime>=SAUDI_DURATION-.1){
+          await startSaudiPlayback(true);
+        }else if(saudiAudio.paused){
+          await startSaudiPlayback(false);
+        }else{
+          saudiAudio.pause();
+          syncSaudiTimeline(true);
+          playBtn.innerHTML='▶<span>تشغيل</span>';
+          notify('إيقاف العرض');
+        }
+        return;
+      }
+
       laserShow.playing=!laserShow.playing;
       playBtn.innerHTML=laserShow.playing?'Ⅱ<span>إيقاف</span>':'▶<span>تشغيل</span>';
       notify(laserShow.playing?'تشغيل العرض':'إيقاف العرض');
@@ -987,7 +1436,14 @@
       lastTime=now;
 
       updatePlacement(dt);
-      if(laserShow) laserShow.update(dt);
+      if(laserShow){
+        if(currentShowId==='saudi'){
+          syncSaudiTimeline(false);
+          laserShow.update(0);
+        }else{
+          laserShow.update(dt);
+        }
+      }
 
       if(laserRenderer&&laserScene&&laserCamera){
         syncLaserCamera();
@@ -1002,6 +1458,7 @@
 
     startBtn.addEventListener('click',()=>{
       if(!xrReady||xrStarted) return;
+      ensureSaudiAudio().catch(err=>console.warn('[ABODEN LASER] audio preload',err));
       xrStarted=true;
       startBtn.disabled=true;
       startBtn.textContent='جاري التحميل…';
