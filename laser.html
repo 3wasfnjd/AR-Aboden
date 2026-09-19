@@ -257,6 +257,8 @@
     const UPSTREAM='https://cdn.jsdelivr.net/gh/artcodev/three-ilda@6044b91d120cc01f73bdaebed4f7e4d03feb0d2f/examples/public/ilda/';
     const SAUDI_DURATION=36.049;
     const SAUDI_FPS=18;
+    const SAUDI_POINT_RATE=9000;
+    const SAUDI_POINTS_PER_FRAME=Math.round(SAUDI_POINT_RATE/SAUDI_FPS);
     const SAUDI_AUDIO_URL='./assets/laser/saudi_anthem.mp3';
     const SHOWS=[
       {id:'saudi',name:'السعودية',kind:'custom',audio:true},
@@ -317,6 +319,7 @@
     saudiAudio.crossOrigin='anonymous';
     let saudiAudioPromise=null;
     let saudiLastFrame=-1;
+    let saudiLastAudioTime=0;
     let saudiAudioReady=false;
 
     const raycaster=new THREE.Raycaster();
@@ -965,6 +968,28 @@
       };
     }
 
+    function normalizeSaudiFrame(frame,target=SAUDI_POINTS_PER_FRAME){
+      if(frame.count===target) return frame;
+
+      const positions=new Float32Array(target*3);
+      const colors=new Float32Array(target*3);
+      const blank=new Uint8Array(target);
+
+      for(let i=0;i<target;i++){
+        const src=Math.min(frame.count-1,Math.floor(i*frame.count/target));
+        const s=src*3,d=i*3;
+        positions[d]=frame.position[s];
+        positions[d+1]=frame.position[s+1];
+        positions[d+2]=0;
+        colors[d]=frame.color[s];
+        colors[d+1]=frame.color[s+1];
+        colors[d+2]=frame.color[s+2];
+        blank[i]=frame.blank[src];
+      }
+
+      return {...frame,count:target,position:positions,color:colors,blank};
+    }
+
     function buildSaudiAsset(){
       const textStrokes=buildSaudiTextStrokes();
       const frameCount=Math.ceil(SAUDI_DURATION*SAUDI_FPS)+1;
@@ -972,7 +997,7 @@
       let totalPoints=0,blanked=0;
       for(let i=0;i<frameCount;i++){
         const t=Math.min(SAUDI_DURATION,i/SAUDI_FPS);
-        const frame=makeSaudiFrame(i,t,textStrokes);
+        const frame=normalizeSaudiFrame(makeSaudiFrame(i,t,textStrokes));
         frames.push(frame);
         totalPoints+=frame.count;
         for(const v of frame.blank) blanked+=v;
@@ -1021,16 +1046,29 @@
       if(currentShowId!=='saudi') return;
       try{
         await ensureSaudiAudio();
+
         if(restart){
           saudiAudio.currentTime=0;
-          saudiLastFrame=-1;
-          if(laserShow) laserShow.seekFrame(0);
+          saudiLastAudioTime=0;
+          saudiLastFrame=0;
+          if(laserShow){
+            laserShow.playing=false;
+            laserShow.seekFrame(0);
+          }
         }
+
         await saudiAudio.play();
+
+        if(laserShow){
+          laserShow.playing=true;
+          saudiLastAudioTime=saudiAudio.currentTime;
+        }
+
         playBtn.innerHTML='Ⅱ<span>إيقاف</span>';
         setStatus('السعودية · موسيقى متزامنة',true);
       }catch(err){
         console.warn('[ABODEN LASER] Audio playback',err);
+        if(laserShow) laserShow.playing=false;
         playBtn.innerHTML='▶<span>تشغيل</span>';
         notify('اضغط تشغيل لبدء الموسيقى');
       }
@@ -1038,25 +1076,58 @@
 
     function stopSaudiPlayback(reset=false){
       saudiAudio.pause();
+      if(laserShow&&currentShowId==='saudi') laserShow.playing=false;
+
       if(reset&&saudiAudioReady){
         try{saudiAudio.currentTime=0;}catch{}
-        saudiLastFrame=-1;
+        saudiLastAudioTime=0;
+        saudiLastFrame=0;
+        if(laserShow) laserShow.seekFrame(0);
       }
     }
 
     function syncSaudiTimeline(force=false){
       if(currentShowId!=='saudi'||!laserShow) return;
+
       const time=Math.min(SAUDI_DURATION-.001,Math.max(0,saudiAudioReady?saudiAudio.currentTime:0));
       const frame=Math.min(laserShow.frameCount-1,Math.floor(time*SAUDI_FPS));
-      if(force||frame!==saudiLastFrame){
+
+      if(force){
+        laserShow.playing=false;
+        laserShow.seekFrame(frame);
         saudiLastFrame=frame;
+        saudiLastAudioTime=time;
+        return;
+      }
+
+      if(saudiAudio.paused||saudiAudio.ended){
+        laserShow.playing=false;
+        laserShow.update(0);
+        return;
+      }
+
+      let delta=time-saudiLastAudioTime;
+
+      // Normal path: drive the laser scanner with the audio clock itself.
+      // This keeps the 36-second story locked to the music even if RAF varies.
+      if(delta>=0&&delta<=.30){
+        laserShow.playing=true;
+        if(delta>0) laserShow.update(delta);
+      }else{
+        // Safari can jump its media clock after an interruption/backgrounding.
+        // Rebuild the correct visual frame instead of processing a huge backlog.
+        laserShow.playing=false;
         laserShow.seekFrame(frame);
       }
+
+      saudiLastAudioTime=time;
+      saudiLastFrame=frame;
     }
 
     saudiAudio.addEventListener('ended',()=>{
       if(currentShowId!=='saudi') return;
       syncSaudiTimeline(true);
+      if(laserShow) laserShow.playing=false;
       playBtn.innerHTML='▶<span>إعادة</span>';
       setStatus('السعودية · انتهى العرض',true);
     });
@@ -1148,16 +1219,18 @@
 
         if(id==='saudi'){
           laserShow.playing=false;
-          laserShow.pointRate=10000;
-          laserShow.lightDecay=.90;
-          laserShow.intensity=1.15;
-          laserShow.beamIntensity=.54;
+          laserShow.pointRate=SAUDI_POINT_RATE;
+          laserShow.blankingOffset=0;
+          laserShow.lightDecay=.93;
+          laserShow.intensity=1.35;
+          laserShow.beamIntensity=.66;
           syncSaudiTimeline(true);
           if(placed) await startSaudiPlayback(true);
           else playBtn.innerHTML='▶<span>بعد التثبيت</span>';
         }else{
           laserShow.playing=true;
           laserShow.pointRate=8000;
+          laserShow.blankingOffset=-3;
           laserShow.lightDecay=.95;
           laserShow.intensity=1;
           laserShow.beamIntensity=.5;
@@ -1259,12 +1332,14 @@
 
       if(currentShowId==='saudi'){
         laserShow.playing=false;
-        laserShow.pointRate=10000;
-        laserShow.lightDecay=.90;
-        laserShow.intensity=1.15;
-        laserShow.beamIntensity=.54;
+        laserShow.pointRate=SAUDI_POINT_RATE;
+        laserShow.blankingOffset=0;
+        laserShow.lightDecay=.93;
+        laserShow.intensity=1.35;
+        laserShow.beamIntensity=.66;
         laserShow.seekFrame(0);
         saudiLastFrame=0;
+        saudiLastAudioTime=0;
         playBtn.innerHTML='▶<span>بعد التثبيت</span>';
       }
 
@@ -1431,6 +1506,7 @@
           await startSaudiPlayback(false);
         }else{
           saudiAudio.pause();
+          if(laserShow) laserShow.playing=false;
           syncSaudiTimeline(true);
           playBtn.innerHTML='▶<span>تشغيل</span>';
           notify('إيقاف العرض');
@@ -1462,7 +1538,6 @@
       if(laserShow){
         if(currentShowId==='saudi'){
           syncSaudiTimeline(false);
-          laserShow.update(0);
         }else{
           laserShow.update(dt);
         }
