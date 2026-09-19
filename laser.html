@@ -796,8 +796,13 @@
       setLoadProgress(20,'تحميل عرض الليزر…');
       const asset=await loadAsset(currentShowId,{initial:true});
 
-      laserShow=new LaserShow(asset,{capacity:2048,width:2.45,height:1.55});
-      laserShow.position.set(0,1.13,-2.45);
+      // Keep the projected image farther from the physical projector so
+      // the beam cone reads like a real stage laser instead of a near-field fan.
+      const LASER_PROJECTION_DISTANCE=4.15;
+      const LASER_PROJECTION_HEIGHT=1.42;
+
+      laserShow=new LaserShow(asset,{capacity:2048,width:3.35,height:2.12});
+      laserShow.position.set(0,LASER_PROJECTION_HEIGHT,-LASER_PROJECTION_DISTANCE);
 
       // Projector and laser light live in separate scenes but share the same
       // rig transform. Convert the physical aperture from rig-local space into
