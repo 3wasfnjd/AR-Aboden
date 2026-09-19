@@ -44,6 +44,13 @@
       display:block!important;z-index:0!important;transform:none!important;
       filter:none!important;-webkit-filter:none!important;opacity:1!important
     }
+    #laserfeed{
+      position:fixed!important;left:0!important;top:0!important;
+      width:var(--app-w)!important;height:var(--app-h)!important;
+      min-width:var(--app-w)!important;min-height:var(--app-h)!important;
+      display:block!important;z-index:5!important;pointer-events:none!important;
+      background:#000;mix-blend-mode:screen;transform:none!important
+    }
     .ui{
       position:fixed;left:0;top:0;width:var(--app-w);height:var(--app-h);
       z-index:20;color:#fff;pointer-events:none
@@ -188,6 +195,7 @@
 </head>
 <body>
   <canvas id="camerafeed"></canvas>
+  <canvas id="laserfeed"></canvas>
   <a class="home-btn" href="./index.html">⌂ الرئيسية</a>
 
   <div class="ui" id="gameUi">
@@ -242,6 +250,7 @@
     import * as THREE from 'three';
     import {ILDALoader} from 'https://cdn.jsdelivr.net/gh/artcodev/three-ilda@6044b91d120cc01f73bdaebed4f7e4d03feb0d2f/src/loaders/ILDALoader.js';
     import {LaserShow} from 'https://cdn.jsdelivr.net/gh/artcodev/three-ilda@6044b91d120cc01f73bdaebed4f7e4d03feb0d2f/src/webgl/LaserShow.js';
+    import {LaserShowPipeline} from 'https://cdn.jsdelivr.net/gh/artcodev/three-ilda@6044b91d120cc01f73bdaebed4f7e4d03feb0d2f/src/webgl/LaserShowPipeline.js';
 
     window.THREE=THREE;
 
@@ -254,6 +263,7 @@
     ];
 
     const canvas=document.getElementById('camerafeed');
+    const laserCanvas=document.getElementById('laserfeed');
     const intro=document.getElementById('intro');
     const startBtn=document.getElementById('startBtn');
     const errorBox=document.getElementById('errorBox');
@@ -278,7 +288,13 @@
     let xrReady=false;
     let xrStarted=false;
     let scene,camera,renderer;
+    let laserScene=null;
+    let laserCamera=null;
+    let laserRenderer=null;
+    let laserPipeline=null;
+    let pipelineReady=false;
 
+    let projectorRig=null;
     let laserRig=null;
     let laserShow=null;
     let placed=false;
@@ -313,6 +329,10 @@
         cameraCanvas.style.setProperty('height',h+'px','important');
       }
 
+      laserCanvas.style.setProperty('width',w+'px','important');
+      laserCanvas.style.setProperty('height',h+'px','important');
+      if(laserRenderer) laserRenderer.setSize(w,h,false);
+
       requestAnimationFrame(()=>{
         if(cameraCanvas){
           cameraCanvas.style.setProperty('left','0px','important');
@@ -321,6 +341,7 @@
           cameraCanvas.style.setProperty('height',h+'px','important');
         }
         if(renderer?.setSize) renderer.setSize(w,h,false);
+        if(laserRenderer?.setSize) laserRenderer.setSize(w,h,false);
       });
     }
 
@@ -365,6 +386,36 @@
     function yawFacingCameraForward(){
       cameraHorizontalForward(forward);
       return Math.atan2(-forward.x,-forward.z);
+    }
+
+    function syncLaserCamera(){
+      if(!camera||!laserCamera) return;
+
+      camera.updateMatrixWorld(true);
+      camera.getWorldPosition(laserCamera.position);
+      camera.getWorldQuaternion(laserCamera.quaternion);
+
+      laserCamera.near=camera.near;
+      laserCamera.far=camera.far;
+      laserCamera.projectionMatrix.copy(camera.projectionMatrix);
+      laserCamera.projectionMatrixInverse.copy(camera.projectionMatrixInverse);
+      laserCamera.updateMatrix();
+      laserCamera.updateMatrixWorld(true);
+      laserCamera.matrixWorldInverse.copy(laserCamera.matrixWorld).invert();
+    }
+
+    function applyRigTransform(position,yaw,scale){
+      for(const rig of [projectorRig,laserRig]){
+        if(!rig) continue;
+        rig.position.copy(position);
+        rig.rotation.set(0,yaw,0);
+        rig.scale.setScalar(scale);
+      }
+    }
+
+    function setRigVisible(visible){
+      if(projectorRig) projectorRig.visible=visible;
+      if(laserRig) laserRig.visible=visible;
     }
 
     function createProjector(){
@@ -468,7 +519,7 @@
         currentShowId=id;
         playBtn.innerHTML='Ⅱ<span>إيقاف</span>';
         refreshShowButtons();
-        setStatus(item.name,true);
+        setStatus(item.name+(pipelineReady?' · Bloom':'') ,true);
         notify('تم تشغيل '+item.name);
       }catch(err){
         console.error(err);
@@ -490,6 +541,9 @@
       setTimeout(syncVisualViewport,60);
       setTimeout(syncVisualViewport,300);
 
+      // XR8 continues to own the real camera feed and the physical-looking
+      // projector model. Laser light is rendered by a second transparent
+      // WebGL layer using three-ilda's original post-processing pipeline.
       renderer.shadowMap.enabled=false;
       scene.add(new THREE.HemisphereLight(0xffffff,0x4b5a70,1.25));
 
@@ -498,35 +552,85 @@
       key.castShadow=false;
       scene.add(key);
 
-      setLoadProgress(8,'تجهيز جهاز الليزر…');
+      setLoadProgress(8,'تجهيز كاميرا الليزر…');
+
+      laserRenderer=new THREE.WebGLRenderer({
+        canvas:laserCanvas,
+        alpha:false,
+        antialias:false,
+        powerPreference:'high-performance'
+      });
+      laserRenderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
+      laserRenderer.outputColorSpace=THREE.LinearSRGBColorSpace;
+      laserRenderer.toneMapping=THREE.NoToneMapping;
+      laserRenderer.setClearColor(0x000000,1);
+      laserRenderer.autoClear=true;
+
+      laserScene=new THREE.Scene();
+      laserScene.background=new THREE.Color(0x000000);
+
+      laserCamera=new THREE.PerspectiveCamera(50,1,.01,1000);
+      syncLaserCamera();
+      syncVisualViewport();
+
+      projectorRig=new THREE.Group();
+      projectorRig.name='ABODEN physical laser projector';
+      projectorRig.visible=false;
+      projectorRig.add(createProjector());
+      scene.add(projectorRig);
 
       laserRig=new THREE.Group();
-      laserRig.name='ABODEN laser rig';
+      laserRig.name='ABODEN laser light rig';
       laserRig.visible=false;
-      laserRig.add(createProjector());
 
       setLoadProgress(20,'تحميل عرض الليزر…');
       const asset=await loadAsset(currentShowId,{initial:true});
 
       laserShow=new LaserShow(asset,{capacity:2048,width:2.45,height:1.55});
       laserShow.position.set(0,1.13,-2.45);
-      laserShow.projector.position.set(0,-1.05,2.45);
+
+      // Match the beam aperture to the procedural projector lens exactly:
+      // lens world-local point = (0, 0.18, -0.168).
+      laserShow.projector.position.set(0,-.95,2.282);
       laserShow.beamMode='Front';
-      laserShow.beamIntensity=.24;
-      laserShow.intensity=4.8;
-      laserShow.lightDecay=.94;
+
+      // Start from three-ilda's own visual defaults. The pipeline supplies
+      // bloom, beam blur and atmospheric haze instead of overdriving raw lines.
+      laserShow.beamIntensity=.5;
+      laserShow.intensity=1;
+      laserShow.lightDecay=.95;
       laserShow.pointRate=8000;
       laserRig.add(laserShow);
+      laserScene.add(laserRig);
 
-      scene.add(laserRig);
+      setLoadProgress(88,'تجهيز Bloom و Haze…');
+
+      try{
+        laserPipeline=new LaserShowPipeline(
+          laserRenderer,
+          laserScene,
+          laserCamera,
+          {strength:15,radius:1,threshold:0,samples:2}
+        );
+        laserPipeline.add(laserShow);
+        pipelineReady=true;
+      }catch(err){
+        // The raw WebGL laser remains available if a device cannot allocate
+        // the half-float post-processing targets.
+        console.warn('[ABODEN LASER] Pipeline fallback',err);
+        laserPipeline=null;
+        pipelineReady=false;
+      }
+
       buildShowButtons();
 
-      setLoadProgress(100,'جاهز');
+      setLoadProgress(100,pipelineReady?'جاهز · مؤثرات الليزر الكاملة':'جاهز · الوضع الأساسي');
       setStatus('امسح الأرض',true);
       requestAnimationFrame(loop);
 
       requestAnimationFrame(()=>{
         intro.style.display='none';
+        if(!pipelineReady) notify('تم تشغيل وضع ليزر متوافق بدون المؤثرات الثقيلة');
       });
     }
 
@@ -567,7 +671,7 @@
         reticleEl.classList.remove('on');
         stableMs=0;
         surfaceReady=false;
-        if(laserRig) laserRig.visible=false;
+        setRigVisible(false);
         setStatus('ابحث عن الأرض',false);
         return;
       }
@@ -582,11 +686,9 @@
 
       reticleEl.classList.add('on');
 
-      if(laserRig){
-        laserRig.position.copy(stablePoint);
-        laserRig.rotation.y=yawFacingCameraForward();
-        laserRig.scale.setScalar(rigScale);
-        laserRig.visible=true;
+      if(laserRig&&projectorRig){
+        applyRigTransform(stablePoint,yawFacingCameraForward(),rigScale);
+        setRigVisible(true);
       }
 
       surfaceReady=stableMs>650;
@@ -603,10 +705,8 @@
         return;
       }
 
-      laserRig.position.copy(stablePoint);
-      laserRig.rotation.y=yawFacingCameraForward();
-      laserRig.scale.setScalar(rigScale);
-      laserRig.visible=true;
+      applyRigTransform(stablePoint,yawFacingCameraForward(),rigScale);
+      setRigVisible(true);
       placed=true;
 
       guide.classList.add('hidden');
@@ -621,7 +721,7 @@
       stableMs=0;
       stablePoint.set(0,0,0);
       prevHit.set(999,999,999);
-      if(laserRig) laserRig.visible=false;
+      setRigVisible(false);
       guide.classList.remove('hidden');
       placeBtn.textContent='ثبّت الليزر';
       setStatus('أعد مسح الأرض',false);
@@ -630,7 +730,10 @@
 
     function adjustScale(delta){
       rigScale=THREE.MathUtils.clamp(Math.round((rigScale+delta)*100)/100,.55,1.55);
-      if(laserRig) laserRig.scale.setScalar(rigScale);
+      if(laserRig&&projectorRig){
+        laserRig.scale.setScalar(rigScale);
+        projectorRig.scale.setScalar(rigScale);
+      }
       notify('حجم العرض '+Math.round(rigScale*100)+'%');
     }
 
@@ -640,6 +743,7 @@
         return;
       }
       laserRig.rotation.y+=delta;
+      if(projectorRig) projectorRig.rotation.y=laserRig.rotation.y;
     }
 
     function togglePlay(){
@@ -666,6 +770,16 @@
 
       updatePlacement(dt);
       if(laserShow) laserShow.update(dt);
+
+      if(laserRenderer&&laserScene&&laserCamera){
+        syncLaserCamera();
+        if(laserPipeline) laserPipeline.render();
+        else{
+          laserRenderer.setRenderTarget(null);
+          laserRenderer.clear();
+          laserRenderer.render(laserScene,laserCamera);
+        }
+      }
     }
 
     startBtn.addEventListener('click',()=>{
