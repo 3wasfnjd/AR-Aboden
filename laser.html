@@ -1,0 +1,734 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+  <meta name="theme-color" content="#020409">
+  <title>ABODEN LASER SHOW · AR</title>
+
+  <script
+    src="https://cdn.jsdelivr.net/npm/@8thwall/engine-binary@1/dist/xr.js"
+    async crossorigin="anonymous"
+    data-preload-chunks="slam"
+  ></script>
+
+  <script type="importmap">
+  {
+    "imports":{
+      "three":"https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.module.js",
+      "three/addons/":"https://cdn.jsdelivr.net/npm/three@0.185.1/examples/jsm/"
+    }
+  }
+  </script>
+
+  <style>
+    :root{
+      --app-w:100vw;--app-h:100dvh;color-scheme:dark;
+      --cyan:#6df4ff;--violet:#a98cff;--panel:rgba(3,7,14,.78);
+    }
+    *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+    html{margin:0;width:100%;height:100%;min-height:100%;background:#000;overflow:hidden}
+    body{
+      position:fixed;left:0;top:0;margin:0;
+      width:var(--app-w);height:var(--app-h);min-height:var(--app-h);
+      overflow:hidden;overscroll-behavior:none;background:#000;
+      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Tahoma,Arial,sans-serif;
+      touch-action:none
+    }
+    #camerafeed{
+      position:fixed!important;left:0!important;top:0!important;right:auto!important;bottom:auto!important;
+      margin:0!important;padding:0!important;
+      width:var(--app-w)!important;height:var(--app-h)!important;
+      min-width:var(--app-w)!important;min-height:var(--app-h)!important;
+      max-width:none!important;max-height:none!important;
+      display:block!important;z-index:0!important;transform:none!important;
+      filter:none!important;-webkit-filter:none!important;opacity:1!important
+    }
+    .ui{
+      position:fixed;left:0;top:0;width:var(--app-w);height:var(--app-h);
+      z-index:20;color:#fff;pointer-events:none
+    }
+    .home-btn{
+      position:fixed;left:14px;top:max(14px,env(safe-area-inset-top));z-index:70;
+      pointer-events:auto;text-decoration:none;color:#fff;
+      background:rgba(2,6,12,.76);border:1px solid rgba(255,255,255,.14);
+      border-radius:999px;padding:9px 13px;font-size:12px;font-weight:900;
+      backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)
+    }
+    .top{
+      position:absolute;left:112px;right:14px;top:max(14px,env(safe-area-inset-top));
+      display:flex;align-items:center;justify-content:space-between;gap:8px
+    }
+    .pill{
+      min-height:38px;display:flex;align-items:center;gap:7px;
+      padding:0 12px;border-radius:999px;background:rgba(2,6,12,.74);
+      border:1px solid rgba(255,255,255,.13);
+      backdrop-filter:blur(13px);-webkit-backdrop-filter:blur(13px);
+      font-size:11px;font-weight:900
+    }
+    .brand{letter-spacing:.08em}
+    .brand b{color:var(--cyan)}
+    .status .dot{
+      width:7px;height:7px;border-radius:50%;background:#f5c451;
+      box-shadow:0 0 12px rgba(245,196,81,.8)
+    }
+    .status.ready .dot{background:#6ff3a6;box-shadow:0 0 12px rgba(111,243,166,.8)}
+    .guide{
+      position:absolute;left:50%;top:82px;transform:translateX(-50%);
+      width:min(90vw,390px);padding:10px 14px;border-radius:16px;text-align:center;
+      background:rgba(2,6,12,.70);border:1px solid rgba(255,255,255,.12);
+      backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+      font-size:11px;line-height:1.55;color:#dbe6ee
+    }
+    .guide b{display:block;color:#fff;font-size:12px;margin-bottom:2px}
+    .guide.hidden{display:none}
+    .reticle{
+      position:absolute;left:50%;top:50%;width:30px;height:30px;
+      transform:translate(-50%,-50%);border-radius:50%;
+      border:1px solid rgba(109,244,255,.9);
+      box-shadow:0 0 22px rgba(109,244,255,.38),inset 0 0 12px rgba(109,244,255,.18);
+      opacity:0;transition:opacity .16s
+    }
+    .reticle.on{opacity:1}
+    .reticle:before,.reticle:after{
+      content:"";position:absolute;left:50%;top:50%;background:rgba(255,255,255,.9)
+    }
+    .reticle:before{width:8px;height:1px;transform:translate(-50%,-50%)}
+    .reticle:after{width:1px;height:8px;transform:translate(-50%,-50%)}
+    .placement{
+      position:absolute;right:15px;top:calc(max(14px,env(safe-area-inset-top)) + 56px);
+      display:flex;gap:8px;pointer-events:auto;flex-wrap:wrap;justify-content:flex-end
+    }
+    .action{
+      border:1px solid rgba(255,255,255,.14);border-radius:15px;
+      background:rgba(2,6,12,.76);color:#fff;padding:11px 14px;
+      font-size:12px;font-weight:900;
+      backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+      touch-action:manipulation
+    }
+    .action.primary{
+      background:linear-gradient(135deg,#eafcff,#c8f7ff);color:#051018;
+      border-color:rgba(255,255,255,.42)
+    }
+    .action:active,.tool:active,.showBtn:active{transform:scale(.96)}
+    .showDock{
+      position:absolute;left:12px;right:12px;bottom:calc(max(18px,env(safe-area-inset-bottom)) + 70px);
+      pointer-events:auto
+    }
+    .showTitle{
+      font-size:10px;color:#c7d5df;margin:0 4px 7px;text-shadow:0 2px 8px #000
+    }
+    .showStrip{
+      direction:ltr;display:flex;gap:7px;overflow-x:auto;padding:2px 1px 5px;
+      scrollbar-width:none
+    }
+    .showStrip::-webkit-scrollbar{display:none}
+    .showBtn{
+      flex:0 0 auto;border:1px solid rgba(255,255,255,.13);border-radius:999px;
+      background:rgba(2,6,12,.78);color:#dce8f1;padding:9px 13px;
+      font-size:11px;font-weight:850;white-space:nowrap;
+      backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)
+    }
+    .showBtn.active{
+      color:#061016;background:linear-gradient(135deg,var(--cyan),#d9fbff);
+      border-color:rgba(255,255,255,.48)
+    }
+    .showBtn:disabled{opacity:.45}
+    .tools{
+      position:absolute;left:12px;right:12px;bottom:max(12px,env(safe-area-inset-bottom));
+      display:grid;grid-template-columns:repeat(5,1fr);gap:7px;pointer-events:auto
+    }
+    .tool{
+      min-height:52px;border:1px solid rgba(255,255,255,.13);border-radius:16px;
+      background:rgba(2,6,12,.80);color:#fff;font-size:12px;font-weight:900;
+      backdrop-filter:blur(11px);-webkit-backdrop-filter:blur(11px);
+      touch-action:manipulation
+    }
+    .tool span{display:block;font-size:9px;color:#aebdca;font-weight:700;margin-top:2px}
+    .toast{
+      position:absolute;left:50%;bottom:168px;transform:translate(-50%,12px);
+      padding:9px 13px;border-radius:999px;background:rgba(2,6,12,.84);
+      border:1px solid rgba(255,255,255,.12);font-size:11px;font-weight:800;
+      opacity:0;transition:.2s;white-space:nowrap;max-width:88vw;overflow:hidden;text-overflow:ellipsis
+    }
+    .toast.show{opacity:1;transform:translate(-50%,0)}
+    #intro{
+      position:fixed;inset:0;z-index:60;display:flex;align-items:flex-end;justify-content:center;
+      padding:22px 18px max(30px,env(safe-area-inset-bottom));color:#fff;
+      background:
+        radial-gradient(circle at 50% 18%,rgba(88,128,255,.22),transparent 34%),
+        radial-gradient(circle at 20% 35%,rgba(64,240,255,.10),transparent 27%),
+        linear-gradient(#050814,#010205)
+    }
+    .card{
+      width:min(100%,540px);padding:25px;border-radius:27px;
+      background:rgba(255,255,255,.055);border:1px solid rgba(255,255,255,.11);
+      backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px)
+    }
+    .eyebrow{color:var(--cyan);font-size:11px;font-weight:950;letter-spacing:.16em;margin-bottom:8px}
+    .card h1{font-size:30px;line-height:1.08;margin:0 0 10px}
+    .card p{margin:0 0 18px;color:#c8d4df;font-size:13px;line-height:1.8}
+    .start{
+      width:100%;height:58px;border:0;border-radius:18px;
+      background:linear-gradient(135deg,#f3feff,#bdf8ff);color:#061017;
+      font-size:16px;font-weight:950
+    }
+    .start:disabled{opacity:.48}
+    .loadBox{display:none;margin:2px 0 16px}
+    .loadBox.show{display:block}
+    .loadMeta{display:flex;justify-content:space-between;gap:10px;margin-bottom:8px;font-size:11px;font-weight:850;color:#d8e6ee}
+    .loadTrack{height:9px;border-radius:999px;background:rgba(255,255,255,.09);overflow:hidden;border:1px solid rgba(255,255,255,.08)}
+    .loadFill{height:100%;width:0%;border-radius:inherit;background:linear-gradient(90deg,#7c86ff,var(--cyan));transition:width .15s ease}
+    .tiny{margin:11px 0 0!important;text-align:center;color:#7f8d99!important;font-size:10px!important;line-height:1.55!important}
+    .error{display:none;margin-top:12px;color:#ffb9bd;font-size:11px;line-height:1.6}
+    @media(max-width:380px){
+      .tools{gap:5px}.tool{font-size:11px;min-height:49px}.showDock{bottom:calc(max(14px,env(safe-area-inset-bottom)) + 66px)}
+    }
+  </style>
+</head>
+<body>
+  <canvas id="camerafeed"></canvas>
+  <a class="home-btn" href="./index.html">⌂ الرئيسية</a>
+
+  <div class="ui" id="gameUi">
+    <div class="top">
+      <div class="pill brand"><b>LASER</b> · ABODEN AR</div>
+      <div class="pill status" id="status"><span class="dot"></span><span id="statusText">جاهز</span></div>
+    </div>
+
+    <div class="guide" id="guide">
+      <b>حدد أرضية أمامك</b>
+      حرّك الجوال بهدوء حتى يستقر المؤشر، ثم ثبّت جهاز الليزر.
+    </div>
+
+    <div class="reticle" id="reticle"></div>
+    <div class="toast" id="toast"></div>
+
+    <div class="placement">
+      <button class="action primary" id="placeBtn">ثبّت الليزر</button>
+      <button class="action" id="resetBtn">إعادة التثبيت</button>
+    </div>
+
+    <div class="showDock">
+      <div class="showTitle">العروض الافتراضية</div>
+      <div class="showStrip" id="showStrip"></div>
+    </div>
+
+    <div class="tools">
+      <button class="tool" id="rotateLeftBtn">↺<span>تدوير</span></button>
+      <button class="tool" id="scaleDownBtn">−<span>الحجم</span></button>
+      <button class="tool" id="playBtn">Ⅱ<span>إيقاف</span></button>
+      <button class="tool" id="scaleUpBtn">＋<span>الحجم</span></button>
+      <button class="tool" id="rotateRightBtn">↻<span>تدوير</span></button>
+    </div>
+  </div>
+
+  <div id="intro">
+    <div class="card">
+      <div class="eyebrow">ABODEN AR · LASER LAB</div>
+      <h1>عرض ليزر داخل غرفتك</h1>
+      <p>ثبّت جهاز الليزر على الأرض وشاهد عرض ILDA متحركًا أمامك. النسخة الأولى تستخدم عروضًا افتراضية، وبعدها نضيف عروض عبودين الخاصة.</p>
+      <div class="loadBox" id="loadBox" aria-live="polite">
+        <div class="loadMeta"><span id="loadLabel">جاري تجهيز التجربة…</span><span id="loadPercent">0%</span></div>
+        <div class="loadTrack"><div class="loadFill" id="loadFill"></div></div>
+      </div>
+      <button class="start" id="startBtn" disabled>جاري تجهيز المحرك…</button>
+      <div class="error" id="errorBox"></div>
+      <p class="tiny">Laser engine: three-ilda · Artem Korenevych · MIT<br>Default ILDA demo files are loaded from the upstream project.</p>
+    </div>
+  </div>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import {ILDALoader} from 'https://cdn.jsdelivr.net/gh/artcodev/three-ilda@6044b91d120cc01f73bdaebed4f7e4d03feb0d2f/src/loaders/ILDALoader.js';
+    import {LaserShow} from 'https://cdn.jsdelivr.net/gh/artcodev/three-ilda@6044b91d120cc01f73bdaebed4f7e4d03feb0d2f/src/webgl/LaserShow.js';
+
+    window.THREE=THREE;
+
+    const UPSTREAM='https://cdn.jsdelivr.net/gh/artcodev/three-ilda@6044b91d120cc01f73bdaebed4f7e4d03feb0d2f/examples/public/ilda/';
+    const SHOWS=[
+      {id:'sylvester',name:'Sylvester',file:'sylvest.ild'},
+      {id:'dolphin',name:'Dolphin',file:'DOLPHIN.ILD'},
+      {id:'paperair',name:'Paper Air',file:'paperair.ild'},
+      {id:'plasma2',name:'Plasma 2',file:'PLASMA2.ild'}
+    ];
+
+    const canvas=document.getElementById('camerafeed');
+    const intro=document.getElementById('intro');
+    const startBtn=document.getElementById('startBtn');
+    const errorBox=document.getElementById('errorBox');
+    const loadBox=document.getElementById('loadBox');
+    const loadLabel=document.getElementById('loadLabel');
+    const loadPercent=document.getElementById('loadPercent');
+    const loadFill=document.getElementById('loadFill');
+    const status=document.getElementById('status');
+    const statusText=document.getElementById('statusText');
+    const guide=document.getElementById('guide');
+    const reticleEl=document.getElementById('reticle');
+    const toast=document.getElementById('toast');
+    const placeBtn=document.getElementById('placeBtn');
+    const resetBtn=document.getElementById('resetBtn');
+    const showStrip=document.getElementById('showStrip');
+    const rotateLeftBtn=document.getElementById('rotateLeftBtn');
+    const rotateRightBtn=document.getElementById('rotateRightBtn');
+    const scaleDownBtn=document.getElementById('scaleDownBtn');
+    const scaleUpBtn=document.getElementById('scaleUpBtn');
+    const playBtn=document.getElementById('playBtn');
+
+    let xrReady=false;
+    let xrStarted=false;
+    let scene,camera,renderer;
+
+    let laserRig=null;
+    let laserShow=null;
+    let placed=false;
+    let surfaceReady=false;
+    let stableMs=0;
+    let lastTime=performance.now();
+    let rigScale=1;
+    let currentShowId='sylvester';
+    let switchingShow=false;
+
+    const assetCache=new Map();
+    const raycaster=new THREE.Raycaster();
+    const centerNdc=new THREE.Vector2(0,0);
+    const floorPlane=new THREE.Plane(new THREE.Vector3(0,1,0),0);
+    const hitPoint=new THREE.Vector3();
+    const stablePoint=new THREE.Vector3();
+    const prevHit=new THREE.Vector3(999,999,999);
+    const forward=new THREE.Vector3();
+
+    function syncVisualViewport(){
+      const vv=window.visualViewport;
+      const w=Math.round(vv?.width||window.innerWidth||document.documentElement.clientWidth);
+      const h=Math.round(vv?.height||window.innerHeight||document.documentElement.clientHeight);
+      document.documentElement.style.setProperty('--app-w',w+'px');
+      document.documentElement.style.setProperty('--app-h',h+'px');
+
+      const cameraCanvas=document.getElementById('camerafeed');
+      if(cameraCanvas){
+        cameraCanvas.style.setProperty('left','0px','important');
+        cameraCanvas.style.setProperty('top','0px','important');
+        cameraCanvas.style.setProperty('width',w+'px','important');
+        cameraCanvas.style.setProperty('height',h+'px','important');
+      }
+
+      requestAnimationFrame(()=>{
+        if(cameraCanvas){
+          cameraCanvas.style.setProperty('left','0px','important');
+          cameraCanvas.style.setProperty('top','0px','important');
+          cameraCanvas.style.setProperty('width',w+'px','important');
+          cameraCanvas.style.setProperty('height',h+'px','important');
+        }
+        if(renderer?.setSize) renderer.setSize(w,h,false);
+      });
+    }
+
+    syncVisualViewport();
+    window.addEventListener('resize',syncVisualViewport,{passive:true});
+    window.addEventListener('orientationchange',()=>{
+      setTimeout(syncVisualViewport,80);
+      setTimeout(syncVisualViewport,350);
+    },{passive:true});
+    if(window.visualViewport){
+      window.visualViewport.addEventListener('resize',syncVisualViewport,{passive:true});
+      window.visualViewport.addEventListener('scroll',syncVisualViewport,{passive:true});
+    }
+
+    function notify(msg){
+      toast.textContent=msg;
+      toast.classList.add('show');
+      clearTimeout(window.__laserToast);
+      window.__laserToast=setTimeout(()=>toast.classList.remove('show'),1600);
+    }
+
+    function setStatus(text,ready=false){
+      statusText.textContent=text;
+      status.classList.toggle('ready',ready);
+    }
+
+    function setLoadProgress(value,label){
+      const pct=THREE.MathUtils.clamp(Math.round(value),0,100);
+      loadBox.classList.add('show');
+      loadLabel.textContent=label;
+      loadPercent.textContent=pct+'%';
+      loadFill.style.width=pct+'%';
+    }
+
+    function cameraHorizontalForward(out){
+      camera.getWorldDirection(out);
+      out.y=0;
+      if(out.lengthSq()<.0001) out.set(0,0,-1);
+      return out.normalize();
+    }
+
+    function yawFacingCameraForward(){
+      cameraHorizontalForward(forward);
+      return Math.atan2(-forward.x,-forward.z);
+    }
+
+    function createProjector(){
+      const g=new THREE.Group();
+      g.name='ABODEN laser projector';
+
+      const bodyMat=new THREE.MeshStandardMaterial({color:0x101720,roughness:.42,metalness:.62});
+      const sideMat=new THREE.MeshStandardMaterial({color:0x252d38,roughness:.55,metalness:.42});
+      const lensMat=new THREE.MeshStandardMaterial({
+        color:0xbdfbff,emissive:0x3eefff,emissiveIntensity:4.5,roughness:.16,metalness:.18
+      });
+      const glowMat=new THREE.MeshBasicMaterial({
+        color:0x6df4ff,transparent:true,opacity:.34,depthWrite:false,side:THREE.DoubleSide,
+        blending:THREE.AdditiveBlending
+      });
+
+      const base=new THREE.Mesh(new THREE.BoxGeometry(.46,.08,.34),bodyMat);
+      base.position.y=.04;
+      g.add(base);
+
+      const housing=new THREE.Mesh(new THREE.BoxGeometry(.36,.19,.28),sideMat);
+      housing.position.set(0,.165,-.015);
+      g.add(housing);
+
+      const lens=new THREE.Mesh(new THREE.CylinderGeometry(.072,.072,.055,28),lensMat);
+      lens.rotation.x=Math.PI/2;
+      lens.position.set(0,.18,-.168);
+      g.add(lens);
+
+      const ring=new THREE.Mesh(new THREE.RingGeometry(.18,.24,42).rotateX(-Math.PI/2),glowMat);
+      ring.position.y=.004;
+      g.add(ring);
+
+      const handle=new THREE.Mesh(new THREE.TorusGeometry(.115,.014,8,24,Math.PI),bodyMat);
+      handle.rotation.z=Math.PI;
+      handle.position.set(0,.31,.02);
+      g.add(handle);
+
+      g.traverse(o=>{if(o.isMesh){o.castShadow=false;o.receiveShadow=false;}});
+      return g;
+    }
+
+    async function loadAsset(showId,{initial=false}={}){
+      if(assetCache.has(showId)) return assetCache.get(showId);
+      const item=SHOWS.find(s=>s.id===showId);
+      if(!item) throw new Error('Unknown ILDA show');
+
+      const loader=new ILDALoader();
+      const asset=await new Promise((resolve,reject)=>{
+        loader.load(
+          UPSTREAM+item.file,
+          resolve,
+          (event)=>{
+            if(initial && event?.total>0){
+              const ratio=event.loaded/event.total;
+              setLoadProgress(20+ratio*65,'تحميل عرض الليزر…');
+            }else if(!initial && event?.total>0){
+              const pct=Math.round((event.loaded/event.total)*100);
+              setStatus('تحميل '+item.name+' · '+pct+'%',false);
+            }
+          },
+          reject
+        );
+      });
+
+      assetCache.set(showId,asset);
+      return asset;
+    }
+
+    function buildShowButtons(){
+      showStrip.innerHTML='';
+      for(const item of SHOWS){
+        const btn=document.createElement('button');
+        btn.className='showBtn'+(item.id===currentShowId?' active':'');
+        btn.textContent=item.name;
+        btn.dataset.showId=item.id;
+        btn.addEventListener('click',()=>switchShow(item.id));
+        showStrip.appendChild(btn);
+      }
+    }
+
+    function refreshShowButtons(){
+      for(const btn of showStrip.querySelectorAll('.showBtn')){
+        btn.classList.toggle('active',btn.dataset.showId===currentShowId);
+        btn.disabled=switchingShow;
+      }
+    }
+
+    async function switchShow(id){
+      if(switchingShow||id===currentShowId||!laserShow) return;
+      switchingShow=true;
+      refreshShowButtons();
+
+      const item=SHOWS.find(s=>s.id===id);
+      setStatus('تحميل '+item.name+'…',false);
+
+      try{
+        const asset=await loadAsset(id);
+        laserShow.setData(asset);
+        laserShow.playing=true;
+        currentShowId=id;
+        playBtn.innerHTML='Ⅱ<span>إيقاف</span>';
+        refreshShowButtons();
+        setStatus(item.name,true);
+        notify('تم تشغيل '+item.name);
+      }catch(err){
+        console.error(err);
+        setStatus('تعذر تحميل العرض',false);
+        notify('تعذر تحميل العرض');
+      }finally{
+        switchingShow=false;
+        refreshShowButtons();
+      }
+    }
+
+    async function setupScene(){
+      const xrScene=XR8.Threejs.xrScene();
+      scene=xrScene.scene;
+      camera=xrScene.camera;
+      renderer=xrScene.renderer;
+
+      syncVisualViewport();
+      setTimeout(syncVisualViewport,60);
+      setTimeout(syncVisualViewport,300);
+
+      renderer.shadowMap.enabled=false;
+      scene.add(new THREE.HemisphereLight(0xffffff,0x4b5a70,1.25));
+
+      const key=new THREE.DirectionalLight(0xffffff,.85);
+      key.position.set(2,4,2);
+      key.castShadow=false;
+      scene.add(key);
+
+      setLoadProgress(8,'تجهيز جهاز الليزر…');
+
+      laserRig=new THREE.Group();
+      laserRig.name='ABODEN laser rig';
+      laserRig.visible=false;
+      laserRig.add(createProjector());
+
+      setLoadProgress(20,'تحميل عرض الليزر…');
+      const asset=await loadAsset(currentShowId,{initial:true});
+
+      laserShow=new LaserShow(asset,{capacity:2048,width:2.45,height:1.55});
+      laserShow.position.set(0,1.13,-2.45);
+      laserShow.projector.position.set(0,-1.05,2.45);
+      laserShow.beamMode='Front';
+      laserShow.beamIntensity=.24;
+      laserShow.intensity=4.8;
+      laserShow.lightDecay=.94;
+      laserShow.pointRate=8000;
+      laserRig.add(laserShow);
+
+      scene.add(laserRig);
+      buildShowButtons();
+
+      setLoadProgress(100,'جاهز');
+      setStatus('امسح الأرض',true);
+      requestAnimationFrame(loop);
+
+      requestAnimationFrame(()=>{
+        intro.style.display='none';
+      });
+    }
+
+    function worldModule(){
+      return {
+        name:'aboden-laser-world',
+        onStart:async()=>{
+          try{
+            await setupScene();
+            window.dispatchEvent(new Event('resize'));
+          }catch(err){
+            console.error(err);
+            loadLabel.textContent='تعذر تشغيل تجربة الليزر';
+            loadPercent.textContent='!';
+            errorBox.style.display='block';
+            errorBox.textContent='تعذر تحميل محرك الليزر أو العرض الافتراضي. تحقق من الاتصال ثم أعد تحميل الصفحة.';
+            startBtn.textContent='أعد تحميل الصفحة';
+            startBtn.disabled=true;
+          }
+        },
+        onException:(error)=>{
+          console.error(error);
+          notify('حدث خطأ في التتبع');
+        }
+      };
+    }
+
+    function updatePlacement(dt){
+      if(placed){
+        reticleEl.classList.remove('on');
+        return;
+      }
+
+      raycaster.setFromCamera(centerNdc,camera);
+      const hit=raycaster.ray.intersectPlane(floorPlane,hitPoint);
+
+      if(!hit||hit.distanceTo(camera.position)>7){
+        reticleEl.classList.remove('on');
+        stableMs=0;
+        surfaceReady=false;
+        if(laserRig) laserRig.visible=false;
+        setStatus('ابحث عن الأرض',false);
+        return;
+      }
+
+      const delta=prevHit.distanceTo(hit);
+      if(delta<.018) stableMs+=dt*1000;
+      else stableMs=0;
+      prevHit.copy(hit);
+
+      if(stablePoint.lengthSq()===0) stablePoint.copy(hit);
+      else stablePoint.lerp(hit,.16);
+
+      reticleEl.classList.add('on');
+
+      if(laserRig){
+        laserRig.position.copy(stablePoint);
+        laserRig.rotation.y=yawFacingCameraForward();
+        laserRig.scale.setScalar(rigScale);
+        laserRig.visible=true;
+      }
+
+      surfaceReady=stableMs>650;
+      setStatus(surfaceReady?'السطح مستقر — ثبّت الليزر':'ثبّت الجوال قليلًا',surfaceReady);
+    }
+
+    function placeLaser(){
+      if(placed){
+        resetPlacement();
+        return;
+      }
+      if(!surfaceReady||!laserRig){
+        notify('انتظر حتى يستقر السطح');
+        return;
+      }
+
+      laserRig.position.copy(stablePoint);
+      laserRig.rotation.y=yawFacingCameraForward();
+      laserRig.scale.setScalar(rigScale);
+      laserRig.visible=true;
+      placed=true;
+
+      guide.classList.add('hidden');
+      placeBtn.textContent='إعادة التثبيت';
+      setStatus(SHOWS.find(s=>s.id===currentShowId)?.name||'العرض يعمل',true);
+      notify('تم تثبيت جهاز الليزر');
+    }
+
+    function resetPlacement(){
+      placed=false;
+      surfaceReady=false;
+      stableMs=0;
+      stablePoint.set(0,0,0);
+      prevHit.set(999,999,999);
+      if(laserRig) laserRig.visible=false;
+      guide.classList.remove('hidden');
+      placeBtn.textContent='ثبّت الليزر';
+      setStatus('أعد مسح الأرض',false);
+      try{XR8.XrController.recenter();}catch(err){console.warn(err);}
+    }
+
+    function adjustScale(delta){
+      rigScale=THREE.MathUtils.clamp(Math.round((rigScale+delta)*100)/100,.55,1.55);
+      if(laserRig) laserRig.scale.setScalar(rigScale);
+      notify('حجم العرض '+Math.round(rigScale*100)+'%');
+    }
+
+    function rotateRig(delta){
+      if(!laserRig||!laserRig.visible){
+        notify('ثبّت جهاز الليزر أولًا');
+        return;
+      }
+      laserRig.rotation.y+=delta;
+    }
+
+    function togglePlay(){
+      if(!laserShow) return;
+      laserShow.playing=!laserShow.playing;
+      playBtn.innerHTML=laserShow.playing?'Ⅱ<span>إيقاف</span>':'▶<span>تشغيل</span>';
+      notify(laserShow.playing?'تشغيل العرض':'إيقاف العرض');
+    }
+
+    placeBtn.addEventListener('click',placeLaser);
+    resetBtn.addEventListener('click',resetPlacement);
+    scaleDownBtn.addEventListener('click',()=>adjustScale(-.10));
+    scaleUpBtn.addEventListener('click',()=>adjustScale(.10));
+    rotateLeftBtn.addEventListener('click',()=>rotateRig(-Math.PI/18));
+    rotateRightBtn.addEventListener('click',()=>rotateRig(Math.PI/18));
+    playBtn.addEventListener('click',togglePlay);
+
+    function loop(now){
+      requestAnimationFrame(loop);
+      if(!camera||!scene) return;
+
+      const dt=Math.min(.05,Math.max(0,(now-lastTime)/1000||.016));
+      lastTime=now;
+
+      updatePlacement(dt);
+      if(laserShow) laserShow.update(dt);
+    }
+
+    startBtn.addEventListener('click',()=>{
+      if(!xrReady||xrStarted) return;
+      xrStarted=true;
+      startBtn.disabled=true;
+      startBtn.textContent='جاري التحميل…';
+      errorBox.style.display='none';
+      setLoadProgress(0,'تشغيل محرك الواقع المعزز…');
+
+      try{
+        XR8.run({canvas});
+        syncVisualViewport();
+        setTimeout(syncVisualViewport,120);
+        setTimeout(syncVisualViewport,500);
+        setTimeout(syncVisualViewport,1200);
+      }catch(err){
+        console.error(err);
+        xrStarted=false;
+        errorBox.style.display='block';
+        errorBox.textContent='تعذر تشغيل World Tracking. حدّث الصفحة وحاول مرة أخرى.';
+        startBtn.disabled=false;
+        startBtn.textContent='حاول مرة أخرى';
+      }
+    });
+
+    function initializeXR(){
+      if(xrReady||!window.XR8||!window.THREE) return;
+
+      try{
+        XR8.XrController.configure({
+          disableWorldTracking:false,
+          enableLighting:true,
+          enableWorldPoints:true,
+          scale:'responsive'
+        });
+
+        XR8.addCameraPipelineModules([
+          XR8.GlTextureRenderer.pipelineModule(),
+          XR8.Threejs.pipelineModule(),
+          XR8.XrController.pipelineModule(),
+          worldModule()
+        ]);
+
+        xrReady=true;
+        startBtn.disabled=false;
+        startBtn.textContent='ابدأ تجربة الليزر';
+      }catch(err){
+        console.error(err);
+        errorBox.style.display='block';
+        errorBox.textContent='لم يكتمل تحميل محرك AR. حدّث الصفحة وحاول مرة أخرى.';
+      }
+    }
+
+    if(window.XR8) initializeXR();
+    else window.addEventListener('xrloaded',initializeXR,{once:true});
+
+    setTimeout(()=>{
+      if(!xrReady){
+        errorBox.style.display='block';
+        errorBox.textContent='محرك AR يستغرق وقتًا أطول من المتوقع. تحقق من الاتصال ثم أعد تحميل الصفحة.';
+      }
+    },12000);
+  </script>
+</body>
+</html>
