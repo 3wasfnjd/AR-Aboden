@@ -419,43 +419,251 @@
     }
 
     function createProjector(){
-      const g=new THREE.Group();
-      g.name='ABODEN laser projector';
+      const root=new THREE.Group();
+      root.name='ABODEN stage laser projector';
 
-      const bodyMat=new THREE.MeshStandardMaterial({color:0x101720,roughness:.42,metalness:.62});
-      const sideMat=new THREE.MeshStandardMaterial({color:0x252d38,roughness:.55,metalness:.42});
-      const lensMat=new THREE.MeshStandardMaterial({
-        color:0xbdfbff,emissive:0x3eefff,emissiveIntensity:4.5,roughness:.16,metalness:.18
+      const darkMat=new THREE.MeshStandardMaterial({
+        color:0x0b1017,roughness:.48,metalness:.72
       });
-      const glowMat=new THREE.MeshBasicMaterial({
-        color:0x6df4ff,transparent:true,opacity:.34,depthWrite:false,side:THREE.DoubleSide,
+      const bodyMat=new THREE.MeshStandardMaterial({
+        color:0x202a36,roughness:.42,metalness:.58
+      });
+      const trimMat=new THREE.MeshStandardMaterial({
+        color:0x4b596a,roughness:.28,metalness:.86
+      });
+      const blackMat=new THREE.MeshStandardMaterial({
+        color:0x05070a,roughness:.62,metalness:.38
+      });
+      const lensMat=new THREE.MeshStandardMaterial({
+        color:0xcdfdff,
+        emissive:0x42eaff,
+        emissiveIntensity:5.2,
+        roughness:.08,
+        metalness:.12
+      });
+      const cyanMat=new THREE.MeshBasicMaterial({
+        color:0x58f4ff,transparent:true,opacity:.94,
+        depthWrite:false,blending:THREE.AdditiveBlending
+      });
+      const violetMat=new THREE.MeshBasicMaterial({
+        color:0xa46cff,transparent:true,opacity:.90,
+        depthWrite:false,blending:THREE.AdditiveBlending
+      });
+      const softGlowMat=new THREE.MeshBasicMaterial({
+        color:0x56efff,transparent:true,opacity:.20,
+        depthWrite:false,side:THREE.DoubleSide,
         blending:THREE.AdditiveBlending
       });
 
-      const base=new THREE.Mesh(new THREE.BoxGeometry(.46,.08,.34),bodyMat);
-      base.position.y=.04;
-      g.add(base);
+      // Low, wide base. The overhang makes the object read as stage hardware
+      // rather than a simple box when viewed from phone height.
+      const base=new THREE.Mesh(
+        new THREE.BoxGeometry(.64,.075,.44),
+        darkMat
+      );
+      base.position.y=.055;
+      root.add(base);
 
-      const housing=new THREE.Mesh(new THREE.BoxGeometry(.36,.19,.28),sideMat);
-      housing.position.set(0,.165,-.015);
-      g.add(housing);
+      const lowerPlate=new THREE.Mesh(
+        new THREE.BoxGeometry(.55,.035,.36),
+        trimMat
+      );
+      lowerPlate.position.y=.106;
+      root.add(lowerPlate);
 
-      const lens=new THREE.Mesh(new THREE.CylinderGeometry(.072,.072,.055,28),lensMat);
+      // Four rubber feet keep the projector visually separated from the floor.
+      const footGeo=new THREE.CylinderGeometry(.035,.038,.026,14);
+      const footPositions=[
+        [-.245,.013,-.155],[.245,.013,-.155],
+        [-.245,.013,.155],[.245,.013,.155]
+      ];
+      for(const [x,y,z] of footPositions){
+        const foot=new THREE.Mesh(footGeo,blackMat);
+        foot.position.set(x,y,z);
+        root.add(foot);
+      }
+
+      // Main chassis: layered shells create a beveled gaming/stage silhouette
+      // without importing a heavy GLB.
+      const body=new THREE.Mesh(
+        new THREE.BoxGeometry(.49,.235,.335),
+        bodyMat
+      );
+      body.position.set(0,.225,.005);
+      root.add(body);
+
+      const innerShell=new THREE.Mesh(
+        new THREE.BoxGeometry(.43,.195,.365),
+        darkMat
+      );
+      innerShell.position.set(0,.222,.012);
+      root.add(innerShell);
+
+      const topShell=new THREE.Mesh(
+        new THREE.BoxGeometry(.37,.055,.29),
+        trimMat
+      );
+      topShell.position.set(0,.365,.015);
+      root.add(topShell);
+
+      // Front fascia.
+      const fascia=new THREE.Mesh(
+        new THREE.BoxGeometry(.38,.175,.038),
+        blackMat
+      );
+      fascia.position.set(0,.232,-.188);
+      root.add(fascia);
+
+      const fasciaTrim=new THREE.Mesh(
+        new THREE.BoxGeometry(.315,.122,.012),
+        trimMat
+      );
+      fasciaTrim.position.set(0,.232,-.211);
+      root.add(fasciaTrim);
+
+      // Concentric lens assembly. All cylinders share the same Z axis.
+      const outerLensRing=new THREE.Mesh(
+        new THREE.CylinderGeometry(.105,.105,.055,32),
+        darkMat
+      );
+      outerLensRing.rotation.x=Math.PI/2;
+      outerLensRing.position.set(0,.232,-.242);
+      root.add(outerLensRing);
+
+      const metalLensRing=new THREE.Mesh(
+        new THREE.CylinderGeometry(.085,.085,.043,32),
+        trimMat
+      );
+      metalLensRing.rotation.x=Math.PI/2;
+      metalLensRing.position.set(0,.232,-.274);
+      root.add(metalLensRing);
+
+      const lens=new THREE.Mesh(
+        new THREE.CylinderGeometry(.064,.064,.024,32),
+        lensMat
+      );
       lens.rotation.x=Math.PI/2;
-      lens.position.set(0,.18,-.168);
-      g.add(lens);
+      lens.position.set(0,.232,-.302);
+      root.add(lens);
 
-      const ring=new THREE.Mesh(new THREE.RingGeometry(.18,.24,42).rotateX(-Math.PI/2),glowMat);
-      ring.position.y=.004;
-      g.add(ring);
+      const lensHalo=new THREE.Mesh(
+        new THREE.RingGeometry(.072,.114,40),
+        softGlowMat
+      );
+      lensHalo.position.set(0,.232,-.316);
+      root.add(lensHalo);
 
-      const handle=new THREE.Mesh(new THREE.TorusGeometry(.115,.014,8,24,Math.PI),bodyMat);
+      // Exact local-space aperture used by three-ilda. This point is kept
+      // invisible; it is the single source of truth for beam alignment.
+      const laserOrigin=new THREE.Object3D();
+      laserOrigin.name='laserOrigin';
+      laserOrigin.position.set(0,.232,-.319);
+      root.add(laserOrigin);
+
+      // Cooling fins on both sides.
+      const finGeo=new THREE.BoxGeometry(.014,.118,.025);
+      for(let i=0;i<6;i++){
+        const z=-.095+i*.039;
+        const leftFin=new THREE.Mesh(finGeo,blackMat);
+        leftFin.position.set(-.254,.232,z);
+        root.add(leftFin);
+
+        const rightFin=new THREE.Mesh(finGeo,blackMat);
+        rightFin.position.set(.254,.232,z);
+        root.add(rightFin);
+      }
+
+      // Side accent rails.
+      const sideStripGeo=new THREE.BoxGeometry(.009,.105,.225);
+      const stripL=new THREE.Mesh(sideStripGeo,cyanMat);
+      stripL.position.set(-.264,.233,.018);
+      root.add(stripL);
+
+      const stripR=new THREE.Mesh(sideStripGeo,violetMat);
+      stripR.position.set(.264,.233,.018);
+      root.add(stripR);
+
+      // Front lower accent.
+      const frontAccent=new THREE.Mesh(
+        new THREE.BoxGeometry(.245,.012,.010),
+        cyanMat
+      );
+      frontAccent.position.set(0,.143,-.211);
+      root.add(frontAccent);
+
+      // Rear cooling fan and guard.
+      const fanBody=new THREE.Mesh(
+        new THREE.CylinderGeometry(.075,.075,.024,24),
+        blackMat
+      );
+      fanBody.rotation.x=Math.PI/2;
+      fanBody.position.set(0,.232,.196);
+      root.add(fanBody);
+
+      const fanRing=new THREE.Mesh(
+        new THREE.TorusGeometry(.058,.006,7,24),
+        trimMat
+      );
+      fanRing.position.set(0,.232,.211);
+      root.add(fanRing);
+
+      for(let i=0;i<4;i++){
+        const blade=new THREE.Mesh(
+          new THREE.BoxGeometry(.012,.092,.008),
+          bodyMat
+        );
+        blade.position.set(0,.232,.213);
+        blade.rotation.z=i*Math.PI/4;
+        root.add(blade);
+      }
+
+      // Top handle with rigid mounting posts.
+      const handlePostGeo=new THREE.BoxGeometry(.026,.13,.035);
+      const postL=new THREE.Mesh(handlePostGeo,trimMat);
+      postL.position.set(-.145,.424,.025);
+      root.add(postL);
+      const postR=new THREE.Mesh(handlePostGeo,trimMat);
+      postR.position.set(.145,.424,.025);
+      root.add(postR);
+
+      const handle=new THREE.Mesh(
+        new THREE.TorusGeometry(.145,.015,10,32,Math.PI),
+        trimMat
+      );
       handle.rotation.z=Math.PI;
-      handle.position.set(0,.31,.02);
-      g.add(handle);
+      handle.position.set(0,.49,.025);
+      root.add(handle);
 
-      g.traverse(o=>{if(o.isMesh){o.castShadow=false;o.receiveShadow=false;}});
-      return g;
+      // Small top status panel.
+      const display=new THREE.Mesh(
+        new THREE.BoxGeometry(.13,.012,.058),
+        blackMat
+      );
+      display.position.set(0,.399,-.070);
+      root.add(display);
+
+      const ledGeo=new THREE.CylinderGeometry(.009,.009,.008,12);
+      for(let i=0;i<3;i++){
+        const led=new THREE.Mesh(ledGeo,i===1?violetMat:cyanMat);
+        led.position.set(-.035+i*.035,.407,-.070);
+        root.add(led);
+      }
+
+      // Ground halo makes placement readable without affecting beam alignment.
+      const groundRing=new THREE.Mesh(
+        new THREE.RingGeometry(.22,.29,44).rotateX(-Math.PI/2),
+        softGlowMat
+      );
+      groundRing.position.y=.006;
+      root.add(groundRing);
+
+      root.traverse(obj=>{
+        if(!obj.isMesh) return;
+        obj.castShadow=false;
+        obj.receiveShadow=false;
+      });
+
+      return {root,laserOrigin};
     }
 
     async function loadAsset(showId,{initial=false}={}){
@@ -576,7 +784,9 @@
       projectorRig=new THREE.Group();
       projectorRig.name='ABODEN physical laser projector';
       projectorRig.visible=false;
-      projectorRig.add(createProjector());
+
+      const projectorBuild=createProjector();
+      projectorRig.add(projectorBuild.root);
       scene.add(projectorRig);
 
       laserRig=new THREE.Group();
@@ -589,9 +799,12 @@
       laserShow=new LaserShow(asset,{capacity:2048,width:2.45,height:1.55});
       laserShow.position.set(0,1.13,-2.45);
 
-      // Match the beam aperture to the procedural projector lens exactly:
-      // lens world-local point = (0, 0.18, -0.168).
-      laserShow.projector.position.set(0,-.95,2.282);
+      // Projector and laser light live in separate scenes but share the same
+      // rig transform. Convert the physical aperture from rig-local space into
+      // LaserShow-local space so the beam always exits the visible lens.
+      laserShow.projector.position
+        .copy(projectorBuild.laserOrigin.position)
+        .sub(laserShow.position);
       laserShow.beamMode='Front';
 
       // Start from three-ilda's own visual defaults. The pipeline supplies
