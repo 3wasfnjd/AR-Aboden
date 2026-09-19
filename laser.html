@@ -307,6 +307,7 @@
     // The Saudi story uses a direct Three.js vector renderer rather than
     // LaserScanner. This keeps the custom story deterministic while the
     // upstream ILDA shows continue to use three-ilda unchanged.
+    let saudiWorldRig=null;
     let saudiDirectGroup=null;
     let saudiDirectLine=null;
     let saudiDirectBeam=null;
@@ -435,7 +436,7 @@
     }
 
     function applyRigTransform(position,yaw,scale){
-      for(const rig of [projectorRig,laserRig]){
+      for(const rig of [projectorRig,laserRig,saudiWorldRig]){
         if(!rig) continue;
         rig.position.copy(position);
         rig.rotation.set(0,yaw,0);
@@ -446,6 +447,7 @@
     function setRigVisible(visible){
       if(projectorRig) projectorRig.visible=visible;
       if(laserRig) laserRig.visible=visible;
+      if(saudiWorldRig) saudiWorldRig.visible=visible && currentShowId==='saudi';
     }
 
     function createProjector(){
@@ -1049,6 +1051,7 @@
         blending:THREE.AdditiveBlending,
         toneMapped:false
       });
+      lineMaterial.fog=false;
 
       saudiDirectLine=new THREE.LineSegments(lineGeometry,lineMaterial);
       saudiDirectLine.name='Saudi direct laser projection';
@@ -1069,13 +1072,14 @@
       const beamMaterial=new THREE.MeshBasicMaterial({
         vertexColors:true,
         transparent:true,
-        opacity:.105,
+        opacity:.16,
         depthTest:false,
         depthWrite:false,
         blending:THREE.AdditiveBlending,
         side:THREE.DoubleSide,
         toneMapped:false
       });
+      beamMaterial.fog=false;
 
       saudiDirectBeam=new THREE.Mesh(beamGeometry,beamMaterial);
       saudiDirectBeam.name='Saudi direct projector beams';
@@ -1086,7 +1090,26 @@
       saudiDirectGroup.name='Saudi direct laser story';
       saudiDirectGroup.visible=false;
       saudiDirectGroup.add(saudiDirectBeam,saudiDirectLine);
-      laserRig.add(saudiDirectGroup);
+
+      // Small permanent aperture glow for the Saudi mode. If this is visible,
+      // the XR8 world rig is correctly attached even before the story lines.
+      const apertureGlow=new THREE.Mesh(
+        new THREE.SphereGeometry(.032,12,8),
+        new THREE.MeshBasicMaterial({
+          color:0x66ff99,
+          transparent:true,
+          opacity:.95,
+          depthTest:false,
+          depthWrite:false,
+          blending:THREE.AdditiveBlending,
+          toneMapped:false
+        })
+      );
+      apertureGlow.position.copy(saudiDirectOrigin);
+      apertureGlow.renderOrder=30;
+      saudiDirectGroup.add(apertureGlow);
+
+      saudiWorldRig.add(saudiDirectGroup);
     }
 
     function updateSaudiDirectFrame(frameIndex,force=false){
@@ -1130,15 +1153,15 @@
         lpa[lineFloats]=ax; lpa[lineFloats+1]=ay; lpa[lineFloats+2]=az;
         lpa[lineFloats+3]=bx; lpa[lineFloats+4]=by; lpa[lineFloats+5]=bz;
 
-        lca[lineFloats]=ar*4.2; lca[lineFloats+1]=ag*4.2; lca[lineFloats+2]=ab*4.2;
-        lca[lineFloats+3]=br*4.2; lca[lineFloats+4]=bg*4.2; lca[lineFloats+5]=bb*4.2;
+        lca[lineFloats]=ar*2.2; lca[lineFloats+1]=ag*2.2; lca[lineFloats+2]=ab*2.2;
+        lca[lineFloats+3]=br*2.2; lca[lineFloats+4]=bg*2.2; lca[lineFloats+5]=bb*2.2;
         lineFloats+=6;
 
         // One translucent triangle per projected segment makes the light
         // visibly originate at the physical lens, without LaserScanner.
-        const cr=(ar+br)*.5*1.35;
-        const cg=(ag+bg)*.5*1.35;
-        const cb=(ab+bb)*.5*1.35;
+        const cr=(ar+br)*.5*1.10;
+        const cg=(ag+bg)*.5*1.10;
+        const cb=(ab+bb)*.5*1.10;
 
         bpa[beamFloats]=ox; bpa[beamFloats+1]=oy; bpa[beamFloats+2]=oz;
         bpa[beamFloats+3]=ax; bpa[beamFloats+4]=ay; bpa[beamFloats+5]=az;
@@ -1171,6 +1194,7 @@
 
     function setSaudiRendererActive(active){
       if(saudiDirectGroup) saudiDirectGroup.visible=active;
+      if(saudiWorldRig) saudiWorldRig.visible=active && (placed||!guide.classList.contains('hidden'));
       if(laserShow) laserShow.visible=!active;
     }
 
@@ -1446,6 +1470,11 @@
       laserRig.name='ABODEN laser light rig';
       laserRig.visible=false;
 
+      saudiWorldRig=new THREE.Group();
+      saudiWorldRig.name='ABODEN Saudi world laser rig';
+      saudiWorldRig.visible=false;
+      scene.add(saudiWorldRig);
+
       setLoadProgress(20,'تحميل عرض الليزر…');
       const asset=await loadAsset(currentShowId,{initial:true});
 
@@ -1634,6 +1663,7 @@
       if(laserRig&&projectorRig){
         laserRig.scale.setScalar(rigScale);
         projectorRig.scale.setScalar(rigScale);
+        if(saudiWorldRig) saudiWorldRig.scale.setScalar(rigScale);
       }
       notify('حجم العرض '+Math.round(rigScale*100)+'%');
     }
@@ -1645,6 +1675,7 @@
       }
       laserRig.rotation.y+=delta;
       if(projectorRig) projectorRig.rotation.y=laserRig.rotation.y;
+      if(saudiWorldRig) saudiWorldRig.rotation.y=laserRig.rotation.y;
     }
 
     async function togglePlay(){
