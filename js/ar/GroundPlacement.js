@@ -50,11 +50,11 @@ export class GroundPlacement {
     this.status='LIMITED'; this.normalSince=null; this.lastTracking=-Infinity;
     this.previousCamera=null; this.samples=[]; this.lastSample=-Infinity;
     this.ready=false; this.candidate=null; this.anchor=null; this.support=0;
-    this.cameraStep=0; this.reason='tracking';
+    this.cameraStep=0; this.reason='tracking'; this.surface='estimated';
   }
   invalidate(reason='surface') {
     this.samples=[]; this.ready=false; this.candidate=null;
-    this.support=0; this.reason=reason;
+    this.support=0; this.reason=reason; this.surface='estimated';
   }
   observe({now,status,position,rotation}) {
     const gap=now-this.lastTracking;
@@ -77,8 +77,12 @@ export class GroundPlacement {
   sample(candidate,observations,now) {
     if (this.anchor) return;
     if (!this.trackingReady(now)) { this.invalidate('tracking'); return; }
-    const patch=groundPatch(candidate,observations);
-    if (!patch) { this.invalidate('surface'); return; }
+    if (!finitePoint(candidate)) { this.invalidate('aim'); return; }
+    const evidence=groundPatch(candidate,observations);
+    // Sparse world points must not deadlock placement. The adapter's ray
+    // intersects XR8's estimated ground; feature evidence only refines height.
+    const patch=evidence || {position:{x:candidate.x,y:0,z:candidate.z},support:0};
+    this.surface=evidence?'supported':'estimated';
     if (now-this.lastSample>250) this.samples=[];
     this.lastSample=now;
     this.support=patch.support;
@@ -95,8 +99,13 @@ export class GroundPlacement {
     this.ready=count>=8 && now-this.samples[0].time>=1000;
     this.reason=this.ready?'ready':'steady';
   }
-  lock(now) {
-    if (!this.ready || !this.trackingReady(now) || now-this.lastSample>250 || !this.candidate) return null;
+  canLock(now) {
+    return !this.anchor && this.trackingReady(now) && now-this.lastSample<=250 && !!this.candidate;
+  }
+  lock(now,{manual=false}={}) {
+    // An explicit tap may accept the preview without waiting for a perfectly
+    // still reticle, but never bypass missing/stale tracking or a missing ray hit.
+    if (!this.canLock(now) || (!manual && !this.ready)) return null;
     this.anchor=Object.freeze({...this.candidate});
     this.ready=false;
     return this.anchor;

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import vm from 'node:vm';
 
 const moduleFromSource = source => import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
 const { GroundPlacement, groundPatch } = await moduleFromSource(await readFile(new URL('../js/ar/GroundPlacement.js', import.meta.url), 'utf8'));
@@ -93,6 +94,82 @@ test('sample outage restarts stability even while tracking remains normal',()=>{
   assert.equal(p.lock(2400),null);
   p.sample(aim,points(),2400);
   assert.equal(p.ready,false);
+});
+
+test('explicit placement works without feature points or a completed stability window',()=>{
+  for(const observations of [[],points().slice(0,2),points(aim,.7)]){
+    const p=new GroundPlacement();
+    for(let now=0;now<=800;now+=100) observe(p,now);
+    p.sample(aim,observations,800);
+    assert.equal(p.surface,'estimated');
+    assert.equal(p.ready,false);
+    assert.equal(p.canLock(800),true);
+    assert.equal(p.lock(800),null); // strict quality check remains distinct
+    assert.deepEqual(p.lock(800,{manual:true}),aim);
+    assert.equal(p.canLock(800),false); // cannot lock twice
+  }
+});
+
+test('manual placement cannot bypass invalid aim, stale input, tracking loss or pose jumps',()=>{
+  const p=new GroundPlacement();
+  assert.equal(p.lock(0,{manual:true}),null);
+  settle(p);
+  assert.equal(p.lock(2300,{manual:true}),null);
+  observe(p,2100,'LIMITED');
+  assert.equal(p.lock(2100,{manual:true}),null);
+  p.reset();settle(p);
+  observe(p,2100,'NORMAL',{...camera,x:1});
+  assert.equal(p.lock(2100,{manual:true}),null);
+  p.reset();settle(p);
+  p.sample({x:NaN,y:0,z:0},[],2000);
+  assert.equal(p.lock(2000,{manual:true}),null);
+});
+
+test('manual lock retains supported height and does not move with later samples',()=>{
+  const p=new GroundPlacement();
+  for(let now=0;now<=800;now+=100) observe(p,now);
+  p.sample(aim,points(),800);
+  const anchor=p.lock(800,{manual:true});
+  assert.ok(Math.abs(anchor.y-.015)<1e-10);
+  observe(p,900);
+  p.sample({...aim,x:1},[],900);
+  assert.equal(p.anchor,anchor);
+  assert.equal(p.anchor.x,0);
+});
+
+test('actual arena preview enables the button looking straight down with no points and failed hit tests',async()=>{
+  const source=await readFile(new URL('../arena.html',import.meta.url),'utf8');
+  const start=source.indexOf('    function updatePlacement(');
+  const end=source.indexOf('    function tickWorld(',start);
+  assert.ok(start>0 && end>start);
+  const vector=(x=0,y=0,z=0)=>({x,y,z,
+    set(x,y,z){Object.assign(this,{x,y,z});return this;},
+    copy(p){return this.set(p.x,p.y,p.z);},
+    lerp(p,t){return this.set(this.x+(p.x-this.x)*t,this.y+(p.y-this.y)*t,this.z+(p.z-this.z)*t);},
+    distanceTo(p){return Math.hypot(this.x-p.x,this.y-p.y,this.z-p.z);}
+  });
+  const p=new GroundPlacement();
+  for(let now=0;now<=800;now+=100) observe(p,now);
+  const context=vm.createContext({
+    placement:p,placed:false,nextGroundSample:0,latestWorldPoints:[],diagnostics:null,
+    camera:{position:vector(0,1.5,0),updateMatrixWorld(){}},
+    raycaster:{setFromCamera(){},ray:{direction:{y:-1},intersectPlane:(_,v)=>v.set(0,0,0)}},
+    centerNdc:{},groundPlane:{},hitPoint:vector(),stablePoint:vector(),
+    XR8:{XrController:{hitTest(){throw new Error('unavailable');}}},
+    surfaceReady:false,placeBtn:{disabled:true},previewInitialized:false,
+    reticle:{visible:false,position:vector()},
+    arenaGroup:{visible:false,position:vector(),scale:{setScalar(){}}},
+    placementScale:1,setStatus(){}
+  });
+  vm.runInContext(source.slice(start,end)+'\nupdatePlacement(.016,800);',context);
+  assert.equal(context.placeBtn.disabled,false);
+  assert.equal(context.reticle.visible,true);
+  assert.equal(context.arenaGroup.visible,true);
+  assert.equal(p.surface,'estimated');
+  observe(p,900,'LIMITED');
+  vm.runInContext('updatePlacement(.016,900);',context);
+  assert.equal(context.placeBtn.disabled,true);
+  assert.equal(context.reticle.visible,false);
 });
 
 test('locked world position survives tracking loss/recovery and resets only explicitly',()=>{

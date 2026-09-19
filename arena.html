@@ -198,7 +198,7 @@
 
     <div class="guide" id="guide">
       <b>امسح الأرض بهدوء</b>
-      حرّك الجوال ببطء لإظهار تفاصيل الأرضية، ثم ثبّت المؤشر على المكان حتى يكتمل التحقق.
+      حرّك الجوال قليلًا ثم وجّهه للأرض. عند ظهور الحلبة، اختر مكانها واضغط «ثبّت هنا».
     </div>
 
     <div class="toast" id="toast"></div>
@@ -206,7 +206,7 @@
 
     <div class="controls" id="controls">
       <div class="placement" id="placementTools">
-        <button class="smallBtn primary" id="placeBtn" disabled>ثبّت الحلبة</button>
+        <button class="smallBtn primary" id="placeBtn" disabled>ثبّت هنا</button>
         <div class="scalePanel" id="scalePanel" aria-label="حجم الحلبة قبل التثبيت">
           <button class="scaleBtn" id="scaleMinusBtn" type="button" aria-label="تصغير الحلبة">−</button>
           <span class="scaleValue" id="scaleValue">100%</span>
@@ -251,7 +251,7 @@
     import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
     import { updateWorld } from 'crashcat';
 
-    import { GroundPlacement } from './js/ar/GroundPlacement.js?v=2';
+    import { GroundPlacement } from './js/ar/GroundPlacement.js?v=3';
     import { Vehicle } from './js/Vehicle.js';
     import { MobileControls } from './js/Controls.js';
     import { SmokeTrails } from './js/Particles.js';
@@ -732,17 +732,14 @@
         camera.updateMatrixWorld(true);
         raycaster.setFromCamera(centerNdc,camera);
         const hit=raycaster.ray.intersectPlane(groundPlane,hitPoint);
-        const horizontal=hit?Math.hypot(hit.x-camera.position.x,hit.z-camera.position.z):0;
-        if(!hit || hit.distanceTo(camera.position)>6 || horizontal<.4 || raycaster.ray.direction.y>-.15){
+        if(!hit || hit.distanceTo(camera.position)>6 || raycaster.ray.direction.y>-.15){
           placement.invalidate('aim');
         }else{
           const observations=[...latestWorldPoints];
           // FEATURE_POINT is the documented hit-test filter. Do not assume
           // native plane anchors or DETECTED_SURFACE support in this engine.
           try{
-            for(const x of [.44,.5,.56]) for(const y of [.44,.5,.56]){
-              observations.push(...XR8.XrController.hitTest(x,y,['FEATURE_POINT']));
-            }
+            observations.push(...XR8.XrController.hitTest(.5,.5,['FEATURE_POINT']));
           }catch(error){
             // World points provide the same evidence if hit testing is unavailable.
             if(diagnostics && !window.arHitTestError) window.arHitTestError=String(error);
@@ -750,7 +747,7 @@
           placement.sample(hit,observations,now);
         }
       }
-      surfaceReady=placement.ready;
+      surfaceReady=placement.canLock(now);
       placeBtn.disabled=!surfaceReady;
       if(!placement.candidate){
         reticle.visible=false;
@@ -769,7 +766,9 @@
       arenaGroup.position.copy(stablePoint);
       arenaGroup.scale.setScalar(placementScale);
       arenaGroup.visible=true;
-      setStatus(surfaceReady?'الأرضية جاهزة — ثبّت الحلبة':'ثبّت المؤشر لحظة على نفس المكان',surfaceReady);
+      setStatus(placement.surface==='estimated'
+        ? 'أرضية تقديرية — اختر المكان واضغط ثبّت هنا'
+        : (placement.ready?'الموضع مستقر — اضغط ثبّت هنا':'اختر المكان واضغط ثبّت هنا'),surfaceReady);
     }
 
     function tickWorld(now){
@@ -785,7 +784,8 @@
       }
       if(diagnostics){
         diagnostics.push({time:now,status:placement.status,reason:placement.reason,
-          support:placement.support,ready:surfaceReady,cameraStep:placement.cameraStep,
+          support:placement.support,surface:placement.surface,steady:placement.ready,
+          ready:surfaceReady,cameraStep:placement.cameraStep,
           camera:camera.position.toArray(),anchor:placement.anchor,
           arena:arenaGroup.position.toArray(),placed});
         if(diagnostics.length>240) diagnostics.shift();
@@ -812,11 +812,11 @@
       }
 
       if (!surfaceReady){
-        notify('انتظر حتى يستقر المؤشر قليلًا');
+        notify('وجّه الكاميرا للأرض حتى تظهر الحلبة ويصبح التتبع جاهزًا');
         return;
       }
 
-      const anchor = placement.lock(performance.now());
+      const anchor = placement.lock(performance.now(),{manual:true});
       if(!anchor){notify('أعد تثبيت المؤشر حتى يستقر التتبع');return;}
       const scale = placementScale;
       const arenaCenter = new THREE.Vector3(anchor.x,anchor.y,anchor.z);
@@ -908,7 +908,7 @@
       updatePlacementScaleVisuals();
 
       guide.classList.remove('hidden');
-      placeBtn.textContent = 'ثبّت الحلبة';
+      placeBtn.textContent = 'ثبّت هنا';
       setStatus('أعد مسح الأرض واضبط الحجم', true);
 
       try{
