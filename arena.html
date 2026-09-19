@@ -148,6 +148,7 @@
       max-width:min(92vw,430px)
     }
     .smallBtn{border:1px solid rgba(255,255,255,.16);border-radius:16px;color:#fff;background:rgba(5,10,17,.68);padding:11px 14px;font-weight:800;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);touch-action:manipulation}
+    .smallBtn:disabled{opacity:.4}
     .smallBtn.primary{background:#fff;color:#0b1018}
     .scalePanel{
       display:flex;align-items:center;gap:5px;padding:5px;
@@ -197,7 +198,7 @@
 
     <div class="guide" id="guide">
       <b>امسح الأرض بهدوء</b>
-      حرّك الجوال ببطء فوق السجادة أو الأرضية حتى تصبح الحالة «السطح مستقر»، ثم ثبّت الحلبة كاملة.
+      حرّك الجوال ببطء لإظهار تفاصيل الأرضية، ثم ثبّت المؤشر على المكان حتى يكتمل التحقق.
     </div>
 
     <div class="toast" id="toast"></div>
@@ -205,7 +206,7 @@
 
     <div class="controls" id="controls">
       <div class="placement" id="placementTools">
-        <button class="smallBtn primary" id="placeBtn">ثبّت الحلبة</button>
+        <button class="smallBtn primary" id="placeBtn" disabled>ثبّت الحلبة</button>
         <div class="scalePanel" id="scalePanel" aria-label="حجم الحلبة قبل التثبيت">
           <button class="scaleBtn" id="scaleMinusBtn" type="button" aria-label="تصغير الحلبة">−</button>
           <span class="scaleValue" id="scaleValue">100%</span>
@@ -250,6 +251,7 @@
     import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
     import { updateWorld } from 'crashcat';
 
+    import { GroundPlacement } from './js/ar/GroundPlacement.js?v=2';
     import { Vehicle } from './js/Vehicle.js';
     import { MobileControls } from './js/Controls.js';
     import { SmokeTrails } from './js/Particles.js';
@@ -257,10 +259,8 @@
     import {
       createVehicleWorld,
       createArenaPhysics,
-      moveArenaPhysics,
-      createVehicleBody,
-      resetVehicleBody
-    } from './js/Physics.js';
+      createVehicleBody
+    } from './js/Physics.js?v=2';
 
     window.THREE = THREE;
 
@@ -370,9 +370,16 @@
     const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
     const hitPoint = new THREE.Vector3();
     const stablePoint = new THREE.Vector3();
-    const prevHit = new THREE.Vector3(999,999,999);
-
-    let reticleStableMs = 0;
+    const placement = new GroundPlacement();
+    let sceneReady = false;
+    let startupFailed = false;
+    let latestWorldPoints = [];
+    let nextGroundSample = 0;
+    let previewInitialized = false;
+    let drivingEnabled = false;
+    let arenaRoadY = 0;
+    const diagnostics = new URLSearchParams(location.search).has('placementDebug') ? [] : null;
+    if (diagnostics) window.arPlacementDiagnostics = diagnostics;
     let surfaceReady = false;
     let lastTick = performance.now();
 
@@ -508,6 +515,14 @@
         obj.receiveShadow = true;
       });
 
+      // Match the collision floor to the authored asphalt at the centre.
+      root.updateMatrixWorld(true);
+      const bounds = new THREE.Box3().setFromObject(root);
+      const roadRay = new THREE.Raycaster(
+        new THREE.Vector3(0,bounds.max.y+.1,0), new THREE.Vector3(0,-1,0)
+      );
+      const roadHit = roadRay.intersectObject(root,true)[0];
+      arenaRoadY = roadHit ? roadHit.point.y : 0;
       return root;
     }
 
@@ -639,17 +654,16 @@
       smokeTrails = new SmokeTrails(scene, AR_EFFECT_SCALE, 0.55);
       driftMarks = new DriftMarks(scene, 'ar-aboden-arena', AR_EFFECT_SCALE, 9);
 
-      camera.position.set(0,1.5,2.0);
-      XR8.XrController.updateCameraProjectionMatrix({
-        origin: camera.position,
-        facing: camera.quaternion
-      });
-
+      // XR8 owns camera intrinsics/pose. Absolute scale estimates physical
+      // height; never overwrite the tracked camera with an assumed height.
+      placement.reset();
+      sceneReady = true;
+      lastTick = performance.now();
       setLoadProgress(100,'جاهز');
-      setStatus('امسح الأرض', true);
-      requestAnimationFrame(tickWorld);
+      setStatus('حرّك الجوال لمسح الأرضية', false);
 
       requestAnimationFrame(()=>{
+        if(startupFailed) return;
         intro.style.display='none';
         controlsEl.style.display='block';
       });
@@ -661,6 +675,7 @@
         onStart:async()=>{
           try{
             await setupScene();
+            if(startupFailed){sceneReady=false;return;}
             window.dispatchEvent(new Event('resize'));
           }catch(err){
             console.error(err);
@@ -673,79 +688,120 @@
             startBtn.disabled=true;
           }
         },
+        onUpdate:({processCpuResult})=>{
+          if (!sceneReady) return;
+          const now = performance.now();
+          const reality = processCpuResult?.reality;
+          placement.observe({now,status:reality?.trackingStatus,
+            position:reality?.position,rotation:reality?.rotation});
+          latestWorldPoints = reality?.worldPoints || [];
+          tickWorld(now);
+        },
+        onCameraStatusChange:({status})=>{
+          if(status==='failed') startupFailure('تعذر فتح الكاميرا. اسمح بالكاميرا من إعدادات المتصفح، ثم أعد المحاولة.');
+        },
         onException:(error)=>{
           console.error(error);
-          notify('حدث خطأ في التتبع');
+          if(!sceneReady) startupFailure('تعذر تشغيل التتبع. أعد تحميل الصفحة وحاول مجددًا.');
+          else {
+            placement.observe({now:performance.now(),status:'LIMITED'});
+            controls.reset();
+            setStatus('توقف التتبع — أعد توجيه الجوال للأرضية',false);
+          }
         }
       };
     }
 
-    function updatePlacement(dt){
-      if (placed){
-        reticle.visible = false;
+    function startupFailure(message){
+      xrStarted=false;
+      startBtn.disabled=false;
+      startBtn.textContent='إعادة تحميل التجربة';
+      startupFailed=true;
+      sceneReady=false;
+      intro.style.display='flex';
+      controlsEl.style.display='none';
+      errorBox.style.display='block';
+      errorBox.textContent=message;
+    }
+
+    function updatePlacement(dt,now){
+      if (placed){reticle.visible=false;return;}
+      if (!placement.trackingReady(now)) placement.invalidate('tracking');
+      else if(now>=nextGroundSample){
+        nextGroundSample=now+100;
+        camera.updateMatrixWorld(true);
+        raycaster.setFromCamera(centerNdc,camera);
+        const hit=raycaster.ray.intersectPlane(groundPlane,hitPoint);
+        const horizontal=hit?Math.hypot(hit.x-camera.position.x,hit.z-camera.position.z):0;
+        if(!hit || hit.distanceTo(camera.position)>6 || horizontal<.4 || raycaster.ray.direction.y>-.15){
+          placement.invalidate('aim');
+        }else{
+          const observations=[...latestWorldPoints];
+          // FEATURE_POINT is the documented hit-test filter. Do not assume
+          // native plane anchors or DETECTED_SURFACE support in this engine.
+          try{
+            for(const x of [.44,.5,.56]) for(const y of [.44,.5,.56]){
+              observations.push(...XR8.XrController.hitTest(x,y,['FEATURE_POINT']));
+            }
+          }catch(error){
+            // World points provide the same evidence if hit testing is unavailable.
+            if(diagnostics && !window.arHitTestError) window.arHitTestError=String(error);
+          }
+          placement.sample(hit,observations,now);
+        }
+      }
+      surfaceReady=placement.ready;
+      placeBtn.disabled=!surfaceReady;
+      if(!placement.candidate){
+        reticle.visible=false;
+        arenaGroup.visible=false;
+        previewInitialized=false;
+        const messages={tracking:'حرّك الجوال ببطء حتى يستقر التتبع',aim:'وجّه المؤشر نحو الأرضية أمامك',surface:'اقترب من أرضية واضحة التفاصيل وحرّك الجوال قليلًا'};
+        setStatus(messages[placement.reason]||messages.surface,false);
         return;
       }
-
-      raycaster.setFromCamera(centerNdc,camera);
-      const hit = raycaster.ray.intersectPlane(groundPlane,hitPoint);
-
-      if (!hit || hit.distanceTo(camera.position) > 8){
-        reticle.visible = false;
-        if(arenaGroup) arenaGroup.visible = false;
-        reticleStableMs = 0;
-        surfaceReady = false;
-        setStatus('ابحث عن الأرض', false);
-        return;
-      }
-
-      const delta = prevHit.distanceTo(hit);
-      if (delta < .018) reticleStableMs += dt*1000;
-      else reticleStableMs = 0;
-
-      prevHit.copy(hit);
-
-      if (stablePoint.lengthSq()===0) stablePoint.copy(hit);
-      else stablePoint.lerp(hit,.16);
-
-      reticle.visible = true;
-      reticle.position.set(stablePoint.x,.008,stablePoint.z);
-      reticle.rotation.y += dt*.12;
-
-      // Full arena preview follows the detected surface before lock-in.
-      arenaGroup.position.set(stablePoint.x,0,stablePoint.z);
+      const p=placement.candidate;
+      if(!previewInitialized){stablePoint.set(p.x,p.y,p.z);previewInitialized=true;}
+      else stablePoint.lerp(hitPoint.set(p.x,p.y,p.z),1-Math.exp(-12*dt));
+      reticle.visible=true;
+      reticle.position.copy(stablePoint);
+      reticle.position.y+=.008;
+      arenaGroup.position.copy(stablePoint);
       arenaGroup.scale.setScalar(placementScale);
-      arenaGroup.visible = true;
-
-      surfaceReady = reticleStableMs > 700;
-      setStatus(
-        surfaceReady ? 'السطح مستقر — اضبط الحجم ثم ثبّت' : 'ثبّت الجوال قليلًا',
-        surfaceReady
-      );
+      arenaGroup.visible=true;
+      setStatus(surfaceReady?'الأرضية جاهزة — ثبّت الحلبة':'ثبّت المؤشر لحظة على نفس المكان',surfaceReady);
     }
 
     function tickWorld(now){
-      requestAnimationFrame(tickWorld);
-      if (!camera || !scene || !vehicle || !world) return;
-
-      const dt = Math.min(1/30,(now-lastTick)/1000 || .016);
-      lastTick = now;
-
-      updatePlacement(dt);
-
-      if (!placed || !body) return;
-
-      // The arena stays fixed at its AR anchor.
-      // Only the car moves inside the arena through the physics body.
-      updateWorld(world, null, dt);
-
-      // Screen-relative Hajwala steering: joystick-up always follows the
-      // current phone view direction on the horizontal AR plane.
-      const input = controls.update(cameraYaw() + Math.PI);
-      vehicle.update(dt, input);
-
-      smokeTrails?.update(dt, vehicle);
-      driftMarks?.update(dt, vehicle);
+      if(!sceneReady || !camera || !vehicle || !world) return;
+      const dt=Math.min(1/30,Math.max(0,(now-lastTick)/1000));
+      lastTick=now;
+      updatePlacement(dt,now);
+      const canDrive=placed && !document.hidden && placement.trackingReady(now);
+      if(canDrive!==drivingEnabled){
+        controls.reset();
+        drivingEnabled=canDrive;
+        if(placed) setStatus(canDrive?'الحلبة مثبتة — تابع القيادة':'القيادة متوقفة — أعد مسح المكان ببطء',canDrive);
+      }
+      if(diagnostics){
+        diagnostics.push({time:now,status:placement.status,reason:placement.reason,
+          support:placement.support,ready:surfaceReady,cameraStep:placement.cameraStep,
+          camera:camera.position.toArray(),anchor:placement.anchor,
+          arena:arenaGroup.position.toArray(),placed});
+        if(diagnostics.length>240) diagnostics.shift();
+      }
+      if(!canDrive || !body) return;
+      updateWorld(world,null,dt);
+      vehicle.update(dt,controls.update(cameraYaw()+Math.PI));
+      smokeTrails?.update(dt,vehicle);
+      driftMarks?.update(dt,vehicle);
     }
+
+    document.addEventListener('visibilitychange',()=>{
+      placement.observe({now:performance.now(),status:'LIMITED'});
+      controls.reset();
+      lastTick=performance.now();
+    });
 
     function placeVehicle(){
       if (!xrStarted || !vehicle) return;
@@ -760,12 +816,11 @@
         return;
       }
 
+      const anchor = placement.lock(performance.now());
+      if(!anchor){notify('أعد تثبيت المؤشر حتى يستقر التتبع');return;}
       const scale = placementScale;
-      const arenaCenter = new THREE.Vector3(
-        reticle.position.x,
-        0,
-        reticle.position.z
-      );
+      const arenaCenter = new THREE.Vector3(anchor.x,anchor.y,anchor.z);
+      const roadY = arenaCenter.y + arenaRoadY * scale;
 
       // Rebuild the physics world on every lock-in. This lets the user
       // recalibrate and choose a completely different arena size without
@@ -780,22 +835,23 @@
           segments:ARENA_SEGMENTS,
           wallThickness:.07 * scale,
           wallHeight:ARENA_WALL_HEIGHT * scale,
-          floorMargin:.24 * scale
+          floorMargin:.24 * scale,
+          floorY:roadY
         }
       );
 
-      arenaGroup.position.set(arenaCenter.x,0,arenaCenter.z);
+      arenaGroup.position.copy(arenaCenter);
       arenaGroup.scale.setScalar(scale);
       arenaGroup.visible = true;
 
-      shadowPlane.position.set(arenaCenter.x,0,arenaCenter.z);
+      shadowPlane.position.copy(arenaCenter);
       shadowPlane.scale.setScalar(scale);
       shadowPlane.visible = true;
 
       const scaledVehicleRadius = vehicleRadius * scale;
       const spawn = new THREE.Vector3(
         arenaCenter.x,
-        scaledVehicleRadius,
+        roadY + scaledVehicleRadius,
         arenaCenter.z
       );
 
@@ -813,6 +869,8 @@
       vehicle.place(spawn,yaw);
 
       placed = true;
+      drivingEnabled = true;
+      placeBtn.disabled = false;
       reticle.visible = false;
       guide.classList.add('hidden');
       scalePanel.style.display = 'none';
@@ -829,8 +887,12 @@
 
       placed = false;
       surfaceReady = false;
-      reticleStableMs = 0;
-      prevHit.set(999,999,999);
+      placement.reset();
+      latestWorldPoints=[];
+      nextGroundSample=0;
+      previewInitialized=false;
+      drivingEnabled=false;
+      placeBtn.disabled=true;
       stablePoint.set(0,0,0);
 
       controls.reset();
@@ -876,6 +938,7 @@
     recenterBtn.addEventListener('click',recenter);
 
     startBtn.addEventListener('click',async()=>{
+      if(startupFailed){location.reload();return;}
       if (!xrReady || xrStarted) return;
 
       xrStarted = true;
@@ -913,7 +976,7 @@
           disableWorldTracking:false,
           enableLighting:true,
           enableWorldPoints:true,
-          scale:'responsive'
+          scale:'absolute'
         });
 
         XR8.addCameraPipelineModules([
