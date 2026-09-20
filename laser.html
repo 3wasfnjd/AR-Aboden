@@ -261,7 +261,7 @@
     const SAUDI_POINTS_PER_FRAME=Math.round(SAUDI_POINT_RATE/SAUDI_FPS);
     const SAUDI_AUDIO_URL='./assets/laser/saudi_anthem.mp3';
     const SHOWS=[
-      {id:'saudi',name:'السعودية',file:'saudi_story_show_v2.ild',local:true,audio:true},
+      {id:'saudi',name:'السعودية',kind:'vector-v3',audio:true},
       {id:'sylvester',name:'Sylvester',file:'sylvest.ild'},
       {id:'dolphin',name:'Dolphin',file:'DOLPHIN.ILD'},
       {id:'paperair',name:'Paper Air',file:'paperair.ild'},
@@ -1256,6 +1256,275 @@
       return buffer;
     }
 
+
+    let saudiVectorV3Promise=null;
+
+    async function loadSaudiVectorV3Data(){
+      if(saudiVectorV3Promise) return saudiVectorV3Promise;
+
+      saudiVectorV3Promise=(async()=>{
+        const response=await fetch('./assets/laser/saudi_story_v3_vectors.b64',{cache:'force-cache'});
+        if(!response.ok) throw new Error('Saudi V3 vector data HTTP '+response.status);
+
+        const b64=(await response.text()).trim();
+        const binary=atob(b64);
+        const compressed=new Uint8Array(binary.length);
+        for(let i=0;i<binary.length;i++) compressed[i]=binary.charCodeAt(i);
+
+        if(typeof DecompressionStream!=='function'){
+          throw new Error('This browser does not support DecompressionStream');
+        }
+
+        const stream=new Blob([compressed]).stream().pipeThrough(new DecompressionStream('gzip'));
+        const jsonText=await new Response(stream).text();
+        const data=JSON.parse(jsonText);
+
+        if(data?.version!==3||!data?.paths) throw new Error('Invalid Saudi V3 vector data');
+        return data;
+      })();
+
+      return saudiVectorV3Promise;
+    }
+
+    function v3Smoothstep(v){
+      v=Math.max(0,Math.min(1,v));
+      return v*v*(3-2*v);
+    }
+
+    function v3PathLength(path){
+      let total=0;
+      for(let i=1;i<path.length;i++){
+        const dx=path[i][0]-path[i-1][0];
+        const dy=path[i][1]-path[i-1][1];
+        total+=Math.hypot(dx,dy);
+      }
+      return total;
+    }
+
+    function v3TransformPaths(paths,sx,sy,tx,ty){
+      return paths.map(path=>path.map(([x,y])=>[x*sx+tx,y*sy+ty]));
+    }
+
+    function v3RevealPaths(paths,fraction){
+      if(fraction>=.999) return paths.map(path=>path.slice());
+      fraction=Math.max(0,Math.min(1,fraction));
+
+      const lengths=paths.map(v3PathLength);
+      const total=lengths.reduce((a,b)=>a+b,0)||1;
+      const target=total*fraction;
+      const result=[];
+      let consumed=0;
+
+      for(let i=0;i<paths.length;i++){
+        const path=paths[i];
+        const len=lengths[i];
+        if(target<=consumed) break;
+
+        if(target>=consumed+len){
+          result.push(path.slice());
+          consumed+=len;
+          continue;
+        }
+
+        const local=(target-consumed)/Math.max(len,1e-9);
+        const count=Math.max(2,Math.round(path.length*local));
+        result.push(path.slice(0,count));
+        break;
+      }
+
+      return result;
+    }
+
+    function v3ResamplePath(path,count){
+      if(count<=1) return [path[0]];
+      if(path.length<2) return Array.from({length:count},()=>path[0]);
+
+      const segmentLengths=[];
+      let total=0;
+      for(let i=1;i<path.length;i++){
+        const len=Math.hypot(
+          path[i][0]-path[i-1][0],
+          path[i][1]-path[i-1][1]
+        );
+        segmentLengths.push(len);
+        total+=len;
+      }
+      if(total<=1e-9) return Array.from({length:count},()=>path[0]);
+
+      const cumulative=[0];
+      for(const len of segmentLengths) cumulative.push(cumulative[cumulative.length-1]+len);
+
+      const out=[];
+      let seg=0;
+      for(let i=0;i<count;i++){
+        const target=total*(i/Math.max(1,count-1));
+        while(seg+1<cumulative.length&&cumulative[seg+1]<target) seg++;
+
+        if(seg>=path.length-1){
+          out.push(path[path.length-1]);
+          continue;
+        }
+
+        const span=Math.max(cumulative[seg+1]-cumulative[seg],1e-9);
+        const u=(target-cumulative[seg])/span;
+        const a=path[seg],b=path[seg+1];
+        out.push([
+          a[0]+(b[0]-a[0])*u,
+          a[1]+(b[1]-a[1])*u
+        ]);
+      }
+      return out;
+    }
+
+    function v3AllocateVisiblePoints(items,totalVisible){
+      const lengths=items.map(item=>item.length);
+      const total=lengths.reduce((a,b)=>a+b,0)||1;
+      const allocations=lengths.map(len=>Math.max(4,Math.round(totalVisible*len/total)));
+
+      let sum=allocations.reduce((a,b)=>a+b,0);
+      while(sum>totalVisible){
+        let best=-1,bestValue=-Infinity;
+        for(let i=0;i<allocations.length;i++){
+          if(allocations[i]>4&&allocations[i]>bestValue){
+            best=i;bestValue=allocations[i];
+          }
+        }
+        if(best<0) break;
+        allocations[best]--;
+        sum--;
+      }
+
+      while(sum<totalVisible){
+        let best=0,bestRatio=-Infinity;
+        for(let i=0;i<allocations.length;i++){
+          const ratio=lengths[i]/allocations[i];
+          if(ratio>bestRatio){best=i;bestRatio=ratio;}
+        }
+        allocations[best]++;
+        sum++;
+      }
+
+      return allocations;
+    }
+
+    function v3MakeFrame(index,groups){
+      const target=SAUDI_POINTS_PER_FRAME;
+      const items=[];
+
+      for(const group of groups){
+        const [r,g,b]=group.color.map(v=>v/255);
+        for(const path of group.paths){
+          if(!path||path.length<2) continue;
+          const length=v3PathLength(path);
+          if(length<=.002) continue;
+          items.push({path,color:[r,g,b],length});
+        }
+      }
+
+      if(!items.length){
+        return {
+          number:index,name:'SAUDI3 '+String(index).padStart(4,'0'),projector:0,count:target,
+          position:new Float32Array(target*3),
+          color:new Float32Array(target*3),
+          blank:new Uint8Array(target).fill(1)
+        };
+      }
+
+      // Four blanked dwell points at the beginning of every disconnected vector
+      // prevent LaserShow from drawing a visible line while jumping between shapes.
+      const blankCount=Math.min(Math.floor(target/4),items.length*4);
+      const visibleCount=Math.max(20,target-blankCount);
+      const allocations=v3AllocateVisiblePoints(items,visibleCount);
+
+      const points=[];
+      for(let i=0;i<items.length;i++){
+        const item=items[i];
+        const sampled=v3ResamplePath(item.path,allocations[i]);
+        for(let j=0;j<4;j++){
+          points.push({
+            x:sampled[0][0],y:sampled[0][1],
+            color:item.color,blank:1
+          });
+        }
+        for(const [x,y] of sampled){
+          points.push({x,y,color:item.color,blank:0});
+        }
+      }
+
+      // Keep every frame exactly 444 points. Trim only tail dwell or pad on
+      // the final point; vector order and blank transitions stay intact.
+      if(points.length>target) points.length=target;
+      while(points.length<target){
+        const last=points[points.length-1]||{x:0,y:0,color:[0,0,0],blank:1};
+        points.push({...last});
+      }
+
+      const position=new Float32Array(target*3);
+      const color=new Float32Array(target*3);
+      const blank=new Uint8Array(target);
+
+      for(let i=0;i<target;i++){
+        const p=points[i],k=i*3;
+        position[k]=p.x;position[k+1]=p.y;position[k+2]=0;
+        color[k]=p.color[0];color[k+1]=p.color[1];color[k+2]=p.color[2];
+        blank[i]=p.blank;
+      }
+
+      return {
+        number:index,name:'SAUDI3 '+String(index).padStart(4,'0'),projector:0,
+        count:target,position,color,blank
+      };
+    }
+
+    async function buildSaudiV3Asset(){
+      const data=await loadSaudiVectorV3Data();
+      const fps=data.fps||SAUDI_FPS;
+      const paths=data.paths;
+      const colors=data.colors;
+      const frames=[];
+      let frameIndex=0;
+
+      const finalSaudi=v3TransformPaths(paths.saudi,.92,.92,0,-.25);
+      const final96=v3TransformPaths(paths.n96,.34,.34,0,.60);
+
+      for(const [sceneName,seconds] of data.scenes){
+        const count=Math.round(seconds*fps);
+
+        for(let i=0;i<count;i++){
+          const local=i/fps;
+          const reveal=v3Smoothstep(Math.min(1,local/Math.max(.001,seconds*.30)));
+
+          if(sceneName==='final'){
+            const word=v3RevealPaths(finalSaudi,reveal);
+            const reveal96=v3Smoothstep(
+              Math.max(0,Math.min(1,(local-seconds*.18)/(seconds*.20)))
+            );
+            const num=v3RevealPaths(final96,reveal96);
+
+            frames.push(v3MakeFrame(frameIndex++,[
+              {paths:word,color:colors.saudi},
+              {paths:num,color:colors.n96}
+            ]));
+          }else{
+            frames.push(v3MakeFrame(frameIndex++,[
+              {
+                paths:v3RevealPaths(paths[sceneName],reveal),
+                color:colors[sceneName]
+              }
+            ]));
+          }
+        }
+      }
+
+      const tracks=new Map([[0,frames]]);
+      return {
+        frames,tracks,
+        totalPoints:frames.length*SAUDI_POINTS_PER_FRAME,
+        blanked:0,paletteFallbacks:0,eof:true,bytes:0,
+        custom:true,duration:data.duration||36,fps
+      };
+    }
+
     async function ensureSaudiAudio(){
       if(saudiAudioReady) return saudiAudio;
       if(saudiAudioPromise) return saudiAudioPromise;
@@ -1385,6 +1654,24 @@
       if(assetCache.has(showId)) return assetCache.get(showId);
       const item=SHOWS.find(s=>s.id===showId);
       if(!item) throw new Error('Unknown laser show');
+
+      if(item.kind==='vector-v3'){
+        if(initial) setLoadProgress(28,'تحميل مسارات الأوتلاين النظيفة…');
+
+        const sourceAsset=await buildSaudiV3Asset();
+        const loader=new ILDALoader();
+        const asset=loader.parse(encodeSaudiIlda(sourceAsset));
+
+        asset.custom=true;
+        asset.duration=36;
+        asset.fps=SAUDI_FPS;
+        assetCache.set(showId,asset);
+
+        ensureSaudiAudio().catch(err=>console.warn('[ABODEN LASER] audio preload',err));
+
+        if(initial) setLoadProgress(76,'تم تجهيز عرض السعودية V3…');
+        return asset;
+      }
 
       if(item.kind==='custom'){
         if(initial) setLoadProgress(36,'بناء ملف ILDA للسعودية…');
