@@ -1473,7 +1473,7 @@
           laserShow.blankingOffset=-3;
           laserShow.lightDecay=.88;
           laserShow.intensity=1.18;
-          laserShow.beamIntensity=.33;
+          laserShow.beamIntensity=.38;
           laserShow.seekFrame(0);
 
           if(placed) await startSaudiPlayback(true);
@@ -1568,11 +1568,11 @@
 
       // Keep the projected image farther from the physical projector so
       // the beam cone reads like a real stage laser instead of a near-field fan.
-      const LASER_PROJECTION_DISTANCE=4.80;
-      const LASER_PROJECTION_HEIGHT=1.72;
+      const LASER_PROJECTION_DISTANCE=7.20;
+      const LASER_PROJECTION_HEIGHT=2.20;
 
       // Large stage-style projection: wider, taller and slightly elevated.
-      laserShow=new LaserShow(asset,{capacity:2048,width:4.30,height:2.75});
+      laserShow=new LaserShow(asset,{capacity:2048,width:6.60,height:4.20});
       laserShow.position.set(0,LASER_PROJECTION_HEIGHT,-LASER_PROJECTION_DISTANCE);
 
       // Projector and laser light live in separate scenes but share the same
@@ -1610,7 +1610,7 @@
         laserShow.blankingOffset=-3;
         laserShow.lightDecay=.88;
         laserShow.intensity=1.18;
-        laserShow.beamIntensity=.33;
+        laserShow.beamIntensity=.38;
         laserShow.seekFrame(0);
         saudiLastFrame=0;
         saudiLastAudioTime=0;
@@ -1628,7 +1628,7 @@
           laserRenderer,
           laserScene,
           laserCamera,
-          {strength:4.5,radius:.22,threshold:.10,samples:2}
+          {strength:4.0,radius:.18,threshold:.12,samples:2}
         );
         laserPipeline.add(laserShow);
         pipelineReady=true;
