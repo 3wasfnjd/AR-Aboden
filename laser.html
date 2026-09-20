@@ -1468,9 +1468,9 @@
           laserShow.playing=false;
           laserShow.pointRate=SAUDI_POINT_RATE;
           laserShow.blankingOffset=-3;
-          laserShow.lightDecay=.95;
-          laserShow.intensity=1.20;
-          laserShow.beamIntensity=.62;
+          laserShow.lightDecay=.90;
+          laserShow.intensity=1.15;
+          laserShow.beamIntensity=.42;
           laserShow.seekFrame(0);
 
           if(placed) await startSaudiPlayback(true);
@@ -1482,9 +1482,9 @@
           laserShow.playing=true;
           laserShow.pointRate=8000;
           laserShow.blankingOffset=-3;
-          laserShow.lightDecay=.95;
+          laserShow.lightDecay=.92;
           laserShow.intensity=1;
-          laserShow.beamIntensity=.5;
+          laserShow.beamIntensity=.40;
           playBtn.innerHTML='Ⅱ<span>إيقاف</span>';
         }
 
@@ -1581,9 +1581,9 @@
 
       // Start from three-ilda's own visual defaults. The pipeline supplies
       // bloom, beam blur and atmospheric haze instead of overdriving raw lines.
-      laserShow.beamIntensity=.5;
+      laserShow.beamIntensity=.40;
       laserShow.intensity=1;
-      laserShow.lightDecay=.95;
+      laserShow.lightDecay=.92;
       laserShow.pointRate=8000;
 
       laserRig.add(laserShow);
@@ -1604,9 +1604,9 @@
         laserShow.playing=false;
         laserShow.pointRate=SAUDI_POINT_RATE;
         laserShow.blankingOffset=-3;
-        laserShow.lightDecay=.95;
-        laserShow.intensity=1.20;
-        laserShow.beamIntensity=.62;
+        laserShow.lightDecay=.90;
+        laserShow.intensity=1.15;
+        laserShow.beamIntensity=.42;
         laserShow.seekFrame(0);
         saudiLastFrame=0;
         saudiLastAudioTime=0;
@@ -1617,14 +1617,14 @@
 
       laserScene.add(laserRig);
 
-      setLoadProgress(88,'تجهيز Bloom و Haze…');
+      setLoadProgress(88,'ضبط حدة الليزر والتوهج…');
 
       try{
         laserPipeline=new LaserShowPipeline(
           laserRenderer,
           laserScene,
           laserCamera,
-          {strength:15,radius:1,threshold:0,samples:2}
+          {strength:6,radius:.35,threshold:.08,samples:2}
         );
         laserPipeline.add(laserShow);
         pipelineReady=true;
