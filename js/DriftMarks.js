@@ -207,6 +207,8 @@ class DriftTrail {
 
 		}
 
+		// Fading changes old segments too, not just the newly appended ranges.
+		this.geometry.attributes.color.clearUpdateRanges();
 		this.geometry.attributes.color.needsUpdate = true;
 		this.dirty = true;
 
@@ -353,6 +355,19 @@ export class DriftMarks {
 		this._load();
 		window.addEventListener( 'pagehide', () => this._save() );
 
+	}
+
+	reset() {
+		this.clock = 0;
+		for ( const trail of this.trails ) {
+			trail.active = false;
+			trail.segmentIndex = 0;
+			trail.drawCount = 0;
+			trail.dirty = false;
+			trail.baseAlphas.fill( 0 );
+			trail.writeClocks.fill( 0 );
+			trail.geometry.setDrawRange( 0, 0 );
+		}
 	}
 
 	update( dt, vehicle ) {

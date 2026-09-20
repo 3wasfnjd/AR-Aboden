@@ -1,0 +1,100 @@
+// Adapted from 3wasfnjd/hajwala js/AIController.js (free-roam states,
+// wrapped heading-error steering and rhythmic donut handbrake).
+// Source: 4c9e421b469118c353724944a3b1465a0c1c0fc0. See docs/HAJWALA_LICENSE.txt.
+// Spectator mode integrates a bounded planar drift, not an uncontrolled sphere.
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const wrap=a=>((a+Math.PI)%(2*Math.PI)+2*Math.PI)%(2*Math.PI)-Math.PI;
+
+export class ArenaAutopilot {
+  constructor({center,roadY,scale=1,roadRadius=1.30,carRadius=.25,random=Math.random}) {
+    if(!Number.isFinite(scale)||scale<=0 || roadRadius<=carRadius+.1) throw new Error('Invalid show dimensions');
+    this.center={x:center.x,z:center.z};this.roadY=roadY;this.scale=scale;
+    this.limit=(roadRadius-carRadius-.10)*scale;
+    this.random=random;this.x=0;this.z=0;this.vx=0;this.vz=0;
+    this.heading=0;this.speed=0;this.angularSpeed=0;this.time=0;
+    this.state='DRIFTING';this.timer=5;this.sequence=0;this.direction=1;
+    this.steer=0;this.handbrake=false;this.boundaryCorrections=0;
+    this.pickTarget();
+  }
+  pickTarget() {
+    const angle=this.random()*Math.PI*2;
+    const radius=this.limit*(.35+this.random()*.22);
+    this.target={x:Math.cos(angle)*radius,z:Math.sin(angle)*radius};
+  }
+  nextState() {
+    this.sequence++;
+    this.state=['DRIFTING','DONUT','CRUISING'][this.sequence%3];
+    this.timer=this.state==='CRUISING'?2.2:4+this.random()*2;
+    this.direction=this.random()<.5?-1:1;
+    this.pickTarget();
+  }
+  step(dt) {
+    this.time+=dt;this.timer-=dt;
+    const radius=Math.hypot(this.x,this.z);
+    const predicted=Math.hypot(this.x+this.vx*.65,this.z+this.vz*.65);
+    if(radius>this.limit*.78 || predicted>this.limit*.9) this.state='AVOIDANCE';
+    if(this.state==='AVOIDANCE') {
+      if(radius<this.limit*.52 && predicted<this.limit*.65){this.state='DRIFTING';this.timer=4;this.pickTarget();}
+    } else if(this.timer<=0) this.nextState();
+
+    if(this.state!=='DONUT' && this.state!=='AVOIDANCE' && Math.hypot(this.x-this.target.x,this.z-this.target.z)<this.limit*.18) this.pickTarget();
+    const target=this.state==='AVOIDANCE'?{x:0,z:0}:this.target;
+    const error=wrap(Math.atan2(target.x-this.x,target.z-this.z)-this.heading);
+    let throttle=1,grip=2;
+    this.handbrake=false;
+    if(this.state==='DONUT') {
+      this.steer=.55*this.direction;
+      this.handbrake=Math.sin(this.time*10)>.5;
+      grip=1.5;
+    } else if(this.state==='DRIFTING') {
+      this.steer=clamp(-error*4,-1,1);
+      this.handbrake=Math.abs(error)>.4;
+      grip=1.8;
+    } else if(this.state==='AVOIDANCE') {
+      this.steer=clamp(-error*3,-1,1);
+      throttle=Math.abs(error)>1.1?.10:.65;
+      this.handbrake=Math.abs(error)>.6;
+      grip=7;
+    } else {
+      this.steer=clamp(-error*2,-1,1);throttle=.85;grip=4;
+    }
+    const turnGrip=this.handbrake?1:clamp(this.speed/(.65*this.scale),.2,1);
+    const turn=-this.steer*turnGrip*(this.handbrake?3.8:2.8);
+    this.angularSpeed+=(turn-this.angularSpeed)*(1-Math.exp(-4*dt));
+    this.heading=wrap(this.heading+this.angularSpeed*dt);
+    const targetSpeed=.65*this.scale*throttle*(this.handbrake?.8:1);
+    this.speed+=(targetSpeed-this.speed)*(1-Math.exp(-2*dt));
+    this.vx+=(Math.sin(this.heading)*this.speed-this.vx)*(1-Math.exp(-grip*dt));
+    this.vz+=(Math.cos(this.heading)*this.speed-this.vz)*(1-Math.exp(-grip*dt));
+
+    // Brake the outward component before the boundary, keeping tangential slide.
+    if(radius>this.limit*.6) {
+      const nx=this.x/radius,nz=this.z/radius;
+      const outward=this.vx*nx+this.vz*nz;
+      const allowed=Math.max(0,(this.limit-radius)*1.5);
+      if(outward>allowed){this.vx-=(outward-allowed)*nx;this.vz-=(outward-allowed)*nz;}
+    }
+    this.x+=this.vx*dt;this.z+=this.vz*dt;
+    const distance=Math.hypot(this.x,this.z);
+    // Final footprint constraint, including low frame rates. Normally unused.
+    if(distance>this.limit) {
+      const nx=this.x/distance,nz=this.z/distance;
+      this.x=nx*this.limit;this.z=nz*this.limit;
+      const outward=Math.max(0,this.vx*nx+this.vz*nz);
+      this.vx-=outward*nx;this.vz-=outward*nz;
+      this.state='AVOIDANCE';this.boundaryCorrections++;
+    }
+  }
+  update(dt) {
+    if(!Number.isFinite(dt)||dt<0) throw new Error('Invalid show timestep');
+    // Hidden/tracking-loss intervals are not passed here; never catch them up.
+    let remaining=Math.min(dt,.1);
+    while(remaining>1e-8){const step=Math.min(remaining,1/120);this.step(step);remaining-=step;}
+    const speed=Math.hypot(this.vx,this.vz);
+    const slip=speed>.01?Math.abs(wrap(Math.atan2(this.vx,this.vz)-this.heading)):0;
+    return {x:this.center.x+this.x,y:this.roadY,z:this.center.z+this.z,
+      heading:this.heading,vx:this.vx,vz:this.vz,speed,steer:this.steer,
+      handbrake:this.handbrake,state:this.state,
+      driftIntensity:clamp(slip*1.5+(this.handbrake?.65:0),0,1.8)*clamp(speed/(.2*this.scale),0,1)};
+  }
+}

@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
   <meta name="theme-color" content="#05070b">
-  <title>AR Aboden — Hajwala Physics</title>
+  <title>AR Aboden — Drift Show</title>
 
   <script src="https://cdn.jsdelivr.net/npm/@8thwall/engine-binary@1/dist/xr.js"
           async crossorigin="anonymous" data-preload-chunks="slam"></script>
@@ -87,61 +87,8 @@
     .guide.hidden{display:none}
     .toast{position:absolute;left:50%;top:18%;transform:translate(-50%,-8px);opacity:0;transition:.2s;background:rgba(5,10,17,.82);border:1px solid rgba(255,255,255,.15);border-radius:999px;padding:10px 15px;font-size:13px;white-space:nowrap;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
     .toast.show{opacity:1;transform:translate(-50%,0)}
-    .mode{position:absolute;left:14px;right:14px;bottom:205px;text-align:center;font-size:11px;opacity:.78;text-shadow:0 2px 10px #000}
+    .mode{position:absolute;left:14px;right:14px;bottom:max(24px,env(safe-area-inset-bottom));text-align:center;font-size:11px;opacity:.78;text-shadow:0 2px 10px #000}
     .controls{position:absolute;inset:0;display:none;pointer-events:none}
-    .steerZone{
-      position:absolute;left:10px;bottom:max(10px,env(safe-area-inset-bottom));
-      width:180px;height:180px;
-      pointer-events:auto;touch-action:none;
-      display:flex;align-items:flex-end;justify-content:flex-start;padding:20px;
-    }
-    .joyBase{
-      position:relative;width:130px;height:130px;border-radius:50%;
-      background:rgba(255,255,255,.12);
-      border:2px solid rgba(255,255,255,.25);
-      transition:background .15s,border-color .15s;
-      backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
-      box-shadow:0 6px 22px rgba(0,0,0,.22);
-    }
-    .joyBase.active{
-      background:rgba(255,255,255,.18);
-      border-color:rgba(255,255,255,.40);
-    }
-    .joyKnob{
-      position:absolute;top:50%;left:50%;
-      width:58px;height:58px;margin:-29px 0 0 -29px;
-      border-radius:50%;background:rgba(255,255,255,.40);
-      box-shadow:0 5px 16px rgba(0,0,0,.28);
-      pointer-events:none;
-    }
-    .handbrakeDock{
-      position:absolute;right:18px;bottom:max(24px,env(safe-area-inset-bottom));
-      pointer-events:auto;
-    }
-    .drive{
-      border:1px solid rgba(139,95,191,.38);
-      color:#fff;
-      background:linear-gradient(165deg,rgba(32,20,54,.78),rgba(13,13,22,.80));
-      backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
-      font-weight:900;font-size:12px;touch-action:none;
-      box-shadow:0 6px 24px rgba(0,0,0,.34);
-      transition:background .12s,transform .08s,border-color .12s;
-    }
-    .drive.handbrake{
-      width:108px;height:58px;border-radius:18px;
-      display:flex;align-items:center;justify-content:center;gap:6px;
-    }
-    .drive.handbrake::before{
-      content:"H";display:grid;place-items:center;
-      width:25px;height:25px;border-radius:50%;
-      border:2px solid rgba(255,255,255,.74);
-      font-size:12px;font-weight:950;
-    }
-    .drive.active{
-      transform:scale(.94);
-      background:linear-gradient(135deg,#8B5FBF,#5B8CFF);
-      border-color:rgba(255,255,255,.48);
-    }
     .placement{
       position:absolute;right:18px;top:calc(max(14px,env(safe-area-inset-top)) + 58px);
       display:flex;align-items:center;gap:8px;pointer-events:auto;flex-wrap:wrap;justify-content:flex-end;
@@ -178,12 +125,7 @@
     @keyframes loadSweep{0%{transform:translateX(-115%)}100%{transform:translateX(340%)}}
     .tiny{margin-top:11px!important;font-size:11px!important;color:#a9b2c1!important;text-align:center}
     .error{display:none;margin-top:12px;color:#ffc4c4;font-size:12px;line-height:1.7}
-    @media(max-width:370px){
-      .steerZone{width:164px;height:164px;padding:17px}
-      .joyBase{width:118px;height:118px}
-      .joyKnob{width:52px;height:52px;margin:-26px 0 0 -26px}
-      .drive.handbrake{width:98px;height:54px}
-    }
+
   </style>
 </head>
 <body>
@@ -202,7 +144,7 @@
     </div>
 
     <div class="toast" id="toast"></div>
-    <div class="mode" id="modeText">حلبة أسفلت AR: سيارة أصغر + دخان هجولة + آثار إطارات</div>
+    <div class="mode" id="modeText">عرض درفت تلقائي — تحرّك حول الحلبة وشاهد</div>
 
     <div class="controls" id="controls">
       <div class="placement" id="placementTools">
@@ -215,22 +157,13 @@
         <button class="smallBtn" id="recenterBtn">معايرة</button>
       </div>
 
-      <div class="steerZone" id="steerZone">
-        <div class="joyBase" id="joyBase">
-          <div class="joyKnob" id="joyKnob"></div>
-        </div>
-      </div>
-
-      <div class="handbrakeDock">
-        <button class="drive handbrake game-hud" id="handbrakeBtn">هاندبريك</button>
-      </div>
     </div>
   </div>
 
   <div id="intro">
     <div class="card">
-      <h1>حلبة هجولة AR</h1>
-      <p>حدد السطح أولًا، ثم كبّر أو صغّر الحلبة بالمعاينة حتى يناسبك حجمها، وبعدها ثبّتها وابدأ القيادة.</p>
+      <h1>عرض هجولة AR</h1>
+      <p>اختر مكان الحلبة وحجمها ثم ثبّتها. تبدأ السيارة عرض الدرفت تلقائيًا، ويمكنك مشاهدتها من أي زاوية.</p>
       <div class="loadBox" id="loadBox" aria-live="polite">
         <div class="loadMeta">
           <span id="loadLabel">جاري تجهيز التجربة…</span>
@@ -242,25 +175,20 @@
       </div>
       <button class="start" id="startBtn" disabled>جاري تجهيز المحرك…</button>
       <div class="error" id="errorBox"></div>
-      <p class="tiny">التحكم مثل هجولة: الجويستك يحدد اتجاه السيارة ويدعس تلقائيًا، والهاندبريك مستقل للتفحيط.</p>
+      <p class="tiny">تجربة مشاهدة بدون تحكم بالسيارة. يتوقف العرض مؤقتًا عند ضعف التتبع.</p>
     </div>
   </div>
 
   <script type="module">
     import * as THREE from 'three';
     import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-    import { updateWorld } from 'crashcat';
 
     import { GroundPlacement } from './js/ar/GroundPlacement.js?v=3';
-    import { Vehicle } from './js/Vehicle.js';
-    import { MobileControls } from './js/Controls.js';
-    import { SmokeTrails } from './js/Particles.js';
-    import { DriftMarks } from './js/DriftMarks.js';
-    import {
-      createVehicleWorld,
-      createArenaPhysics,
-      createVehicleBody
-    } from './js/Physics.js?v=2';
+    import { Vehicle } from './js/Vehicle.js?v=drift-show-1';
+    import { ArenaAutopilot } from './js/ar/ArenaAutopilot.js?v=1';
+    import { SmokeTrails } from './js/Particles.js?v=drift-show-1';
+    import { DriftMarks } from './js/DriftMarks.js?v=drift-show-1';
+
 
     window.THREE = THREE;
 
@@ -328,29 +256,16 @@
     const scalePlusBtn = document.getElementById('scalePlusBtn');
     const scaleValue = document.getElementById('scaleValue');
 
-    const steerZone = document.getElementById('steerZone');
-    const joyBase = document.getElementById('joyBase');
-    const joyKnob = document.getElementById('joyKnob');
-    const handbrakeBtn = document.getElementById('handbrakeBtn');
-
-    const controls = new MobileControls({
-      steerZone,
-      joyBase,
-      joyKnob,
-      handbrakeBtn
-    });
-
     let xrReady = false;
     let xrStarted = false;
     let scene, camera, renderer;
     let reticle, shadowPlane;
     let arenaGroup = null;
-    let arenaPhysics = null;
+    let autopilot = null;
+    let carFootprint = .20;
     let vehicle = null;
     let smokeTrails = null;
     let driftMarks = null;
-    let world = null;
-    let body = null;
     let placed = false;
 
     let placementScale = 1.0;
@@ -358,12 +273,12 @@
     const MAX_PLACEMENT_SCALE = 1.40;
     const PLACEMENT_SCALE_STEP = 0.10;
 
-    const vehicleRadius = 0.075;
-    const CAR_LENGTH_METERS = 0.42;
-    const AR_EFFECT_SCALE = 0.09;
+    const CAR_LENGTH_METERS = 0.30;
+    const vehicleRadius = 0.075 * (CAR_LENGTH_METERS / .42);
+    const AR_EFFECT_SCALE = 0.09 * (CAR_LENGTH_METERS / .42);
     const ARENA_RADIUS = 1.55;
-    const ARENA_SEGMENTS = 28;
-    const ARENA_WALL_HEIGHT = 0.17;
+    // GLB raised barriers start at radius >= 1.374 m after normalization.
+    const ARENA_ROAD_RADIUS = 1.30;
 
     const raycaster = new THREE.Raycaster();
     const centerNdc = new THREE.Vector2(0, 0);
@@ -437,15 +352,6 @@
           driftMarks.trails.forEach(trail=>{ trail.scale = fxScale; });
         }
       }
-    }
-
-    function cameraYaw(){
-      const d = new THREE.Vector3();
-      camera.getWorldDirection(d);
-      d.y = 0;
-      if (d.lengthSq() < 0.0001) return 0;
-      d.normalize();
-      return Math.atan2(d.x, d.z);
     }
 
     function setLoadProgress(value,label,{indeterminate=false}={}){
@@ -634,19 +540,20 @@
       arenaGroup = new THREE.Group();
       arenaGroup.visible = false;
 
-      // The imported GLB is now the only visual arena. Collision remains
-      // procedural underneath so driving, drifting and respawn logic stay stable.
+      // Show motion remains inside the measured inner road of this GLB.
       const importedArena = await loadArenaModel();
       arenaGroup.add(importedArena);
 
       scene.add(arenaGroup);
       updatePlacementScaleVisuals();
 
-      world = createVehicleWorld();
 
       const carModel = await loadCar();
       vehicle = new Vehicle();
       const carRoot = vehicle.init(carModel);
+      const carBounds = new THREE.Box3().setFromObject(carRoot);
+      carFootprint = Math.hypot(Math.max(Math.abs(carBounds.min.x),Math.abs(carBounds.max.x)),
+        Math.max(Math.abs(carBounds.min.z),Math.abs(carBounds.max.z)));
       carRoot.visible = false;
       scene.add(carRoot);
 
@@ -705,7 +612,6 @@
           if(!sceneReady) startupFailure('تعذر تشغيل التتبع. أعد تحميل الصفحة وحاول مجددًا.');
           else {
             placement.observe({now:performance.now(),status:'LIMITED'});
-            controls.reset();
             setStatus('توقف التتبع — أعد توجيه الجوال للأرضية',false);
           }
         }
@@ -772,15 +678,14 @@
     }
 
     function tickWorld(now){
-      if(!sceneReady || !camera || !vehicle || !world) return;
-      const dt=Math.min(1/30,Math.max(0,(now-lastTick)/1000));
+      if(!sceneReady || !camera || !vehicle) return;
+      const dt=Math.min(.1,Math.max(0,(now-lastTick)/1000));
       lastTick=now;
       updatePlacement(dt,now);
       const canDrive=placed && !document.hidden && placement.trackingReady(now);
       if(canDrive!==drivingEnabled){
-        controls.reset();
         drivingEnabled=canDrive;
-        if(placed) setStatus(canDrive?'الحلبة مثبتة — تابع القيادة':'القيادة متوقفة — أعد مسح المكان ببطء',canDrive);
+        if(placed) setStatus(canDrive?'عرض الدرفت يعمل تلقائيًا':'العرض متوقف — أعد مسح المكان ببطء',canDrive);
       }
       if(diagnostics){
         diagnostics.push({time:now,status:placement.status,reason:placement.reason,
@@ -790,16 +695,14 @@
           arena:arenaGroup.position.toArray(),placed});
         if(diagnostics.length>240) diagnostics.shift();
       }
-      if(!canDrive || !body) return;
-      updateWorld(world,null,dt);
-      vehicle.update(dt,controls.update(cameraYaw()+Math.PI));
+      if(!canDrive || !autopilot) return;
+      vehicle.updateAutonomous(autopilot.update(dt),dt);
       smokeTrails?.update(dt,vehicle);
       driftMarks?.update(dt,vehicle);
     }
 
     document.addEventListener('visibilitychange',()=>{
       placement.observe({now:performance.now(),status:'LIMITED'});
-      controls.reset();
       lastTick=performance.now();
     });
 
@@ -822,24 +725,6 @@
       const arenaCenter = new THREE.Vector3(anchor.x,anchor.y,anchor.z);
       const roadY = arenaCenter.y + arenaRoadY * scale;
 
-      // Rebuild the physics world on every lock-in. This lets the user
-      // recalibrate and choose a completely different arena size without
-      // leaving stale invisible colliders from the previous size.
-      world = createVehicleWorld();
-      arenaPhysics = createArenaPhysics(
-        world,
-        arenaCenter.x,
-        arenaCenter.z,
-        {
-          radius:ARENA_RADIUS * scale,
-          segments:ARENA_SEGMENTS,
-          wallThickness:.07 * scale,
-          wallHeight:ARENA_WALL_HEIGHT * scale,
-          floorMargin:.24 * scale,
-          floorY:roadY
-        }
-      );
-
       arenaGroup.position.copy(arenaCenter);
       arenaGroup.scale.setScalar(scale);
       arenaGroup.visible = true;
@@ -855,18 +740,15 @@
         arenaCenter.z
       );
 
-      body = createVehicleBody(
-        world,
-        [spawn.x,spawn.y,spawn.z],
-        scaledVehicleRadius
-      );
-
       vehicle.container.scale.setScalar(scale);
-      vehicle.attachPhysics(world,body,scaledVehicleRadius);
+      vehicle.sphereRadius = scaledVehicleRadius;
       applyEffectScale(scale);
-
-      const yaw = cameraYaw();
-      vehicle.place(spawn,yaw);
+      smokeTrails?.reset();
+      driftMarks?.reset();
+      autopilot = new ArenaAutopilot({center:arenaCenter,roadY,scale,
+        roadRadius:ARENA_ROAD_RADIUS,carRadius:carFootprint});
+      vehicle.place(spawn,0);
+      vehicle.updateAutonomous(autopilot.update(0),0);
 
       placed = true;
       drivingEnabled = true;
@@ -875,9 +757,8 @@
       guide.classList.add('hidden');
       scalePanel.style.display = 'none';
       placeBtn.textContent = 'نقل الحلبة';
-      setStatus('الحلبة مثبتة — ' + Math.round(scale * 100) + '%', true);
-      controls.reset();
-      notify('تم تثبيت الحلبة بالحجم المختار');
+      setStatus('عرض الدرفت يعمل تلقائيًا', true);
+      notify('بدأ عرض الدرفت');
 
       if (navigator.vibrate) navigator.vibrate(30);
     }
@@ -895,10 +776,10 @@
       placeBtn.disabled=true;
       stablePoint.set(0,0,0);
 
-      controls.reset();
 
-      body = null;
-      arenaPhysics = null;
+      autopilot = null;
+      smokeTrails?.reset();
+      driftMarks?.reset();
 
       if (vehicle) vehicle.container.visible = false;
       if (arenaGroup) arenaGroup.visible = false;

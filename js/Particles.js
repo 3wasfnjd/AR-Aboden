@@ -110,6 +110,14 @@ export class SmokeTrails {
 
 	}
 
+	reset() {
+		for ( const particle of this.particles ) particle.life = 0;
+		this.opacities.fill( 0 );
+		this.opacityAttr.needsUpdate = true;
+		this.emitIndex = 0;
+		this.heat = 0;
+	}
+
 	update( dt, vehicle ) {
 
 		const shouldEmit = vehicle.driftIntensity > 0.7;

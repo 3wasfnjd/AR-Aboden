@@ -7,7 +7,7 @@ node --test tests/ground-placement.test.mjs
 ```
 
 The arena uses XR8 absolute scale (metres) and the camera pose supplied by XR8.
-Placement/physics update inside the camera pipeline rather than a separate animation loop.
+Placement/show motion update inside the camera pipeline rather than a separate animation loop.
 
 Before placement, require 800 ms of NORMAL tracking and a fresh downward ray hit
 on XR8's estimated ground. The user can then tap “ثبّت هنا”; no feature count or
@@ -23,10 +23,10 @@ reject stale input, missing candidates, and unavailable tracking. The earlier
 mandatory feature-patch gate was removed after phone feedback: it could leave the
 placement button disabled indefinitely despite normal tracking.
 
-The final world position is copied once. Tracking loss pauses driving and clears
+The final world position is copied once. Tracking loss pauses the show and clears
 unplaced candidates; recovery does not reposition the locked arena. Repositioning
-is explicit. The collision floor follows the model's centre asphalt height instead
-of assuming the rendered road is exactly at the model origin.
+is explicit. The show follows the model's centre asphalt height instead
+of assuming the rendered road is exactly at the model origin. See `ARENA_SHOW.md`.
 
 This is ground validation, not a native persistent anchor or multi-plane detector.
 XR8's camera/world estimate can still drift. Automated checks cannot establish
@@ -39,7 +39,7 @@ physical alignment, tracking quality, or frame rate on a phone.
    without waiting for the stability hint. Invalid aim or tracking must disable it.
 2. Place the arena and walk around it slowly. Check floor contact from several
    angles and whether the wheels meet the asphalt at different arena sizes.
-3. Briefly cover the camera or switch tabs. Driving should pause. On recovery the
+3. Briefly cover the camera or switch tabs. The show should pause. On recovery the
    arena must not silently be moved to a new location. Reposition if the world map
    itself has shifted.
 4. Repeat on a plain floor, near furniture, and after explicit repositioning.
