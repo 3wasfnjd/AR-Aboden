@@ -1263,10 +1263,20 @@
       if(saudiVectorV3Promise) return saudiVectorV3Promise;
 
       saudiVectorV3Promise=(async()=>{
-        const response=await fetch('./assets/laser/saudi_story_v3_vectors.b64',{cache:'force-cache'});
-        if(!response.ok) throw new Error('Saudi V3 vector data HTTP '+response.status);
+        const urls=Array.from(
+          {length:6},
+          (_,i)=>'./assets/laser/saudi_story_v3_'+String(i).padStart(2,'0')+'.b64'
+        );
+        const parts=await Promise.all(urls.map(async url=>{
+          const response=await fetch(url,{cache:'force-cache'});
+          if(!response.ok) throw new Error('Saudi V3 vector chunk HTTP '+response.status);
+          return (await response.text()).trim();
+        }));
 
-        const b64=(await response.text()).trim();
+        const b64=parts.join('');
+        if(b64.length!==24008){
+          throw new Error('Saudi V3 vector data incomplete: '+b64.length);
+        }
         const binary=atob(b64);
         const compressed=new Uint8Array(binary.length);
         for(let i=0;i<binary.length;i++) compressed[i]=binary.charCodeAt(i);
