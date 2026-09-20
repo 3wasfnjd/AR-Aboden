@@ -1468,9 +1468,9 @@
           laserShow.playing=false;
           laserShow.pointRate=SAUDI_POINT_RATE;
           laserShow.blankingOffset=-3;
-          laserShow.lightDecay=.90;
-          laserShow.intensity=1.15;
-          laserShow.beamIntensity=.42;
+          laserShow.lightDecay=.88;
+          laserShow.intensity=1.18;
+          laserShow.beamIntensity=.33;
           laserShow.seekFrame(0);
 
           if(placed) await startSaudiPlayback(true);
@@ -1482,9 +1482,9 @@
           laserShow.playing=true;
           laserShow.pointRate=8000;
           laserShow.blankingOffset=-3;
-          laserShow.lightDecay=.92;
+          laserShow.lightDecay=.90;
           laserShow.intensity=1;
-          laserShow.beamIntensity=.40;
+          laserShow.beamIntensity=.36;
           playBtn.innerHTML='Ⅱ<span>إيقاف</span>';
         }
 
@@ -1565,10 +1565,11 @@
 
       // Keep the projected image farther from the physical projector so
       // the beam cone reads like a real stage laser instead of a near-field fan.
-      const LASER_PROJECTION_DISTANCE=4.15;
-      const LASER_PROJECTION_HEIGHT=1.42;
+      const LASER_PROJECTION_DISTANCE=4.80;
+      const LASER_PROJECTION_HEIGHT=1.72;
 
-      laserShow=new LaserShow(asset,{capacity:2048,width:3.35,height:2.12});
+      // Large stage-style projection: wider, taller and slightly elevated.
+      laserShow=new LaserShow(asset,{capacity:2048,width:4.30,height:2.75});
       laserShow.position.set(0,LASER_PROJECTION_HEIGHT,-LASER_PROJECTION_DISTANCE);
 
       // Projector and laser light live in separate scenes but share the same
@@ -1581,9 +1582,9 @@
 
       // Start from three-ilda's own visual defaults. The pipeline supplies
       // bloom, beam blur and atmospheric haze instead of overdriving raw lines.
-      laserShow.beamIntensity=.40;
+      laserShow.beamIntensity=.36;
       laserShow.intensity=1;
-      laserShow.lightDecay=.92;
+      laserShow.lightDecay=.90;
       laserShow.pointRate=8000;
 
       laserRig.add(laserShow);
@@ -1604,9 +1605,9 @@
         laserShow.playing=false;
         laserShow.pointRate=SAUDI_POINT_RATE;
         laserShow.blankingOffset=-3;
-        laserShow.lightDecay=.90;
-        laserShow.intensity=1.15;
-        laserShow.beamIntensity=.42;
+        laserShow.lightDecay=.88;
+        laserShow.intensity=1.18;
+        laserShow.beamIntensity=.33;
         laserShow.seekFrame(0);
         saudiLastFrame=0;
         saudiLastAudioTime=0;
@@ -1624,7 +1625,7 @@
           laserRenderer,
           laserScene,
           laserCamera,
-          {strength:6,radius:.35,threshold:.08,samples:2}
+          {strength:4.5,radius:.22,threshold:.10,samples:2}
         );
         laserPipeline.add(laserShow);
         pipelineReady=true;
