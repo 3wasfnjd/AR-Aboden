@@ -1198,6 +1198,64 @@
       if(laserShow) laserShow.visible=!active;
     }
 
+
+    function encodeSaudiIlda(sourceAsset){
+      const frames=sourceAsset.frames;
+      const headerSize=32;
+      let byteLength=headerSize; // EOF header
+      for(const frame of frames) byteLength+=headerSize+frame.count*8;
+
+      const buffer=new ArrayBuffer(byteLength);
+      const view=new DataView(buffer);
+      const bytes=new Uint8Array(buffer);
+      let offset=0;
+
+      function ascii(at,text,length){
+        for(let i=0;i<length;i++) bytes[at+i]=i<text.length?text.charCodeAt(i)&0x7f:0;
+      }
+
+      function writeHeader(format,name,count,number,total){
+        bytes[offset]=0x49; bytes[offset+1]=0x4c; bytes[offset+2]=0x44; bytes[offset+3]=0x41;
+        bytes[offset+4]=0; bytes[offset+5]=0; bytes[offset+6]=0; bytes[offset+7]=format;
+        ascii(offset+8,name.slice(0,8),8);
+        ascii(offset+16,'ABODEN',8);
+        view.setUint16(offset+24,count,false);
+        view.setUint16(offset+26,number&0xffff,false);
+        view.setUint16(offset+28,total&0xffff,false);
+        bytes[offset+30]=0;
+        bytes[offset+31]=0;
+        offset+=headerSize;
+      }
+
+      const total=frames.length;
+      for(let fi=0;fi<frames.length;fi++){
+        const frame=frames[fi];
+        writeHeader(5,'SAUDI'+String(fi).padStart(3,'0'),frame.count,fi,total);
+
+        for(let i=0;i<frame.count;i++){
+          const p=i*3;
+          const x=Math.max(-1,Math.min(1,frame.position[p]));
+          const y=Math.max(-1,Math.min(1,frame.position[p+1]));
+          view.setInt16(offset,Math.round(x*32767),false);
+          view.setInt16(offset+2,Math.round(y*32767),false);
+
+          let status=frame.blank[i]?0x40:0;
+          if(i===frame.count-1) status|=0x80;
+          bytes[offset+4]=status;
+
+          // ILDA true-colour format 5 stores B,G,R.
+          bytes[offset+5]=Math.round(Math.max(0,Math.min(1,frame.color[p+2]))*255);
+          bytes[offset+6]=Math.round(Math.max(0,Math.min(1,frame.color[p+1]))*255);
+          bytes[offset+7]=Math.round(Math.max(0,Math.min(1,frame.color[p]))*255);
+          offset+=8;
+        }
+      }
+
+      // Explicit ILDA EOF record.
+      writeHeader(0,'EOF',0,0,0);
+      return buffer;
+    }
+
     async function ensureSaudiAudio(){
       if(saudiAudioReady) return saudiAudio;
       if(saudiAudioPromise) return saudiAudioPromise;
@@ -1235,7 +1293,8 @@
     }
 
     async function startSaudiPlayback(restart=false){
-      if(currentShowId!=='saudi') return;
+      if(currentShowId!=='saudi'||!laserShow) return;
+
       try{
         await ensureSaudiAudio();
 
@@ -1243,20 +1302,22 @@
           saudiAudio.currentTime=0;
           saudiLastAudioTime=0;
           saudiLastFrame=0;
-          saudiDirectLastFrame=-1;
-          updateSaudiDirectFrame(0,true);
+          laserShow.playing=false;
+          laserShow.seekFrame(0);
         }
+
+        setSaudiRendererActive(false);
+        laserShow.visible=true;
 
         await saudiAudio.play();
 
+        laserShow.playing=true;
         saudiLastAudioTime=saudiAudio.currentTime;
-        setSaudiRendererActive(true);
-        syncSaudiTimeline(true);
-
         playBtn.innerHTML='Ⅱ<span>إيقاف</span>';
-        setStatus('السعودية · موسيقى متزامنة',true);
+        setStatus('السعودية · ILDA + موسيقى',true);
       }catch(err){
         console.warn('[ABODEN LASER] Audio playback',err);
+        laserShow.playing=false;
         playBtn.innerHTML='▶<span>تشغيل</span>';
         notify('اضغط تشغيل لبدء الموسيقى');
       }
@@ -1264,37 +1325,58 @@
 
     function stopSaudiPlayback(reset=false){
       saudiAudio.pause();
+      if(laserShow&&currentShowId==='saudi') laserShow.playing=false;
 
       if(reset&&saudiAudioReady){
         try{saudiAudio.currentTime=0;}catch{}
         saudiLastAudioTime=0;
         saudiLastFrame=0;
-        saudiDirectLastFrame=-1;
-        updateSaudiDirectFrame(0,true);
+        if(laserShow) laserShow.seekFrame(0);
       }
     }
 
     function syncSaudiTimeline(force=false){
-      if(currentShowId!=='saudi'||!saudiDirectGroup) return;
+      if(currentShowId!=='saudi'||!laserShow) return;
 
       const time=Math.min(
         SAUDI_DURATION-.001,
         Math.max(0,saudiAudioReady?saudiAudio.currentTime:0)
       );
-      const asset=assetCache.get('saudi');
-      if(!asset?.frames?.length) return;
+      const frame=Math.min(laserShow.frameCount-1,Math.floor(time*SAUDI_FPS));
 
-      const frame=Math.min(asset.frames.length-1,Math.floor(time*SAUDI_FPS));
-      if(force||frame!==saudiLastFrame){
-        updateSaudiDirectFrame(frame,force);
+      if(force){
+        laserShow.playing=false;
+        laserShow.seekFrame(frame);
+        laserShow.playing=!saudiAudio.paused&&!saudiAudio.ended;
         saudiLastFrame=frame;
+        saudiLastAudioTime=time;
+        return;
       }
+
+      if(saudiAudio.paused||saudiAudio.ended){
+        laserShow.playing=false;
+        laserShow.update(0);
+        return;
+      }
+
+      const delta=time-saudiLastAudioTime;
+      if(delta>=0&&delta<=.30){
+        laserShow.playing=true;
+        if(delta>0) laserShow.update(delta);
+      }else{
+        laserShow.playing=false;
+        laserShow.seekFrame(frame);
+        laserShow.playing=true;
+      }
+
       saudiLastAudioTime=time;
+      saudiLastFrame=frame;
     }
 
     saudiAudio.addEventListener('ended',()=>{
       if(currentShowId!=='saudi') return;
       syncSaudiTimeline(true);
+      if(laserShow) laserShow.playing=false;
       playBtn.innerHTML='▶<span>إعادة</span>';
       setStatus('السعودية · انتهى العرض',true);
     });
@@ -1305,25 +1387,20 @@
       if(!item) throw new Error('Unknown laser show');
 
       if(item.kind==='custom'){
-        if(initial) setLoadProgress(36,'بناء قصة السعودية…');
-        const asset=buildSaudiAsset();
+        if(initial) setLoadProgress(36,'بناء ملف ILDA للسعودية…');
+
+        const sourceAsset=buildSaudiAsset();
+        const loader=new ILDALoader();
+        const asset=loader.parse(encodeSaudiIlda(sourceAsset));
+
+        asset.custom=true;
+        asset.duration=SAUDI_DURATION;
+        asset.fps=SAUDI_FPS;
         assetCache.set(showId,asset);
-        ensureSaudiAudio()
-        .then(async audio=>{
-          // Prime iOS/Safari audio while this click still has user activation.
-          try{
-            audio.muted=true;
-            await audio.play();
-            audio.pause();
-            audio.currentTime=0;
-            audio.muted=false;
-          }catch(err){
-            audio.muted=false;
-            console.warn('[ABODEN LASER] audio unlock',err);
-          }
-        })
-        .catch(err=>console.warn('[ABODEN LASER] audio preload',err));
-        if(initial) setLoadProgress(76,'تجهيز المشاهد والموسيقى…');
+
+        ensureSaudiAudio().catch(err=>console.warn('[ABODEN LASER] audio preload',err));
+
+        if(initial) setLoadProgress(76,'تم تجهيز ILDA والموسيقى…');
         return asset;
       }
 
@@ -1385,9 +1462,17 @@
         saudiDirectLastFrame=-1;
 
         if(id==='saudi'){
-          setSaudiRendererActive(true);
-          updateSaudiDirectFrame(0,true);
-          syncSaudiTimeline(true);
+          setSaudiRendererActive(false);
+          laserShow.setData(asset);
+          laserShow.visible=true;
+          laserShow.playing=false;
+          laserShow.pointRate=SAUDI_POINT_RATE;
+          laserShow.blankingOffset=-3;
+          laserShow.lightDecay=.95;
+          laserShow.intensity=1.20;
+          laserShow.beamIntensity=.62;
+          laserShow.seekFrame(0);
+
           if(placed) await startSaudiPlayback(true);
           else playBtn.innerHTML='▶<span>بعد التثبيت</span>';
         }else{
@@ -1514,9 +1599,15 @@
       );
 
       if(currentShowId==='saudi'){
+        setSaudiRendererActive(false);
+        laserShow.visible=true;
         laserShow.playing=false;
-        setSaudiRendererActive(true);
-        updateSaudiDirectFrame(0,true);
+        laserShow.pointRate=SAUDI_POINT_RATE;
+        laserShow.blankingOffset=-3;
+        laserShow.lightDecay=.95;
+        laserShow.intensity=1.20;
+        laserShow.beamIntensity=.62;
+        laserShow.seekFrame(0);
         saudiLastFrame=0;
         saudiLastAudioTime=0;
         playBtn.innerHTML='▶<span>بعد التثبيت</span>';
@@ -1638,8 +1729,7 @@
       notify('تم تثبيت جهاز الليزر');
 
       if(currentShowId==='saudi'){
-        setSaudiRendererActive(true);
-        updateSaudiDirectFrame(0,true);
+        setSaudiRendererActive(false);
         startSaudiPlayback(true);
       }
     }
@@ -1692,6 +1782,7 @@
           await startSaudiPlayback(false);
         }else{
           saudiAudio.pause();
+          laserShow.playing=false;
           syncSaudiTimeline(true);
           playBtn.innerHTML='▶<span>تشغيل</span>';
           notify('إيقاف العرض');
