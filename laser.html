@@ -257,11 +257,11 @@
     const UPSTREAM='https://cdn.jsdelivr.net/gh/artcodev/three-ilda@6044b91d120cc01f73bdaebed4f7e4d03feb0d2f/examples/public/ilda/';
     const SAUDI_DURATION=36.049;
     const SAUDI_FPS=18;
-    const SAUDI_POINT_RATE=9000;
+    const SAUDI_POINT_RATE=7992;
     const SAUDI_POINTS_PER_FRAME=Math.round(SAUDI_POINT_RATE/SAUDI_FPS);
     const SAUDI_AUDIO_URL='./assets/laser/saudi_anthem.mp3';
     const SHOWS=[
-      {id:'saudi',name:'السعودية',kind:'custom',audio:true},
+      {id:'saudi',name:'السعودية',file:'saudi_story_show_v2.ild',local:true,audio:true},
       {id:'sylvester',name:'Sylvester',file:'sylvest.ild'},
       {id:'dolphin',name:'Dolphin',file:'DOLPHIN.ILD'},
       {id:'paperair',name:'Paper Air',file:'paperair.ild'},
@@ -1405,14 +1405,17 @@
       }
 
       const loader=new ILDALoader();
+      const showUrl=item.local
+        ? './assets/laser/'+item.file
+        : UPSTREAM+item.file;
       const asset=await new Promise((resolve,reject)=>{
         loader.load(
-          UPSTREAM+item.file,
+          showUrl,
           resolve,
           (event)=>{
             if(initial && event?.total>0){
               const ratio=event.loaded/event.total;
-              setLoadProgress(20+ratio*65,'تحميل عرض الليزر…');
+              setLoadProgress(20+ratio*65,item.local?'تحميل عرض السعودية الجديد…':'تحميل عرض الليزر…');
             }else if(!initial && event?.total>0){
               const pct=Math.round((event.loaded/event.total)*100);
               setStatus('تحميل '+item.name+' · '+pct+'%',false);
