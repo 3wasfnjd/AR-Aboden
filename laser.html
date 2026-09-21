@@ -256,8 +256,8 @@
 
     const UPSTREAM='https://cdn.jsdelivr.net/gh/artcodev/three-ilda@6044b91d120cc01f73bdaebed4f7e4d03feb0d2f/examples/public/ilda/';
     const SAUDI_DURATION=36.049;
-    const SAUDI_FPS=18;
-    const SAUDI_POINT_RATE=7992;
+    const SAUDI_FPS=15;
+    const SAUDI_POINT_RATE=4800;
     const SAUDI_POINTS_PER_FRAME=Math.round(SAUDI_POINT_RATE/SAUDI_FPS);
     const SAUDI_AUDIO_URL='./assets/laser/saudi_anthem.mp3';
     const SHOWS=[
@@ -1274,7 +1274,7 @@
         }));
 
         const b64=parts.join('');
-        if(b64.length!==24008){
+        if(b64.length!==12208){
           throw new Error('Saudi V3 vector data incomplete: '+b64.length);
         }
         const binary=atob(b64);
@@ -1461,7 +1461,7 @@
         }
       }
 
-      // Keep every frame exactly 444 points. Trim only tail dwell or pad on
+      // Keep every frame at the configured fixed point count. Trim only tail dwell or pad on
       // the final point; vector order and blank transitions stay intact.
       if(points.length>target) points.length=target;
       while(points.length<target){
@@ -1767,7 +1767,7 @@
           laserShow.visible=true;
           laserShow.playing=false;
           laserShow.pointRate=SAUDI_POINT_RATE;
-          laserShow.blankingOffset=-3;
+          laserShow.blankingOffset=0;
           laserShow.lightDecay=.88;
           laserShow.intensity=1.18;
           laserShow.beamIntensity=.46;
@@ -1904,7 +1904,7 @@
         laserShow.visible=true;
         laserShow.playing=false;
         laserShow.pointRate=SAUDI_POINT_RATE;
-        laserShow.blankingOffset=-3;
+        laserShow.blankingOffset=0;
         laserShow.lightDecay=.88;
         laserShow.intensity=1.18;
         laserShow.beamIntensity=.46;
