@@ -71,7 +71,7 @@
       backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);
       box-shadow:0 18px 52px rgba(0,0,0,.34)
     }
-    .row{display:grid;grid-template-columns:1.2fr 1fr;gap:8px}
+    .row{display:grid;grid-template-columns:1.25fr .9fr .9fr;gap:8px}
     .btn,.fileBtn{
       min-height:46px;border:1px solid rgba(255,255,255,.13);border-radius:15px;
       background:rgba(255,255,255,.08);color:#fff;font-size:12px;font-weight:900;
@@ -99,6 +99,17 @@
       width:60px;height:60px;border-radius:50%;justify-self:center;border:5px solid rgba(255,255,255,.27);
       background:#fff;color:#081019;font-size:21px;font-weight:900;touch-action:manipulation
     }
+    .recordRow{display:flex;align-items:center;justify-content:center;margin-top:8px}
+    .recordBtn{
+      min-width:170px;min-height:42px;border:1px solid rgba(255,255,255,.15);
+      border-radius:999px;background:rgba(255,255,255,.08);color:#fff;
+      font-size:12px;font-weight:900;touch-action:manipulation
+    }
+    .recordBtn.recording{
+      background:rgba(224,45,55,.88);border-color:rgba(255,255,255,.24);
+      box-shadow:0 0 0 4px rgba(224,45,55,.14)
+    }
+    .recordBtn:disabled{opacity:.36}
     #intro{
       position:fixed;inset:0;z-index:50;display:flex;align-items:flex-end;justify-content:center;
       padding:18px 18px max(26px,env(safe-area-inset-bottom));
@@ -144,7 +155,7 @@
 
     <div class="guide" id="guide">
       <b>امسح الأرض بهدوء</b>
-      اختر صورة أو فيديو، وجّه المؤشر نحو الأرض ثم اضغط «ثبّت هنا». ستوضع الوسائط مسطحة على نفس مستوى الأرضية.
+      اختر صورة أو فيديو، ثبّته على الأرض ثم اختر «أفقي» أو «عمودي». بعد التثبيت يمكنك أيضًا تسجيل فيديو للمشهد.
     </div>
 
     <div class="toast" id="toast"></div>
@@ -153,6 +164,7 @@
       <div class="row">
         <label class="fileBtn primary" for="fileInput">＋ إضافة صورة/فيديو</label>
         <button class="btn" id="placeBtn" disabled>ثبّت هنا</button>
+        <button class="btn" id="orientationBtn" type="button">أفقي</button>
       </div>
 
       <div class="adjust">
@@ -181,7 +193,10 @@
       <div class="bottomRow">
         <button class="mini" id="resetBtn">إعادة الضبط</button>
         <button class="shutter" id="captureBtn" disabled aria-label="التقاط صورة">●</button>
-        <button class="mini" id="removeBtn">حذف الصورة</button>
+        <button class="mini" id="removeBtn">حذف الوسائط</button>
+      </div>
+      <div class="recordRow">
+        <button class="recordBtn" id="recordBtn" disabled type="button">● تسجيل فيديو <span id="recordTime"></span></button>
       </div>
     </section>
   </div>
@@ -192,7 +207,7 @@
     <div class="card">
       <div class="icon">◫</div>
       <h1>تركيب صورة AR — 3D</h1>
-      <p>ثبّت صورة أو فيديو مسطحًا على الأرضية الحقيقية ثم تحرّك حوله. تبقى الوسائط مقفلة على مستوى الأرض بعد التثبيت.</p>
+      <p>ثبّت صورة أو فيديو في المكان، واختر وضعه أفقيًا على الأرض أو عموديًا، ثم صوّر أو سجّل فيديو للمشهد.</p>
       <button class="start" id="startBtn" disabled>جاري تجهيز المحرك…</button>
       <div class="error" id="errorBox"></div>
       <p class="tiny">بعد التثبيت تُقفل الوسائط في مكانها. يدعم النمط صورة أو فيديو دائريًا مع التكبير والتدوير والشفافية.</p>
@@ -217,12 +232,15 @@
 
     const fileInput = document.getElementById('fileInput');
     const placeBtn = document.getElementById('placeBtn');
+    const orientationBtn = document.getElementById('orientationBtn');
     const smallerBtn = document.getElementById('smallerBtn');
     const largerBtn = document.getElementById('largerBtn');
     const rotateBtn = document.getElementById('rotateBtn');
     const resetBtn = document.getElementById('resetBtn');
     const removeBtn = document.getElementById('removeBtn');
     const captureBtn = document.getElementById('captureBtn');
+    const recordBtn = document.getElementById('recordBtn');
+    const recordTime = document.getElementById('recordTime');
     const videoTools = document.getElementById('videoTools');
     const playPauseBtn = document.getElementById('playPauseBtn');
     const muteBtn = document.getElementById('muteBtn');
@@ -242,9 +260,16 @@
     let baseYaw=0, rotationOffset=0;
     let lockedPosition=null;
     let lockedYaw=0;
+    let orientationMode='horizontal';
     let photoSize=.72;
     let opacity=1;
     let feather=.18;
+
+    let mediaRecorder=null;
+    let recordingStream=null;
+    let recordedChunks=[];
+    let recordTimer=null;
+    let recordStartedAt=0;
 
     const MIN_SIZE=.18, MAX_SIZE=2.4;
     const placement = new GroundPlacement();
@@ -458,13 +483,18 @@
     function updatePhotoTransform(){
       if(!photoRoot || !photoMesh) return;
 
-      // Photo is always laid flat on the detected floor.
-      // Keep it only a few millimetres above the tracking plane to avoid
-      // rendering flicker while visually remaining attached to the floor.
       photoRoot.scale.setScalar(photoSize);
       photoRoot.rotation.set(0,baseYaw+rotationOffset,0);
-      photoMesh.rotation.set(-Math.PI/2,0,0);
-      photoMesh.position.set(0,.004,0);
+
+      if(orientationMode==='vertical'){
+        // Stand the media upright, with its lower edge just above the floor.
+        photoMesh.rotation.set(0,0,0);
+        photoMesh.position.set(0,.515,0);
+      }else{
+        // Lay the media flat on the detected floor.
+        photoMesh.rotation.set(-Math.PI/2,0,0);
+        photoMesh.position.set(0,.004,0);
+      }
 
       photoMaterial.opacity=opacity;
     }
@@ -693,7 +723,8 @@
       placeBtn.textContent='نقل الصورة';
       placeBtn.disabled=false;
       captureBtn.disabled=false;
-      notify('تم تثبيت الصورة في المكان');
+      recordBtn.disabled=false;
+      notify('تم تثبيت الوسائط في المكان');
       if(navigator.vibrate) navigator.vibrate(28);
     }
 
@@ -711,6 +742,8 @@
       placeBtn.textContent='ثبّت هنا';
       placeBtn.disabled=true;
       captureBtn.disabled=true;
+      recordBtn.disabled=true;
+      if(mediaRecorder?.state==='recording') stopRecording();
       setStatus('أعد مسح الأرضية لاختيار موضع جديد',false);
     }
 
@@ -719,6 +752,8 @@
       opacity=1;
       feather=.18;
       rotationOffset=0;
+      orientationMode='horizontal';
+      orientationBtn.textContent='أفقي';
       opacityInput.value='100';
       featherInput.value='18';
       opacityValue.value='100%';
@@ -816,6 +851,13 @@
 
     placeBtn.addEventListener('click',placePhoto);
 
+    orientationBtn.addEventListener('click',()=>{
+      orientationMode=orientationMode==='horizontal'?'vertical':'horizontal';
+      orientationBtn.textContent=orientationMode==='horizontal'?'أفقي':'عمودي';
+      updatePhotoTransform();
+      notify(orientationMode==='horizontal'?'الوضع أفقي على الأرض':'الوضع عمودي');
+    });
+
     smallerBtn.addEventListener('click',()=>{
       photoSize=clamp(photoSize*.86,MIN_SIZE,MAX_SIZE);
       updatePhotoTransform();
@@ -848,9 +890,11 @@
     resetBtn.addEventListener('click',resetAll);
 
     removeBtn.addEventListener('click',()=>{
+      if(mediaRecorder?.state==='recording') stopRecording();
       clearCurrentMedia();
       if(placed) movePhoto();
       placeBtn.disabled=true;
+      recordBtn.disabled=true;
       notify('تم حذف الوسائط');
     });
 
@@ -914,8 +958,124 @@
     canvas.addEventListener('pointerup',endPointer,{passive:false});
     canvas.addEventListener('pointercancel',endPointer,{passive:false});
 
+    function pickRecorderMimeType(){
+      const candidates=[
+        'video/mp4;codecs=h264',
+        'video/mp4',
+        'video/webm;codecs=vp9',
+        'video/webm;codecs=vp8',
+        'video/webm'
+      ];
+      if(!window.MediaRecorder) return '';
+      return candidates.find(type=>{
+        try{return MediaRecorder.isTypeSupported(type);}catch(_){return false;}
+      })||'';
+    }
+
+    function updateRecordClock(){
+      if(!recordStartedAt) return;
+      const seconds=Math.floor((Date.now()-recordStartedAt)/1000);
+      const mm=String(Math.floor(seconds/60)).padStart(2,'0');
+      const ss=String(seconds%60).padStart(2,'0');
+      recordTime.textContent=` ${mm}:${ss}`;
+    }
+
+    async function shareRecordedVideo(blob,mimeType){
+      const ext=(mimeType||blob.type||'').includes('mp4')?'mp4':'webm';
+      const file=new File([blob],`aboden-ar-record-${Date.now()}.${ext}`,{
+        type:mimeType||blob.type||(ext==='mp4'?'video/mp4':'video/webm')
+      });
+
+      try{
+        if(navigator.canShare?.({files:[file]})){
+          await navigator.share({files:[file],title:'Aboden AR Video'});
+          return;
+        }
+      }catch(err){
+        if(err?.name==='AbortError') return;
+      }
+
+      const url=URL.createObjectURL(blob);
+      const a=document.createElement('a');
+      a.href=url;
+      a.download=file.name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(()=>URL.revokeObjectURL(url),5000);
+      notify('تم تجهيز تسجيل الفيديو');
+    }
+
+    async function startRecording(){
+      if(!placed) return notify('ثبّت الوسائط أولًا');
+      if(!canvas.captureStream || !window.MediaRecorder){
+        return notify('تسجيل الفيديو غير مدعوم في هذا المتصفح');
+      }
+      if(mediaRecorder?.state==='recording') return;
+
+      const mimeType=pickRecorderMimeType();
+      try{
+        recordingStream=canvas.captureStream(30);
+        recordedChunks=[];
+        mediaRecorder=mimeType
+          ? new MediaRecorder(recordingStream,{mimeType,videoBitsPerSecond:8000000})
+          : new MediaRecorder(recordingStream,{videoBitsPerSecond:8000000});
+
+        mediaRecorder.ondataavailable=(event)=>{
+          if(event.data?.size) recordedChunks.push(event.data);
+        };
+
+        mediaRecorder.onerror=(event)=>{
+          console.error(event.error||event);
+          notify('حدث خطأ أثناء التسجيل');
+        };
+
+        mediaRecorder.onstop=async()=>{
+          clearInterval(recordTimer);
+          recordTimer=null;
+          recordStartedAt=0;
+          recordTime.textContent='';
+          recordBtn.classList.remove('recording');
+          recordBtn.textContent='● تسجيل فيديو ';
+          recordingStream?.getTracks?.().forEach(track=>track.stop());
+          recordingStream=null;
+
+          const type=mediaRecorder?.mimeType||mimeType||'video/webm';
+          const blob=new Blob(recordedChunks,{type});
+          recordedChunks=[];
+          if(blob.size) await shareRecordedVideo(blob,type);
+          mediaRecorder=null;
+        };
+
+        mediaRecorder.start(250);
+        recordStartedAt=Date.now();
+        updateRecordClock();
+        recordTimer=setInterval(updateRecordClock,500);
+        recordBtn.classList.add('recording');
+        recordBtn.childNodes[0].nodeValue='■ إيقاف التسجيل ';
+        notify('بدأ تسجيل الفيديو');
+      }catch(err){
+        console.error(err);
+        recordingStream?.getTracks?.().forEach(track=>track.stop());
+        recordingStream=null;
+        mediaRecorder=null;
+        notify('تعذر بدء تسجيل الفيديو على هذا الجهاز');
+      }
+    }
+
+    function stopRecording(){
+      if(mediaRecorder?.state==='recording'){
+        try{mediaRecorder.stop();}catch(err){console.warn(err);}
+      }
+    }
+
+    recordBtn.addEventListener('click',()=>{
+      if(mediaRecorder?.state==='recording') stopRecording();
+      else startRecording();
+    });
+
     captureBtn.addEventListener('click',async()=>{
-      if(!placed) return notify('ثبّت الصورة أولًا');
+      if(!placed) return notify('ثبّت الوسائط أولًا');
       try{
         const blob=await new Promise(resolve=>{
           requestAnimationFrame(()=>canvas.toBlob(resolve,'image/jpeg',.94));
@@ -990,6 +1150,7 @@
     }
 
     document.addEventListener('visibilitychange',()=>{
+      if(document.hidden && mediaRecorder?.state==='recording') stopRecording();
       if(!document.hidden){
         lastTick=performance.now();
         syncVisualViewport();
