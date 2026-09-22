@@ -35,8 +35,11 @@ export async function createStage(onProgress){
  for(const x of [-1.53,1.53]){box(rack,.09,1.48,.10,green,x,.78,FRONT_Z);box(rack,.13,.08,.14,brass,x,1.49,FRONT_Z);for(const y of [.45,.83,1.20]){const screw=new THREE.Mesh(new THREE.SphereGeometry(.025,10,8),brass);screw.position.set(x,y,FRONT_Z+.06);rack.add(screw);}}
  const sign=new THREE.Mesh(new THREE.PlaneGeometry(1.05,.164),new THREE.MeshBasicMaterial({map:badgeTexture(),side:THREE.DoubleSide}));sign.position.set(0,.54,FRONT_Z+.166);rack.add(sign);
  const targets=[];
- for(let i=0;i<5;i++){
-  const pivot=new THREE.Group();pivot.position.set((i-2)*.53,.67,FRONT_Z+.015);rack.add(pivot);
+ // Fixed discs split into a left and right cluster (instead of one row),
+ // leaving the centre clear for the can stack below.
+ const discX=[-1.35,-.85,.85,1.35];
+ for(let i=0;i<discX.length;i++){
+  const pivot=new THREE.Group();pivot.position.set(discX[i],.67,FRONT_Z+.015);rack.add(pivot);
   box(pivot,.034,.13,.035,brass,0,.065,0);
   const plate=new THREE.Group();plate.position.y=.25;pivot.add(plate);
   const rim=new THREE.Mesh(new THREE.CylinderGeometry(.173,.173,.045,40),brass);rim.rotation.x=Math.PI/2;plate.add(rim);
@@ -48,10 +51,23 @@ export async function createStage(onProgress){
   const mesh=new THREE.Mesh(duckGeometry,duckMaterial);pivot.add(mesh);
   const target={kind:'moving',index:i,pivot,hitObject:mesh,cooldown:0,fall:0,baseX:pivot.position.x,flash:0};mesh.userData.target=target;targets.push(target);
  }
+ // Three-can stack, dead centre — a bonus target always up regardless of
+ // the fixed/moving mode toggle. Each can is its own pivot rooted at its
+ // own base so the existing fold-over hit animation tips it convincingly,
+ // and the three sit directly on top of one another.
+ const canSilver=new THREE.MeshStandardMaterial({color:0xd7dade,roughness:.32,metalness:.78});
+ const canLabel=new THREE.MeshStandardMaterial({color:0xa33728,roughness:.5,metalness:.15});
+ const canH=.22,canR=.085;
+ for(let i=0;i<3;i++){
+  const pivot=new THREE.Group();pivot.position.set(0,.67+canH*i,FRONT_Z+.02);rack.add(pivot);
+  const body=new THREE.Mesh(new THREE.CylinderGeometry(canR,canR,canH,20),canSilver);body.position.y=canH/2;pivot.add(body);
+  const label=new THREE.Mesh(new THREE.CylinderGeometry(canR+.002,canR+.002,canH*.4,20),canLabel);label.position.y=canH/2;pivot.add(label);
+  const target={kind:'can',index:i,pivot,hitObject:body,cooldown:0,fall:0,baseX:0,flash:0};body.userData.target=target;targets.push(target);
+ }
  const particles=[];const particleGeo=new THREE.SphereGeometry(.012,6,4);const particleMat=new THREE.MeshBasicMaterial({color:0xffd883});
  const sparkPool=Array.from({length:30},()=>{const p=new THREE.Mesh(particleGeo,particleMat);p.visible=false;root.add(p);return p;});
  function burst(worldPoint){const point=root.worldToLocal(worldPoint.clone());for(let i=0;i<6;i++){const mesh=sparkPool.find(p=>!p.visible);if(!mesh)break;mesh.visible=true;mesh.position.copy(point);particles.push({mesh,life:.25+Math.random()*.15,v:new THREE.Vector3((Math.random()-.5)*.5,Math.random()*.6,.3+Math.random()*.3)});}}
- function setMode(mode){for(const t of targets){t.pivot.visible=mode==='mixed'||t.kind===mode;t.cooldown=0;t.fall=0;t.pivot.rotation.x=0;}}
+ function setMode(mode){for(const t of targets){t.pivot.visible=t.kind==='can'?true:(mode==='mixed'||t.kind===mode);t.cooldown=0;t.fall=0;t.pivot.rotation.x=0;}}
  function reset(){for(const t of targets){t.cooldown=0;t.fall=0;t.pivot.rotation.x=0;}for(const p of particles)p.mesh.visible=false;particles.length=0;}
  function update(dt,time,animate=true){
   if(animate)mixer.update(dt);
@@ -71,8 +87,8 @@ export async function createStage(onProgress){
   const hit=raycaster.intersectObjects(active.map(t=>t.hitObject),true)[0];if(!hit)return null;
   let o=hit.object;while(o&&!o.userData.target)o=o.parent;const t=o?.userData.target;if(!t)return null;
   const p=t.hitObject.worldToLocal(hit.point.clone());const bull=t.kind==='fixed'&&Math.hypot(p.x,p.y)<.052;
-  t.cooldown=t.kind==='fixed'?2.2:2.7;burst(hit.point);
-  return{points:t.kind==='moving'?35:bull?25:10,bull,kind:t.kind};
+  t.cooldown=t.kind==='fixed'?2.2:t.kind==='can'?1.6:2.7;burst(hit.point);
+  return{points:t.kind==='moving'?35:t.kind==='can'?20:bull?25:10,bull,kind:t.kind};
  }
  return{root,targets,mixer,update,shoot,setMode,reset};
 }
