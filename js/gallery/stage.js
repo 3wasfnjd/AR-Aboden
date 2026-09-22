@@ -49,24 +49,63 @@ export async function createStage(onProgress){
   const mesh=new THREE.Mesh(duckGeometry,duckMaterial);pivot.add(mesh);
   const target={kind:'moving',index:i,pivot,hitObject:mesh,cooldown:0,fall:0,baseX:pivot.position.x,flash:0};mesh.userData.target=target;targets.push(target);
  }
- // Three-can stack, dead centre — a bonus target always up regardless of
- // the fixed/moving mode toggle. Each can is its own pivot rooted at its
- // own base so the existing fold-over hit animation tips it convincingly,
- // and the three sit directly on top of one another.
+ // Six-can pyramid (3 / 2 / 1), dead centre — a bonus target always up
+ // regardless of the fixed/moving mode toggle. A hit can falls under real
+ // gravity and takes any unsupported can(s) resting on it down too.
  const canH=.22;
- for(let i=0;i<3;i++){
-  const pivot=new THREE.Group();pivot.position.set(0,.67+canH*i,FRONT_Z+.02);rack.add(pivot);
+ const canDiameter=Math.max(canSize.x,canSize.z)*(canH/canSize.y);
+ const pyramidGap=canDiameter*1.04;
+ const canTargets=[];
+ const pyramidLayout=[
+  {row:0,x:-pyramidGap,supports:[]},
+  {row:0,x:0,supports:[]},
+  {row:0,x:pyramidGap,supports:[]},
+  {row:1,x:-pyramidGap/2,supports:[0,1]},
+  {row:1,x:pyramidGap/2,supports:[1,2]},
+  {row:2,x:0,supports:[3,4]},
+ ];
+ for(let i=0;i<pyramidLayout.length;i++){
+  const L=pyramidLayout[i];
+  const restX=L.x,restY=.67+canH*L.row,restZ=FRONT_Z+.02;
+  const pivot=new THREE.Group();pivot.position.set(restX,restY,restZ);rack.add(pivot);
   const mesh=canTemplate.clone(true);pivot.add(mesh);
-  const target={kind:'can',index:i,pivot,hitObject:mesh,cooldown:0,fall:0,baseX:0,flash:0};mesh.traverse(o=>{if(o.isMesh)o.userData.target=target;});targets.push(target);
+  const target={kind:'can',index:i,pivot,hitObject:mesh,cooldown:0,fall:0,baseX:restX,flash:0,restX,restY,restZ,supports:L.supports,knocked:false,vx:0,vy:0,vz:0,angVel:0};
+  mesh.traverse(o=>{if(o.isMesh)o.userData.target=target;});
+  targets.push(target);canTargets.push(target);
  }
  const particles=[];const particleGeo=new THREE.SphereGeometry(.012,6,4);const particleMat=new THREE.MeshBasicMaterial({color:0xffd883});
  const sparkPool=Array.from({length:30},()=>{const p=new THREE.Mesh(particleGeo,particleMat);p.visible=false;root.add(p);return p;});
  function burst(worldPoint){const point=root.worldToLocal(worldPoint.clone());for(let i=0;i<6;i++){const mesh=sparkPool.find(p=>!p.visible);if(!mesh)break;mesh.visible=true;mesh.position.copy(point);particles.push({mesh,life:.25+Math.random()*.15,v:new THREE.Vector3((Math.random()-.5)*.5,Math.random()*.6,.3+Math.random()*.3)});}}
- function setMode(mode){for(const t of targets){t.pivot.visible=t.kind==='can'?true:(mode==='mixed'||t.kind===mode);t.cooldown=0;t.fall=0;t.pivot.rotation.x=0;}}
- function reset(){for(const t of targets){t.cooldown=0;t.fall=0;t.pivot.rotation.x=0;}for(const p of particles)p.mesh.visible=false;particles.length=0;}
+ const CAN_GRAVITY=5.4;
+ function resetCan(t){t.knocked=false;t.vx=0;t.vy=0;t.vz=0;t.angVel=0;t.pivot.position.set(t.restX,t.restY,t.restZ);t.pivot.rotation.set(0,0,0);}
+ function knockCan(t,direct){
+  t.knocked=true;
+  t.vy=direct?1.1+Math.random()*.5:.15+Math.random()*.25;
+  t.vx=(Math.random()-.5)*(direct?1.6:1.1);
+  t.vz=direct?.5+Math.random()*.4:.2+Math.random()*.3;
+  t.angVel=(Math.random()<.5?-1:1)*(5+Math.random()*4);
+  if(t.cooldown<=0)t.cooldown=1.6;
+ }
+ function updateCanPhysics(t,dt){
+  if(t.cooldown>0)t.cooldown=Math.max(0,t.cooldown-dt);
+  // A can with no standing support below it has nothing holding it up.
+  if(!t.knocked&&t.supports.some(i=>canTargets[i].knocked))knockCan(t,false);
+  if(!t.knocked)return;
+  t.vy-=CAN_GRAVITY*dt;
+  t.pivot.position.y+=t.vy*dt;
+  t.pivot.position.x+=t.vx*dt;
+  t.pivot.position.z+=t.vz*dt;
+  t.pivot.rotation.x+=t.angVel*dt;
+  t.pivot.rotation.z+=t.angVel*.6*dt;
+  const floorY=t.restY-.55;
+  if(t.pivot.position.y<floorY){t.pivot.position.y=floorY;t.vx=t.vy=t.vz=t.angVel=0;}
+ }
+ function setMode(mode){for(const t of targets){t.pivot.visible=t.kind==='can'?true:(mode==='mixed'||t.kind===mode);t.cooldown=0;t.fall=0;if(t.kind==='can')resetCan(t);else t.pivot.rotation.x=0;}}
+ function reset(){for(const t of targets){t.cooldown=0;t.fall=0;if(t.kind==='can')resetCan(t);else t.pivot.rotation.x=0;}for(const p of particles)p.mesh.visible=false;particles.length=0;}
  function update(dt,time,animate=true){
   for(const t of targets){
    if(!t.pivot.visible)continue;
+   if(t.kind==='can'){updateCanPhysics(t,dt);continue;}
    if(t.kind==='moving'&&animate)t.pivot.position.x=((time*.48+t.index*1.04)%3.12)-1.56;
    if(t.cooldown>0)t.cooldown=Math.max(0,t.cooldown-dt);
    const angle=t.cooldown>.36?-Math.PI*.49:0;t.fall=THREE.MathUtils.damp(t.fall,angle,angle?15:10,dt);t.pivot.rotation.x=t.fall;
@@ -74,14 +113,15 @@ export async function createStage(onProgress){
   for(let i=particles.length-1;i>=0;i--){const p=particles[i];p.life-=dt;if(p.life<=0){p.mesh.visible=false;particles.splice(i,1);continue;}p.v.y-=1.8*dt;p.mesh.position.addScaledVector(p.v,dt);p.mesh.scale.setScalar(Math.min(1,p.life*6));}
  }
  function shoot(raycaster){
-  // Targets fold away on impact and cannot be scored again during reset.
+  // Targets fold or fall away on impact and cannot be scored again during reset.
   root.updateMatrixWorld(true);
   const localOrigin=root.worldToLocal(raycaster.ray.origin.clone());if(localOrigin.z<FRONT_Z)return null;
-  const active=targets.filter(t=>t.pivot.visible&&t.cooldown===0&&Math.abs(t.fall)<.16);
+  const active=targets.filter(t=>t.pivot.visible&&t.cooldown===0&&(t.kind==='can'?!t.knocked:Math.abs(t.fall)<.16));
   const hit=raycaster.intersectObjects(active.map(t=>t.hitObject),true)[0];if(!hit)return null;
   let o=hit.object;while(o&&!o.userData.target)o=o.parent;const t=o?.userData.target;if(!t)return null;
   const p=t.hitObject.worldToLocal(hit.point.clone());const bull=t.kind==='fixed'&&Math.hypot(p.x,p.y)<.052;
-  t.cooldown=t.kind==='fixed'?2.2:t.kind==='can'?1.6:2.7;burst(hit.point);
+  if(t.kind==='can')knockCan(t,true);else t.cooldown=t.kind==='fixed'?2.2:2.7;
+  burst(hit.point);
   return{points:t.kind==='moving'?35:t.kind==='can'?20:bull?25:10,bull,kind:t.kind};
  }
  return{root,targets,update,shoot,setMode,reset};
