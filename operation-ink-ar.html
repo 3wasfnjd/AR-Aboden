@@ -156,7 +156,7 @@
 
   <div class="ui" id="gameUi" style="display:none">
     <div class="top">
-      <div class="pill health"><span>الصحة</span><div class="healthbar"><span id="healthFill"></span></div><b id="healthText">100</b></div>
+      <div class="pill health"><span>وضع تجربة</span><b id="healthText">∞</b></div>
       <div class="pill">OPERATION AR</div>
     </div>
 
@@ -223,7 +223,6 @@
     const ammoText=document.getElementById('ammoText');
     const weaponName=document.getElementById('weaponName');
     const healthText=document.getElementById('healthText');
-    const healthFill=document.getElementById('healthFill');
     const waveText=document.getElementById('waveText');
     const scoreText=document.getElementById('scoreText');
     const enemyText=document.getElementById('enemyText');
@@ -322,9 +321,6 @@
         notify('تم إسقاط الهدف');
       }else if(e.type==='wave-start'){
         notify('الموجة '+e.wave+' — '+e.count+' جنود');
-      }else if(e.type==='player-dead'){
-        gameoverText.textContent='وصلت إلى الموجة '+e.wave+' وحققت '+e.score+' نقطة.';
-        gameover.style.display='flex';
       }else if(e.type==='reload-start'){
         reloadBtn.textContent='جاري التلقيم…';reloadBtn.disabled=true;
       }else if(e.type==='reload-complete'){
@@ -335,9 +331,7 @@
     function updateHud(h){
       ammoText.textContent=h.ammo+' / '+h.reserve;
       weaponName.textContent=h.label;
-      healthText.textContent=h.health;
-      healthFill.style.width=h.health+'%';
-      healthFill.style.background=h.health<35?'#ef5555':h.health<65?'#f1c85a':'#5ce28b';
+      healthText.textContent='∞';
       waveText.textContent=h.wave;
       scoreText.textContent=h.score;
       enemyText.textContent=h.enemies;
