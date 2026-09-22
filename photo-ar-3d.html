@@ -71,7 +71,7 @@
       backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);
       box-shadow:0 18px 52px rgba(0,0,0,.34)
     }
-    .row{display:grid;grid-template-columns:1.15fr 1fr 1fr;gap:8px}
+    .row{display:grid;grid-template-columns:1.2fr 1fr;gap:8px}
     .btn,.fileBtn{
       min-height:46px;border:1px solid rgba(255,255,255,.13);border-radius:15px;
       background:rgba(255,255,255,.08);color:#fff;font-size:12px;font-weight:900;
@@ -144,7 +144,7 @@
 
     <div class="guide" id="guide">
       <b>امسح الأرض بهدوء</b>
-      اختر صورة، وجّه المؤشر نحو الأرض ثم اضغط «ثبّت هنا». بعد التثبيت يمكنك التحرك حول الصورة.
+      اختر صورة، وجّه المؤشر نحو الأرض ثم اضغط «ثبّت هنا». ستوضع الصورة مسطحة على نفس مستوى الأرضية.
     </div>
 
     <div class="toast" id="toast"></div>
@@ -153,7 +153,6 @@
       <div class="row">
         <label class="fileBtn primary" for="fileInput">＋ إضافة صورة</label>
         <button class="btn" id="placeBtn" disabled>ثبّت هنا</button>
-        <button class="btn" id="orientationBtn">عمودي</button>
       </div>
 
       <div class="adjust">
@@ -187,7 +186,7 @@
     <div class="card">
       <div class="icon">◫</div>
       <h1>تركيب صورة AR — 3D</h1>
-      <p>ثبّت الصورة في نقطة حقيقية داخل المكان ثم تحرّك حولها. الإصدار الأول يستخدم الأرضية كنقطة تثبيت مستقرة.</p>
+      <p>ثبّت الصورة مسطحة على الأرضية الحقيقية ثم تحرّك حولها. تبقى الصورة ملتصقة بمستوى الأرض بعد التثبيت.</p>
       <button class="start" id="startBtn" disabled>جاري تجهيز المحرك…</button>
       <div class="error" id="errorBox"></div>
       <p class="tiny">بعد التثبيت: إصبع واحد يسحب الصورة على الأرض، وإصبعان يكبّرانها ويدوّرانها.</p>
@@ -212,7 +211,6 @@
 
     const fileInput = document.getElementById('fileInput');
     const placeBtn = document.getElementById('placeBtn');
-    const orientationBtn = document.getElementById('orientationBtn');
     const smallerBtn = document.getElementById('smallerBtn');
     const largerBtn = document.getElementById('largerBtn');
     const rotateBtn = document.getElementById('rotateBtn');
@@ -232,7 +230,6 @@
     let placed=false, surfaceReady=false, previewInitialized=false;
     let latestWorldPoints=[], nextGroundSample=0, lastTick=performance.now();
     let baseYaw=0, rotationOffset=0;
-    let orientation='vertical';
     let photoSize=.72;
     let opacity=1;
     let feather=.18;
@@ -343,16 +340,14 @@
 
     function updatePhotoTransform(){
       if(!photoRoot || !photoMesh) return;
+
+      // Photo is always laid flat on the detected floor.
+      // Keep it only a few millimetres above the tracking plane to avoid
+      // rendering flicker while visually remaining attached to the floor.
       photoRoot.scale.setScalar(photoSize);
       photoRoot.rotation.set(0,baseYaw+rotationOffset,0);
-
-      if(orientation==='vertical'){
-        photoMesh.rotation.set(0,0,0);
-        photoMesh.position.set(0,.515,0);
-      }else{
-        photoMesh.rotation.set(-Math.PI/2,0,0);
-        photoMesh.position.set(0,.018,0);
-      }
+      photoMesh.rotation.set(-Math.PI/2,0,0);
+      photoMesh.position.set(0,.004,0);
 
       photoMaterial.opacity=opacity;
     }
@@ -579,12 +574,10 @@
       opacity=1;
       feather=.18;
       rotationOffset=0;
-      orientation='vertical';
       opacityInput.value='100';
       featherInput.value='18';
       opacityValue.value='100%';
       featherValue.value='18%';
-      orientationBtn.textContent='عمودي';
       updatePhotoTransform();
       if(selectedImage) rebuildTexture();
       if(placed) notify('تمت إعادة إعدادات الصورة');
@@ -615,13 +608,6 @@
     });
 
     placeBtn.addEventListener('click',placePhoto);
-
-    orientationBtn.addEventListener('click',()=>{
-      orientation=orientation==='vertical'?'flat':'vertical';
-      orientationBtn.textContent=orientation==='vertical'?'عمودي':'مسطح';
-      updatePhotoTransform();
-      notify(orientation==='vertical'?'الصورة عمودية':'الصورة مسطحة على الأرض');
-    });
 
     smallerBtn.addEventListener('click',()=>{
       photoSize=clamp(photoSize*.86,MIN_SIZE,MAX_SIZE);
