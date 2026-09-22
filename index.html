@@ -161,6 +161,18 @@
       border:1px solid rgba(255,255,255,.10);
       font-size:28px;
     }
+    .balloon-icon{
+      width:26px;height:31px;
+      border-radius:50% 50% 46% 46%;
+      background:linear-gradient(145deg,#86e3ff,#467fff);
+      box-shadow:inset -5px -5px 9px rgba(0,0,0,.20),0 4px 10px rgba(42,133,255,.4);
+      position:relative;
+    }
+    .balloon-icon:after{
+      content:"";position:absolute;left:50%;bottom:-4px;
+      width:4px;height:4px;background:#467fff;
+      transform:translateX(-50%) rotate(45deg);
+    }
     .badge{
       padding:7px 10px;
       border-radius:999px;
@@ -281,7 +293,7 @@
       <a class="card active" href="./balloons.html" aria-label="فتح تجربة صيد المناطيد">
         <div>
           <div class="card-top">
-            <div class="icon">🎈</div>
+            <div class="icon"><div class="balloon-icon"></div></div>
             <div class="badge">تجريبية</div>
           </div>
           <h3>صيد المناطيد</h3>
