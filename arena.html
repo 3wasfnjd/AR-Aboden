@@ -772,7 +772,7 @@
       });
 
       setStatus('امسح الأرض', true);
-      requestAnimationFrame(tickWorld);
+      lastTick = performance.now();
     }
 
     function worldModule(){
@@ -787,6 +787,12 @@
             notify('فشل إعداد فيزياء السيارة');
           }
         },
+        // Driving the game state from XR8's own onUpdate (instead of a
+        // detached requestAnimationFrame loop) keeps it synced to the same
+        // tick that just refreshed the AR camera pose, so the arena/car no
+        // longer lag a frame behind the camera and appear to shake while
+        // panning.
+        onUpdate:tickWorld,
         onException:(error)=>{
           console.error(error);
           notify('حدث خطأ في التتبع');
@@ -837,10 +843,10 @@
       );
     }
 
-    function tickWorld(now){
-      requestAnimationFrame(tickWorld);
+    function tickWorld(){
       if (!camera || !scene || !vehicle || !world) return;
 
+      const now = performance.now();
       const dt = Math.min(1/30,(now-lastTick)/1000 || .016);
       lastTick = now;
 
