@@ -1,0 +1,622 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+  <meta name="theme-color" content="#05070b">
+  <title>تركيب صورة AR — عبودين</title>
+  <style>
+    *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+    :root{
+      --bg:#05070b;
+      --panel:rgba(7,11,18,.78);
+      --line:rgba(255,255,255,.14);
+      --text:#fff;
+      --muted:#b7c0cd;
+      --accent:#79dcff;
+      --app-w:100vw;
+      --app-h:100dvh;
+    }
+    html,body{
+      margin:0;width:100%;height:100%;overflow:hidden;background:var(--bg);
+      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Tahoma,Arial,sans-serif;
+      color:var(--text);overscroll-behavior:none;
+    }
+    body{position:fixed;inset:0;width:var(--app-w);height:var(--app-h);touch-action:none}
+    button,input,label,a{font:inherit}
+    #camera{
+      position:fixed;inset:0;width:100%;height:100%;object-fit:cover;
+      background:#020407;z-index:0;
+    }
+    #overlay{
+      position:fixed;inset:0;width:100%;height:100%;z-index:5;
+      touch-action:none;cursor:grab;
+    }
+    #overlay:active{cursor:grabbing}
+    .topbar{
+      position:fixed;left:12px;right:12px;top:max(12px,env(safe-area-inset-top));
+      z-index:20;display:flex;align-items:center;justify-content:space-between;gap:10px;
+      pointer-events:none;
+    }
+    .topbar>*{pointer-events:auto}
+    .pill,.home{
+      border:1px solid var(--line);background:rgba(5,9,15,.72);color:#fff;
+      backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+      border-radius:999px;padding:10px 13px;text-decoration:none;font-size:12px;font-weight:850;
+      box-shadow:0 8px 28px rgba(0,0,0,.22);
+    }
+    .status{max-width:58vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .hint{
+      position:fixed;z-index:18;left:50%;top:20%;transform:translateX(-50%);
+      width:min(88vw,440px);text-align:center;padding:10px 14px;border-radius:999px;
+      background:rgba(5,9,15,.66);border:1px solid rgba(255,255,255,.12);
+      backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+      font-size:12px;line-height:1.55;transition:.25s;pointer-events:none;
+      text-shadow:0 1px 8px rgba(0,0,0,.8);
+    }
+    .hint.hidden{opacity:0;transform:translate(-50%,-7px);visibility:hidden}
+    .controls{
+      position:fixed;z-index:25;left:12px;right:12px;
+      bottom:max(12px,env(safe-area-inset-bottom));
+      border:1px solid var(--line);background:var(--panel);
+      border-radius:24px;padding:14px;
+      backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);
+      box-shadow:0 16px 50px rgba(0,0,0,.32);
+      pointer-events:auto;
+    }
+    .sliders{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+    .slider label{
+      display:flex;align-items:center;justify-content:space-between;gap:8px;
+      font-size:11px;color:var(--muted);font-weight:800;margin-bottom:7px;
+    }
+    .slider output{color:#fff;font-variant-numeric:tabular-nums}
+    input[type=range]{width:100%;accent-color:#fff;touch-action:manipulation}
+    .actions{display:grid;grid-template-columns:1.2fr .8fr .8fr;gap:9px}
+    .btn{
+      min-height:48px;border:1px solid rgba(255,255,255,.13);border-radius:16px;
+      background:rgba(255,255,255,.08);color:#fff;font-weight:900;font-size:13px;
+      display:flex;align-items:center;justify-content:center;gap:7px;
+      touch-action:manipulation;
+    }
+    .btn.primary{background:#fff;color:#081019;border-color:#fff}
+    .btn.shutter{
+      border-radius:50%;width:62px;height:62px;min-height:62px;justify-self:center;
+      background:#fff;color:#07101a;border:5px solid rgba(255,255,255,.28);
+      box-shadow:0 0 0 2px rgba(255,255,255,.72) inset;
+      font-size:22px;
+    }
+    .btn:active{transform:scale(.96)}
+    #fileInput{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+    .capture-row{
+      display:grid;grid-template-columns:1fr 72px 1fr;align-items:center;gap:8px;margin-top:11px;
+    }
+    .mini{
+      border:0;background:transparent;color:#cbd4df;font-size:11px;font-weight:800;
+      padding:8px;touch-action:manipulation;
+    }
+    .mini:disabled{opacity:.35}
+    .toast{
+      position:fixed;z-index:40;left:50%;top:13%;transform:translate(-50%,-8px);
+      opacity:0;visibility:hidden;transition:.18s;
+      padding:10px 15px;border-radius:999px;background:rgba(4,8,14,.86);
+      border:1px solid var(--line);font-size:12px;white-space:nowrap;
+      backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+    }
+    .toast.show{opacity:1;visibility:visible;transform:translate(-50%,0)}
+    .intro{
+      position:fixed;z-index:50;inset:0;background:
+        radial-gradient(circle at 50% 28%,rgba(83,157,198,.24),transparent 36%),
+        linear-gradient(180deg,#0b131e,#04070c 70%);
+      display:flex;align-items:flex-end;justify-content:center;
+      padding:18px 18px max(26px,env(safe-area-inset-bottom));
+    }
+    .intro-card{
+      width:min(100%,520px);border:1px solid rgba(255,255,255,.12);
+      background:rgba(255,255,255,.06);border-radius:28px;padding:24px;
+      backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+    }
+    .intro-icon{
+      width:82px;height:82px;border-radius:50%;margin:0 auto 18px;
+      background:
+        radial-gradient(circle at 50% 50%,rgba(255,255,255,.95) 0 47%,rgba(255,255,255,.52) 48% 56%,rgba(255,255,255,0) 72%);
+      border:1px solid rgba(255,255,255,.12);
+      box-shadow:0 18px 50px rgba(0,0,0,.26);
+    }
+    .intro h1{margin:0 0 9px;text-align:center;font-size:27px}
+    .intro p{margin:0 0 18px;text-align:center;color:#ced6e1;line-height:1.8;font-size:14px}
+    .intro .start{
+      width:100%;height:58px;border:0;border-radius:18px;background:#fff;color:#081019;
+      font-size:16px;font-weight:950;
+    }
+    .error{display:none;color:#ffc2c2;text-align:center;font-size:12px;line-height:1.7;margin-top:12px}
+    @media(max-width:430px){
+      .sliders{grid-template-columns:1fr}
+      .controls{padding:12px}
+      .actions{grid-template-columns:1fr 1fr 1fr}
+      .btn{min-height:44px;font-size:12px}
+      .capture-row{margin-top:8px}
+    }
+    @media(orientation:landscape) and (max-height:540px){
+      .controls{left:auto;width:340px;top:max(58px,env(safe-area-inset-top));bottom:auto}
+      .sliders{grid-template-columns:1fr}
+      .hint{top:14%}
+    }
+  </style>
+</head>
+<body>
+  <video id="camera" autoplay muted playsinline></video>
+  <canvas id="overlay"></canvas>
+
+  <div class="topbar">
+    <a class="home" href="./index.html">⌂ الرئيسية</a>
+    <div class="pill status" id="cameraStatus">الكاميرا الخلفية</div>
+  </div>
+
+  <div class="hint" id="hint">أضف صورة، ثم اسحبها بإصبع واحد. استخدم إصبعين للتكبير والتدوير.</div>
+
+  <section class="controls" id="controls" hidden>
+    <div class="sliders">
+      <div class="slider">
+        <label><span>الشفافية</span><output id="opacityValue">100%</output></label>
+        <input id="opacity" type="range" min="0" max="100" value="100" step="1">
+      </div>
+      <div class="slider">
+        <label><span>نعومة الحواف</span><output id="featherValue">18%</output></label>
+        <input id="feather" type="range" min="0" max="45" value="18" step="1">
+      </div>
+    </div>
+
+    <div class="actions">
+      <label class="btn primary" for="fileInput">＋ إضافة صورة</label>
+      <button class="btn" id="smaller" type="button">− تصغير</button>
+      <button class="btn" id="larger" type="button">＋ تكبير</button>
+    </div>
+
+    <div class="capture-row">
+      <button class="mini" id="reset" type="button">إعادة الضبط</button>
+      <button class="btn shutter" id="capture" type="button" aria-label="التقاط صورة">●</button>
+      <button class="mini" id="remove" type="button">حذف الصورة</button>
+    </div>
+  </section>
+
+  <input id="fileInput" type="file" accept="image/*">
+
+  <div class="toast" id="toast"></div>
+
+  <section class="intro" id="intro">
+    <div class="intro-card">
+      <div class="intro-icon"></div>
+      <h1>تركيب صورة AR</h1>
+      <p>افتح الكاميرا الخلفية، اختر صورة من جهازك، ثم ضعها فوق المشهد بشكل دائري بحواف شفافة متدرجة.</p>
+      <button class="start" id="start" type="button">فتح الكاميرا الخلفية</button>
+      <div class="error" id="error"></div>
+    </div>
+  </section>
+
+  <canvas id="captureCanvas" hidden></canvas>
+
+  <script>
+    const camera = document.getElementById('camera');
+    const overlay = document.getElementById('overlay');
+    const ctx = overlay.getContext('2d');
+    const captureCanvas = document.getElementById('captureCanvas');
+    const fileInput = document.getElementById('fileInput');
+    const intro = document.getElementById('intro');
+    const controls = document.getElementById('controls');
+    const startBtn = document.getElementById('start');
+    const errorBox = document.getElementById('error');
+    const cameraStatus = document.getElementById('cameraStatus');
+    const opacityInput = document.getElementById('opacity');
+    const featherInput = document.getElementById('feather');
+    const opacityValue = document.getElementById('opacityValue');
+    const featherValue = document.getElementById('featherValue');
+    const hint = document.getElementById('hint');
+    const toast = document.getElementById('toast');
+
+    let stream = null;
+    let selectedImage = null;
+    let maskedCanvas = null;
+    let resizeTimer = 0;
+
+    const state = {
+      x: innerWidth / 2,
+      y: innerHeight / 2,
+      scale: 1,
+      rotation: 0,
+      opacity: 1,
+      feather: .18,
+      baseSize: Math.min(innerWidth, innerHeight) * .48
+    };
+
+    const pointers = new Map();
+    let gesture = null;
+
+    function clamp(v,min,max){ return Math.min(max,Math.max(min,v)); }
+    function angleDelta(a,b){
+      let d = b-a;
+      while(d > Math.PI) d -= Math.PI*2;
+      while(d < -Math.PI) d += Math.PI*2;
+      return d;
+    }
+
+    function notify(message){
+      toast.textContent = message;
+      toast.classList.add('show');
+      clearTimeout(notify.timer);
+      notify.timer = setTimeout(()=>toast.classList.remove('show'),1800);
+    }
+
+    function syncCanvas(){
+      const dpr = Math.min(devicePixelRatio || 1, 2.5);
+      const w = Math.max(1, innerWidth);
+      const h = Math.max(1, innerHeight);
+      overlay.style.width = w + 'px';
+      overlay.style.height = h + 'px';
+      overlay.width = Math.round(w*dpr);
+      overlay.height = Math.round(h*dpr);
+      ctx.setTransform(dpr,0,0,dpr,0,0);
+      renderOverlay();
+    }
+
+    function resetTransform(){
+      state.x = innerWidth/2;
+      state.y = innerHeight/2;
+      state.scale = 1;
+      state.rotation = 0;
+      state.baseSize = Math.min(innerWidth,innerHeight)*.48;
+      renderOverlay();
+    }
+
+    function buildMaskedImage(){
+      if(!selectedImage) {
+        maskedCanvas = null;
+        renderOverlay();
+        return;
+      }
+
+      const size = 1024;
+      const c = document.createElement('canvas');
+      c.width = c.height = size;
+      const cctx = c.getContext('2d');
+
+      const iw = selectedImage.naturalWidth || selectedImage.width;
+      const ih = selectedImage.naturalHeight || selectedImage.height;
+      const side = Math.min(iw,ih);
+      const sx = (iw-side)/2;
+      const sy = (ih-side)/2;
+
+      cctx.clearRect(0,0,size,size);
+      cctx.drawImage(selectedImage,sx,sy,side,side,0,0,size,size);
+
+      cctx.globalCompositeOperation = 'destination-in';
+      const radius = size/2;
+      const innerStop = clamp(1-state.feather, .5, 1);
+      const g = cctx.createRadialGradient(radius,radius,0,radius,radius,radius);
+      g.addColorStop(0,'rgba(0,0,0,1)');
+      g.addColorStop(innerStop,'rgba(0,0,0,1)');
+      if(innerStop < 1) g.addColorStop(Math.min(1,innerStop + (1-innerStop)*.45),'rgba(0,0,0,.76)');
+      g.addColorStop(1,'rgba(0,0,0,0)');
+      cctx.fillStyle = g;
+      cctx.fillRect(0,0,size,size);
+      cctx.globalCompositeOperation = 'source-over';
+
+      maskedCanvas = c;
+      renderOverlay();
+    }
+
+    function renderOverlay(){
+      const w = innerWidth;
+      const h = innerHeight;
+      ctx.clearRect(0,0,w,h);
+      if(!maskedCanvas) return;
+
+      const drawSize = state.baseSize * state.scale;
+      ctx.save();
+      ctx.translate(state.x,state.y);
+      ctx.rotate(state.rotation);
+      ctx.globalAlpha = state.opacity;
+      ctx.drawImage(maskedCanvas,-drawSize/2,-drawSize/2,drawSize,drawSize);
+      ctx.restore();
+      ctx.globalAlpha = 1;
+    }
+
+    async function openRearCamera(){
+      if(!navigator.mediaDevices?.getUserMedia){
+        throw new Error('هذا المتصفح لا يدعم فتح الكاميرا.');
+      }
+
+      const preferred = {
+        audio:false,
+        video:{
+          facingMode:{exact:'environment'},
+          width:{ideal:1920},
+          height:{ideal:1080}
+        }
+      };
+
+      try{
+        return await navigator.mediaDevices.getUserMedia(preferred);
+      }catch(firstError){
+        return await navigator.mediaDevices.getUserMedia({
+          audio:false,
+          video:{
+            facingMode:{ideal:'environment'},
+            width:{ideal:1920},
+            height:{ideal:1080}
+          }
+        });
+      }
+    }
+
+    async function startCamera(){
+      errorBox.style.display='none';
+      startBtn.disabled=true;
+      startBtn.textContent='جاري فتح الكاميرا…';
+
+      try{
+        stream = await openRearCamera();
+        camera.srcObject = stream;
+        await camera.play();
+
+        const settings = stream.getVideoTracks()[0]?.getSettings?.() || {};
+        cameraStatus.textContent = settings.facingMode === 'environment'
+          ? 'الكاميرا الخلفية'
+          : 'الكاميرا جاهزة';
+
+        intro.style.display='none';
+        controls.hidden=false;
+        syncCanvas();
+      }catch(err){
+        console.error(err);
+        errorBox.textContent='تعذر فتح الكاميرا. اسمح بالوصول إلى الكاميرا من إعدادات المتصفح ثم أعد المحاولة.';
+        errorBox.style.display='block';
+        startBtn.disabled=false;
+        startBtn.textContent='حاول مرة أخرى';
+      }
+    }
+
+    fileInput.addEventListener('change',()=>{
+      const file = fileInput.files?.[0];
+      if(!file) return;
+
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload=()=>{
+        if(selectedImage?.__url) URL.revokeObjectURL(selectedImage.__url);
+        img.__url = url;
+        selectedImage = img;
+        state.opacity = 1;
+        opacityInput.value = '100';
+        opacityValue.value = '100%';
+        resetTransform();
+        buildMaskedImage();
+        hint.classList.remove('hidden');
+        setTimeout(()=>hint.classList.add('hidden'),4000);
+        notify('اسحب الصورة وضعها في المكان المناسب');
+      };
+      img.onerror=()=>{
+        URL.revokeObjectURL(url);
+        notify('تعذر قراءة هذه الصورة');
+      };
+      img.src=url;
+      fileInput.value='';
+    });
+
+    opacityInput.addEventListener('input',()=>{
+      state.opacity = Number(opacityInput.value)/100;
+      opacityValue.value = opacityInput.value + '%';
+      renderOverlay();
+    });
+
+    featherInput.addEventListener('input',()=>{
+      state.feather = Number(featherInput.value)/100;
+      featherValue.value = featherInput.value + '%';
+      clearTimeout(featherInput._timer);
+      featherInput._timer=setTimeout(buildMaskedImage,35);
+    });
+
+    document.getElementById('smaller').addEventListener('click',()=>{
+      state.scale=clamp(state.scale*.86,.18,5);
+      renderOverlay();
+    });
+    document.getElementById('larger').addEventListener('click',()=>{
+      state.scale=clamp(state.scale*1.16,.18,5);
+      renderOverlay();
+    });
+    document.getElementById('reset').addEventListener('click',()=>{
+      if(!selectedImage) return notify('أضف صورة أولًا');
+      resetTransform();
+      notify('تمت إعادة وضع الصورة');
+    });
+    document.getElementById('remove').addEventListener('click',()=>{
+      selectedImage=null;
+      maskedCanvas=null;
+      pointers.clear();
+      gesture=null;
+      renderOverlay();
+      notify('تم حذف الصورة');
+    });
+
+    function localPoint(event){
+      return {x:event.clientX,y:event.clientY};
+    }
+
+    overlay.addEventListener('pointerdown',(e)=>{
+      if(!maskedCanvas) return;
+      e.preventDefault();
+      overlay.setPointerCapture?.(e.pointerId);
+      pointers.set(e.pointerId,localPoint(e));
+
+      if(pointers.size===1){
+        const p=[...pointers.values()][0];
+        gesture={
+          type:'drag',
+          startPoint:{...p},
+          startX:state.x,startY:state.y
+        };
+      }else if(pointers.size===2){
+        const [a,b]=[...pointers.values()];
+        const dx=b.x-a.x, dy=b.y-a.y;
+        gesture={
+          type:'pinch',
+          startDistance:Math.hypot(dx,dy)||1,
+          startAngle:Math.atan2(dy,dx),
+          startScale:state.scale,
+          startRotation:state.rotation,
+          startMid:{x:(a.x+b.x)/2,y:(a.y+b.y)/2},
+          startX:state.x,startY:state.y
+        };
+      }
+    });
+
+    overlay.addEventListener('pointermove',(e)=>{
+      if(!pointers.has(e.pointerId) || !maskedCanvas) return;
+      e.preventDefault();
+      pointers.set(e.pointerId,localPoint(e));
+
+      if(pointers.size===1 && gesture?.type==='drag'){
+        const p=[...pointers.values()][0];
+        state.x=gesture.startX + (p.x-gesture.startPoint.x);
+        state.y=gesture.startY + (p.y-gesture.startPoint.y);
+        renderOverlay();
+      }else if(pointers.size>=2){
+        const [a,b]=[...pointers.values()];
+        if(gesture?.type!=='pinch'){
+          const dx=b.x-a.x,dy=b.y-a.y;
+          gesture={
+            type:'pinch',
+            startDistance:Math.hypot(dx,dy)||1,
+            startAngle:Math.atan2(dy,dx),
+            startScale:state.scale,
+            startRotation:state.rotation,
+            startMid:{x:(a.x+b.x)/2,y:(a.y+b.y)/2},
+            startX:state.x,startY:state.y
+          };
+        }
+        const dx=b.x-a.x,dy=b.y-a.y;
+        const distance=Math.hypot(dx,dy)||1;
+        const angle=Math.atan2(dy,dx);
+        const mid={x:(a.x+b.x)/2,y:(a.y+b.y)/2};
+
+        state.scale=clamp(gesture.startScale*(distance/gesture.startDistance),.18,5);
+        state.rotation=gesture.startRotation+angleDelta(gesture.startAngle,angle);
+        state.x=gesture.startX+(mid.x-gesture.startMid.x);
+        state.y=gesture.startY+(mid.y-gesture.startMid.y);
+        renderOverlay();
+      }
+    });
+
+    function endPointer(e){
+      if(!pointers.has(e.pointerId)) return;
+      pointers.delete(e.pointerId);
+      try{overlay.releasePointerCapture?.(e.pointerId)}catch(_){}
+
+      if(pointers.size===1){
+        const p=[...pointers.values()][0];
+        gesture={type:'drag',startPoint:{...p},startX:state.x,startY:state.y};
+      }else if(pointers.size===0){
+        gesture=null;
+      }else{
+        gesture=null;
+      }
+    }
+    overlay.addEventListener('pointerup',endPointer);
+    overlay.addEventListener('pointercancel',endPointer);
+
+    function drawVideoCover(cctx,outW,outH){
+      const vw=camera.videoWidth, vh=camera.videoHeight;
+      if(!vw || !vh) throw new Error('camera-not-ready');
+
+      const sourceAspect=vw/vh;
+      const targetAspect=outW/outH;
+      let sx=0,sy=0,sw=vw,sh=vh;
+
+      if(sourceAspect>targetAspect){
+        sw=vh*targetAspect;
+        sx=(vw-sw)/2;
+      }else{
+        sh=vw/targetAspect;
+        sy=(vh-sh)/2;
+      }
+      cctx.drawImage(camera,sx,sy,sw,sh,0,0,outW,outH);
+    }
+
+    async function capturePhoto(){
+      if(!stream || camera.readyState<2) return notify('انتظر حتى تعمل الكاميرا');
+
+      const stageW=innerWidth,stageH=innerHeight;
+      const vw=camera.videoWidth||1920,vh=camera.videoHeight||1080;
+      const stageAspect=stageW/stageH;
+      let cropW=vw,cropH=vh;
+      if(vw/vh>stageAspect) cropW=vh*stageAspect;
+      else cropH=vw/stageAspect;
+
+      const maxSide=2048;
+      const scaleOut=Math.min(1,maxSide/Math.max(cropW,cropH));
+      const outW=Math.max(1,Math.round(cropW*scaleOut));
+      const outH=Math.max(1,Math.round(cropH*scaleOut));
+      captureCanvas.width=outW;
+      captureCanvas.height=outH;
+      const cctx=captureCanvas.getContext('2d');
+
+      drawVideoCover(cctx,outW,outH);
+
+      if(maskedCanvas){
+        const factor=outW/stageW;
+        const drawSize=state.baseSize*state.scale*factor;
+        cctx.save();
+        cctx.translate(state.x*factor,state.y*factor);
+        cctx.rotate(state.rotation);
+        cctx.globalAlpha=state.opacity;
+        cctx.drawImage(maskedCanvas,-drawSize/2,-drawSize/2,drawSize,drawSize);
+        cctx.restore();
+      }
+
+      const blob=await new Promise(resolve=>captureCanvas.toBlob(resolve,'image/jpeg',.94));
+      if(!blob) return notify('تعذر حفظ الصورة');
+
+      const file=new File([blob],'aboden-ar-photo-'+Date.now()+'.jpg',{type:'image/jpeg'});
+      try{
+        if(navigator.canShare?.({files:[file]})){
+          await navigator.share({files:[file],title:'Aboden AR Photo'});
+          notify('تم تجهيز الصورة');
+          return;
+        }
+      }catch(err){
+        if(err?.name==='AbortError') return;
+      }
+
+      const url=URL.createObjectURL(blob);
+      const a=document.createElement('a');
+      a.href=url;
+      a.download=file.name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(()=>URL.revokeObjectURL(url),3000);
+      notify('تم حفظ الصورة');
+    }
+
+    document.getElementById('capture').addEventListener('click',capturePhoto);
+    startBtn.addEventListener('click',startCamera);
+
+    addEventListener('resize',()=>{
+      clearTimeout(resizeTimer);
+      resizeTimer=setTimeout(()=>{
+        const oldW=overlay.clientWidth||innerWidth;
+        const oldH=overlay.clientHeight||innerHeight;
+        state.x=clamp(state.x,0,innerWidth);
+        state.y=clamp(state.y,0,innerHeight);
+        state.baseSize=Math.min(innerWidth,innerHeight)*.48;
+        syncCanvas();
+      },80);
+    });
+
+    document.addEventListener('visibilitychange',()=>{
+      if(!document.hidden) renderOverlay();
+    });
+
+    syncCanvas();
+  </script>
+</body>
+</html>
