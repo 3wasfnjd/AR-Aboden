@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {createStage} from './stage.js';
 import {createRound,accuracy,spendShot,reloadRound,tickRound,ROUND_SECONDS} from './rules.js';
 import {GalleryAudio} from './audio.js';
@@ -43,20 +44,23 @@ function framePreview(){if(!camera||ar)return;const{w,h}=size();const intro=stat
  camera.updateProjectionMatrix();camera.updateMatrixWorld();
 }
 function makeReticle(){const g=new THREE.Group();const ring=new THREE.Mesh(new THREE.RingGeometry(.17,.185,48),new THREE.MeshBasicMaterial({color:0xdfba70,side:THREE.DoubleSide,depthTest:false}));ring.rotation.x=-Math.PI/2;g.add(ring);const center=new THREE.Mesh(new THREE.CircleGeometry(.027,20),ring.material);center.rotation.x=-Math.PI/2;g.add(center);scene.add(g);return g;}
-// A stylised air-rifle held in front of the camera — parented to it, so it
-// tracks head/device motion for free and always reads as "held" at the
-// bottom-centre of the view, muzzle pointing forward into the scene.
-function buildRifle(){const g=new THREE.Group();g.name='rifle-view';
- const dark=new THREE.MeshStandardMaterial({color:0x12151a,roughness:.35,metalness:.65});
- const wood=new THREE.MeshStandardMaterial({color:0x3c2718,roughness:.7,metalness:.05});
- const barrel=new THREE.Mesh(new THREE.CylinderGeometry(.016,.019,.75,14),dark);barrel.rotation.x=Math.PI/2;barrel.position.z=-.3;g.add(barrel);
- const muzzle=new THREE.Mesh(new THREE.CylinderGeometry(.022,.022,.05,14),dark);muzzle.rotation.x=Math.PI/2;muzzle.position.z=-.66;g.add(muzzle);
- const foreend=new THREE.Mesh(new THREE.BoxGeometry(.06,.055,.26),wood);foreend.position.set(0,-.035,-.12);g.add(foreend);
- const sight=new THREE.Mesh(new THREE.BoxGeometry(.014,.032,.014),dark);sight.position.set(0,.035,-.52);g.add(sight);
- const receiver=new THREE.Mesh(new THREE.BoxGeometry(.06,.1,.3),wood);receiver.position.set(0,-.01,.16);g.add(receiver);
- g.position.set(0,-.22,-.42);g.rotation.x=-.06;
- return g;
+// The real rifle asset's long axis is already local Z with the muzzle at
+// -Z (confirmed by rendering it standalone from both ends) — the same
+// forward convention a camera itself uses, so no correction rotation is
+// needed here, just centring and a length-based scale.
+const RIFLE_URL='./assets/gallery/rifle.glb';
+let rifleTemplate=null;
+async function prepareRifle(){
+ const gltf=await new GLTFLoader().loadAsync(RIFLE_URL);
+ const raw=gltf.scene;raw.updateMatrixWorld(true);
+ const box=new THREE.Box3().setFromObject(raw),size=box.getSize(new THREE.Vector3()),center=box.getCenter(new THREE.Vector3());
+ raw.position.sub(center);
+ raw.traverse(o=>{if(o.isMesh){o.castShadow=false;o.receiveShadow=false;}});
+ rifleTemplate=new THREE.Group();rifleTemplate.name='rifle-view';rifleTemplate.add(raw);
+ rifleTemplate.scale.setScalar(.72/size.z);
+ rifleTemplate.position.set(0,-.2,-.34);rifleTemplate.rotation.x=-.06;
 }
+function buildRifle(){return rifleTemplate.clone(true);}
 function syncHUD(){ $('score').textContent=round.score;$('timer').textContent=Math.ceil(round.time);$('accuracy').textContent=round.shots?`${accuracy(round)}%`:'—';$('ammo').textContent=round.remaining;$('timeBar').style.width=`${round.time/ROUND_SECONDS*100}%`;$('timer').classList.toggle('urgent',round.time<10);$('ammoPips').innerHTML=Array.from({length:6},(_,i)=>`<i class="${i<round.magazine?'':'empty'}"></i>`).join('');$('reload').textContent=round.reload>0?'جاري التلقيم…':'تلقيم ↻';$('fire').disabled=round.reload>0||round.magazine===0;}
 function setMode(value){mode=value;stage?.setMode(mode);document.querySelectorAll('[data-mode]').forEach(b=>{b.classList.toggle('selected',b.dataset.mode===mode);b.setAttribute('aria-pressed',String(b.dataset.mode===mode));});$('modeBadge').textContent=labels[mode];}
 function beginPreview(){if(!stage||busy)return;sound.unlock();ar=false;stage.root.position.set(0,0,0);stage.root.rotation.y=0;stage.root.scale.setScalar(1);stage.root.visible=true;stage.reset();elapsed=0;setMode(mode);$('aimHelp').textContent='اضغط على الهدف لإطلاق النار، أو وجّه المؤشر إليه واستخدم الزناد. مركز الهدف يمنح نقاطًا إضافية.';$('reposition').textContent='اختيار نوع التحدّي';showState('ready');}
@@ -123,7 +127,7 @@ $('scale').addEventListener('input',e=>{stageScale=Number(e.target.value)/100;})
 for(const b of document.querySelectorAll('[data-mode]'))b.addEventListener('click',()=>setMode(b.dataset.mode));
 window.addEventListener('resize',resize);window.visualViewport?.addEventListener('resize',resize);window.addEventListener('orientationchange',()=>{setTimeout(resize,250);});document.addEventListener('visibilitychange',()=>{if(document.hidden)pauseGame('توقفت الجولة عند مغادرة الشاشة.');else last=performance.now();});window.addEventListener('pagehide',()=>{try{if(ar)XR8.stop();sound.ctx?.suspend();}catch{}});
 window.addEventListener('keydown',e=>{if(e.code==='Space'){e.preventDefault();fire();}if(e.code==='KeyR')reload();if(e.code==='Escape')state==='paused'?resume():pauseGame();});
-async function boot(){try{initPreview();bindCanvas();resize();requestAnimationFrame(loop);stage=await createStage(e=>{$('loadStatus').textContent=e.total?`تحميل المنصة ${Math.round(e.loaded/e.total*100)}%`:'جاري تحميل المنصة…';});scene.add(stage.root);window.galleryLoaded=true;setMode(mode);framePreview();$('enterAR').disabled=false;$('enterAR').firstElementChild.textContent='ضع الكشك في مكانك';$('preview').disabled=false;$('loadStatus').textContent='جاهز · افتح الكاميرا أو جرّب المعاينة';if(new URLSearchParams(location.search).has('preview'))beginPreview();
+async function boot(){try{initPreview();bindCanvas();resize();requestAnimationFrame(loop);[stage]=await Promise.all([createStage(e=>{$('loadStatus').textContent=e.total?`تحميل المنصة ${Math.round(e.loaded/e.total*100)}%`:'جاري تحميل المنصة…';}),prepareRifle()]);scene.add(stage.root);window.galleryLoaded=true;setMode(mode);framePreview();$('enterAR').disabled=false;$('enterAR').firstElementChild.textContent='ضع الكشك في مكانك';$('preview').disabled=false;$('loadStatus').textContent='جاهز · افتح الكاميرا أو جرّب المعاينة';if(new URLSearchParams(location.search).has('preview'))beginPreview();
  // Exposed only in an explicit QA session, never enabled by the normal link.
  if(new URLSearchParams(location.search).has('qa'))window.galleryQA={THREE,get stage(){return stage;},get camera(){return camera;},get state(){return state;},get round(){return round;},get renderer(){return renderer;},fire,beginPreview,startRound,pauseGame,resume,setMode,finish,aimTarget:(index)=>{const t=stage.targets[index];t.hitObject.updateWorldMatrix(true,false);const p=new THREE.Box3().setFromObject(t.hitObject).getCenter(new THREE.Vector3()).project(camera);pointer.set(p.x,p.y);positionCrosshair();return{x:(p.x*.5+.5)*innerWidth,y:(-p.y*.5+.5)*innerHeight};}};
  }catch(err){console.error(err);fail('تعذر تحميل الكشك. تحقق من اتصال الإنترنت ثم أعد المحاولة.');}}
