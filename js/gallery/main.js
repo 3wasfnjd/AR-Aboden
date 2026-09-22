@@ -4,7 +4,7 @@ import {createRound,accuracy,spendShot,reloadRound,tickRound,ROUND_SECONDS} from
 import {GalleryAudio} from './audio.js';
 const $=id=>document.getElementById(id);
 const ui={intro:$('intro'),hud:$('hud'),placement:$('placement'),ready:$('ready'),controls:$('controls'),results:$('results'),paused:$('paused'),crosshair:$('crosshair'),countdown:$('countdown'),pause:$('pause')};
-let canvas=$('camerafeed'),renderer,scene,camera,stage,reticle;
+let canvas=$('camerafeed'),renderer,scene,camera,stage,reticle,rifle;
 let state='intro',mode='mixed',ar=false,busy=false,round=createRound(),elapsed=0,last=performance.now(),cooldown=0,count=3,pausedFrom='playing';
 let floorY=-1.4,placementValid=false,stable=0,lastPoint=new THREE.Vector3(),stageScale=1,placementHeight=0;
 let xrLoaded=false,xrStarted=false,xrTimer=null,trackingLost=false;
@@ -21,6 +21,7 @@ function showState(next){state=next;document.body.dataset.state=next;for(const [
  if(next==='results')ui.results.hidden=false;
  if(next==='paused')ui.paused.hidden=false;
  if(reticle)reticle.visible=next==='placing';
+ if(rifle)rifle.visible=['ready','countdown','playing','paused'].includes(next);
  $('vignette').hidden=ar;
  if(!ar&&camera)framePreview();
 }
@@ -42,6 +43,20 @@ function framePreview(){if(!camera||ar)return;const{w,h}=size();const intro=stat
  camera.updateProjectionMatrix();camera.updateMatrixWorld();
 }
 function makeReticle(){const g=new THREE.Group();const ring=new THREE.Mesh(new THREE.RingGeometry(.17,.185,48),new THREE.MeshBasicMaterial({color:0xdfba70,side:THREE.DoubleSide,depthTest:false}));ring.rotation.x=-Math.PI/2;g.add(ring);const center=new THREE.Mesh(new THREE.CircleGeometry(.027,20),ring.material);center.rotation.x=-Math.PI/2;g.add(center);scene.add(g);return g;}
+// A stylised air-rifle held in front of the camera — parented to it, so it
+// tracks head/device motion for free and always reads as "held" at the
+// bottom-centre of the view, muzzle pointing forward into the scene.
+function buildRifle(){const g=new THREE.Group();g.name='rifle-view';
+ const dark=new THREE.MeshStandardMaterial({color:0x12151a,roughness:.35,metalness:.65});
+ const wood=new THREE.MeshStandardMaterial({color:0x3c2718,roughness:.7,metalness:.05});
+ const barrel=new THREE.Mesh(new THREE.CylinderGeometry(.016,.019,.75,14),dark);barrel.rotation.x=Math.PI/2;barrel.position.z=-.3;g.add(barrel);
+ const muzzle=new THREE.Mesh(new THREE.CylinderGeometry(.022,.022,.05,14),dark);muzzle.rotation.x=Math.PI/2;muzzle.position.z=-.66;g.add(muzzle);
+ const foreend=new THREE.Mesh(new THREE.BoxGeometry(.06,.055,.26),wood);foreend.position.set(0,-.035,-.12);g.add(foreend);
+ const sight=new THREE.Mesh(new THREE.BoxGeometry(.014,.032,.014),dark);sight.position.set(0,.035,-.52);g.add(sight);
+ const receiver=new THREE.Mesh(new THREE.BoxGeometry(.06,.1,.3),wood);receiver.position.set(0,-.01,.16);g.add(receiver);
+ g.position.set(0,-.22,-.42);g.rotation.x=-.06;
+ return g;
+}
 function syncHUD(){ $('score').textContent=round.score;$('timer').textContent=Math.ceil(round.time);$('accuracy').textContent=round.shots?`${accuracy(round)}%`:'—';$('ammo').textContent=round.remaining;$('timeBar').style.width=`${round.time/ROUND_SECONDS*100}%`;$('timer').classList.toggle('urgent',round.time<10);$('ammoPips').innerHTML=Array.from({length:6},(_,i)=>`<i class="${i<round.magazine?'':'empty'}"></i>`).join('');$('reload').textContent=round.reload>0?'جاري التلقيم…':'تلقيم ↻';$('fire').disabled=round.reload>0||round.magazine===0;}
 function setMode(value){mode=value;stage?.setMode(mode);document.querySelectorAll('[data-mode]').forEach(b=>{b.classList.toggle('selected',b.dataset.mode===mode);b.setAttribute('aria-pressed',String(b.dataset.mode===mode));});$('modeBadge').textContent=labels[mode];}
 function beginPreview(){if(!stage||busy)return;sound.unlock();ar=false;stage.root.position.set(0,0,0);stage.root.rotation.y=0;stage.root.scale.setScalar(1);stage.root.visible=true;stage.reset();elapsed=0;setMode(mode);$('aimHelp').textContent='اضغط على الهدف لإطلاق النار، أو وجّه المؤشر إليه واستخدم الزناد. مركز الهدف يمنح نقاطًا إضافية.';$('reposition').textContent='اختيار نوع التحدّي';showState('ready');}
@@ -83,7 +98,7 @@ async function enterAR(){if(!stage||busy)return;busy=true;sound.unlock();$('ente
   XR8.XrController.configure({disableWorldTracking:false,enableLighting:true,enableWorldPoints:true,scale:'responsive'});
   XR8.addCameraPipelineModules([XR8.GlTextureRenderer.pipelineModule(),XR8.Threejs.pipelineModule(),XR8.XrController.pipelineModule(),{
    name:'aboden-fairground',
-   onStart:()=>{try{const xr=XR8.Threejs.xrScene();scene=xr.scene;camera=xr.camera;renderer=xr.renderer;renderer.shadowMap.enabled=false;scene.add(stage.root);stage.root.visible=false;lights();reticle=makeReticle();floorY=camera.position.y-1.4;stage.root.rotation.y=0;busy=false;xrStarted=true;clearTimeout(xrTimer);showState('placing');resize();}catch(err){console.error(err);fail('تعذر تجهيز المنصة في الكاميرا. أعد المحاولة.');}},
+   onStart:()=>{try{const xr=XR8.Threejs.xrScene();scene=xr.scene;camera=xr.camera;renderer=xr.renderer;renderer.shadowMap.enabled=false;scene.add(stage.root);stage.root.visible=false;lights();reticle=makeReticle();rifle=buildRifle();camera.add(rifle);scene.add(camera);floorY=camera.position.y-1.4;stage.root.rotation.y=0;busy=false;xrStarted=true;clearTimeout(xrTimer);showState('placing');resize();}catch(err){console.error(err);fail('تعذر تجهيز المنصة في الكاميرا. أعد المحاولة.');}},
    onException:error=>{console.error(error);fail('تعذر تشغيل الكاميرا أو التتبع. اسمح بالكاميرا وافتح الرابط في Safari أو Chrome مباشرة.');},
    onCameraStatusChange:({status})=>{if(status==='failed')fail('لم نتمكن من فتح الكاميرا. تحقق من الإذن وأعد المحاولة.');},
    listeners:[{event:'reality.trackingstatus',process:({detail})=>{const status=detail?.status;trackingLost=status==='LIMITED';if(trackingLost)pauseGame('توقف التتبع مؤقتًا. حرّك الجوال ببطء نحو مكان واضح ومضاء.');} }]
