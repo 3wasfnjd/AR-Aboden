@@ -421,13 +421,10 @@ export class OperationInkCombat {
     this.spawnTracer(muzzle,target,0xffb85b,.09);
     this.onEvent({type:'enemy-shot',weapon:u.weapon,position:muzzle.clone(),hit});
     if(hit){
-      this.playerHealth=Math.max(0,this.playerHealth-rule.damage);
-      this.onEvent({type:'player-hit',damage:rule.damage,health:this.playerHealth,source:enemy.position.clone()});
-      if(this.playerHealth<=0){
-        this.running=false;
-        this.triggerHeld=false;
-        this.onEvent({type:'player-dead',wave:this.wave,score:this.score});
-      }
+      // Test mode: keep the player invincible so combat, weapons and AI can
+      // be evaluated without interrupting the session.
+      this.playerHealth=100;
+      this.onEvent({type:'player-hit',damage:0,health:100,source:enemy.position.clone(),invincible:true});
       this.pushHud();
     }
     u.fireCooldown=rule.gap*(.88+Math.random()*.45);
