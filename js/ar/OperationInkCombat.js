@@ -26,8 +26,10 @@ const HIT_MULTIPLIER = {head:2.2, torso:1, arm:.6, leg:.7};
 
 const SOLDIER_MODEL_URL = 'https://raw.githubusercontent.com/guyz/tinystrike/main/assets/models/soldier_t.glb';
 const SOLDIER_SOURCE_HEIGHT = 2.1358;
-const SOLDIER_TARGET_HEIGHT = 1.78;
+const SOLDIER_TARGET_HEIGHT = 1.60;
 const SOLDIER_MODEL_SCALE = SOLDIER_TARGET_HEIGHT / SOLDIER_SOURCE_HEIGHT;
+const SOLDIER_HIT_PROXY_HEIGHT = 1.895;
+const SOLDIER_HIT_PROXY_SCALE = SOLDIER_TARGET_HEIGHT / SOLDIER_HIT_PROXY_HEIGHT;
 const SOLDIER_GUN_MESH_NAMES = new Set(['AK','SMG','Sniper','Pistol']);
 const SOLDIER_GUN_FOR_WEAPON = {
   ak:'AK', smg:'SMG', sniper:'Sniper', pistol:'Pistol', shotgun:'AK'
@@ -249,7 +251,7 @@ export function createSoldier(index, weapon='ak'){
   root.add(muzzle);
 
   root.userData.parts={lLeg:lLeg.pivot,rLeg:rLeg.pivot,lArm:lArm.pivot,rArm:rArm.pivot,gun,muzzle,head};
-  fallbackVisual.scale.setScalar(.94);
+  fallbackVisual.scale.setScalar(SOLDIER_HIT_PROXY_SCALE);
   root.scale.setScalar(1);
   root.traverse(o=>{ if(o.isMesh){o.castShadow=true;o.receiveShadow=true;} });
   // Upgrade asynchronously. The primitive body remains as a reliable fallback
@@ -536,14 +538,20 @@ export class OperationInkCombat {
     const u=enemy.userData, rule=ENEMY_WEAPONS[u.weapon]||ENEMY_WEAPONS.ak;
     const muzzle=new THREE.Vector3();
     u.parts.muzzle.getWorldPosition(muzzle);
+
+    // Always aim at the real tracked phone camera position. Accuracy controls
+    // only a small weapon spread instead of sending misses far away from the user.
     const eye=player.clone();
     const distance=muzzle.distanceTo(eye);
-    const accuracy=clamp(.76-distance*.055,.30,.68);
+    const accuracy=clamp(.92-distance*.04,.58,.86);
     const hit=Math.random()<accuracy;
+    const hitSpread=u.weapon==='sniper'?.025:u.weapon==='shotgun'?.10:.045;
+    const missSpread=u.weapon==='sniper'?.12:u.weapon==='shotgun'?.30:.18;
+    const spread=hit?hitSpread:missSpread;
     const target=eye.clone().add(new THREE.Vector3(
-      hit?(Math.random()-.5)*.12:(Math.random()-.5)*.72,
-      hit?(Math.random()-.5)*.13:(Math.random()-.5)*.62,
-      hit?(Math.random()-.5)*.12:(Math.random()-.5)*.72
+      (Math.random()-.5)*spread,
+      (Math.random()-.5)*spread,
+      (Math.random()-.5)*spread
     ));
     this.spawnTracer(muzzle,target,0xffb85b,.09);
     this.onEvent({type:'enemy-shot',weapon:u.weapon,position:muzzle.clone(),hit});
@@ -557,16 +565,22 @@ export class OperationInkCombat {
     u.fireCooldown=rule.gap*(.88+Math.random()*.45);
   }
 
-  moveToward(enemy,target,speed,dt){
+  moveToward(enemy,target,speed,dt,{faceMovement=true}={}){
     const dx=target.x-enemy.position.x, dz=target.z-enemy.position.z;
     const d=Math.hypot(dx,dz);
     if(d<.03) return 0;
     const step=Math.min(d,speed*dt);
     enemy.position.x+=dx/d*step;
     enemy.position.z+=dz/d*step;
-    enemy.rotation.y=Math.atan2(dx,dz);
+    if(faceMovement) enemy.rotation.y=Math.atan2(dx,dz);
     enemy.userData.stride+=step*8.5;
     return step;
+  }
+
+  facePhone(enemy,player){
+    const dx=player.x-enemy.position.x;
+    const dz=player.z-enemy.position.z;
+    if(Math.hypot(dx,dz)>.001) enemy.rotation.y=Math.atan2(dx,dz);
   }
 
   animateEnemy(enemy,dt,moving){
@@ -634,11 +648,10 @@ export class OperationInkCombat {
       moving=this.moveToward(enemy,u.target,.42,dt);
       if(dist<4.9) this.setEnemyState(enemy,'suspicious');
     }else if(u.state==='suspicious'){
-      enemy.rotation.y=Math.atan2(player.x-enemy.position.x,player.z-enemy.position.z);
+      this.facePhone(enemy,player);
       if(u.stateTime>=u.alertDelay) this.setEnemyState(enemy,'combat');
     }else if(u.state==='combat'){
       u.lastKnown.copy(player);
-      enemy.rotation.y=Math.atan2(player.x-enemy.position.x,player.z-enemy.position.z);
       if(u.reposition<=0) this.chooseReposition(enemy,player);
       if(dist<1.65){
         const retreat=enemy.position.clone().sub(player); retreat.y=0;
@@ -648,7 +661,10 @@ export class OperationInkCombat {
         const toward=player.clone().sub(enemy.position); toward.y=0;
         u.target.copy(player).add(toward.setLength(-3.0));
       }
-      moving=this.moveToward(enemy,u.target,.95,dt);
+      // Combat movement is independent from aiming: strafe/reposition while
+      // the torso remains pointed at the tracked phone camera.
+      moving=this.moveToward(enemy,u.target,.95,dt,{faceMovement:false});
+      this.facePhone(enemy,player);
       if(dist<7.2 && u.fireCooldown<=0) this.enemyShoot(enemy,player);
       if(dist>8.3) this.setEnemyState(enemy,'search');
     }else if(u.state==='search'){
@@ -707,8 +723,9 @@ export class OperationInkCombat {
     }
 
     const player=new THREE.Vector3();
+    // Use the actual XR camera pose, including its tracked height, so enemy
+    // bodies and bullet traces remain focused on the phone as the user moves.
     this.camera.getWorldPosition(player);
-    player.y=this.anchor.y+1.45;
     for(const enemy of this.enemies) this.updateEnemy(enemy,dt,player);
   }
 }
