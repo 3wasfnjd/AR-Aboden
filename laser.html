@@ -1263,11 +1263,11 @@
       if(saudiVectorV3Promise) return saudiVectorV3Promise;
 
       saudiVectorV3Promise=(async()=>{
-        const response=await fetch('./assets/laser/saudi_story_v4.b64',{cache:'force-cache'});
-        if(!response.ok) throw new Error('Saudi V4 vector data HTTP '+response.status);
+        const response=await fetch('./assets/laser/saudi_story_v5.b64',{cache:'force-cache'});
+        if(!response.ok) throw new Error('Saudi V5 vector data HTTP '+response.status);
 
         const b64=(await response.text()).trim();
-        if(!b64) throw new Error('Saudi V4 vector data is empty');
+        if(!b64) throw new Error('Saudi V5 vector data is empty');
 
         const binary=atob(b64);
         const compressed=new Uint8Array(binary.length);
@@ -1281,8 +1281,8 @@
         const jsonText=await new Response(stream).text();
         const data=JSON.parse(jsonText);
 
-        if(![3,4].includes(data?.version)||!data?.paths){
-          throw new Error('Invalid Saudi V4 vector data');
+        if(![3,4,5].includes(data?.version)||!data?.paths){
+          throw new Error('Invalid Saudi V5 vector data');
         }
         return data;
       })();
@@ -1488,44 +1488,117 @@
       const frames=[];
       let frameIndex=0;
 
-      const finalSaudi=v3TransformPaths(paths.saudi,.92,.92,0,-.26);
-      const final96=v3TransformPaths(paths.n96,.40,.40,0,.60);
+      const scenePlan=[
+        ['emblem',5.5],
+        ['diriyah',5.5],
+        ['horse',6.0],
+        ['camel',6.0],
+        ['final',13.0]
+      ];
 
-      for(const [sceneName,seconds] of data.scenes){
-        const count=Math.round(seconds*fps);
+      const finalSaudi=v3TransformPaths(paths.saudi,.92,.92,0,-.26);
+      const final96=v3TransformPaths(paths.n96,.38,.38,0,.60);
+      const finalEmblem=v3TransformPaths(paths.emblem,.18,.18,0,-.78);
+
+      const emblemSwords=paths.emblem.slice(0,4);
+      const emblemPalm=paths.emblem.slice(4);
+
+      function clamp01(v){
+        return Math.max(0,Math.min(1,v));
+      }
+
+      for(const [sceneName,seconds] of scenePlan){
+        const count=Math.max(1,Math.round(seconds*fps));
 
         for(let i=0;i<count;i++){
-          const local=i/fps;
-          const reveal=v3Smoothstep(Math.min(1,local/Math.max(.001,seconds*.30)));
+          const t=count<=1?1:i/(count-1);
+          const ease=v3Smoothstep(t);
+          const groups=[];
 
-          if(sceneName==='final'){
-            const word=v3RevealPaths(finalSaudi,reveal);
-            const reveal96=v3Smoothstep(
-              Math.max(0,Math.min(1,(local-seconds*.18)/(seconds*.20)))
-            );
-            const num=v3RevealPaths(final96,reveal96);
+          if(sceneName==='emblem'){
+            const swordReveal=clamp01(t/.46);
+            const palmReveal=clamp01((t-.16)/.74);
 
-            frames.push(v3MakeFrame(frameIndex++,[
-              {paths:word,color:colors.saudi},
-              {paths:num,color:colors.n96}
-            ]));
-          }else{
-            frames.push(v3MakeFrame(frameIndex++,[
-              {
-                paths:v3RevealPaths(paths[sceneName],reveal),
-                color:colors[sceneName]
-              }
-            ]));
+            groups.push({
+              paths:v3RevealPaths(emblemSwords,swordReveal),
+              color:colors.emblem
+            });
+            groups.push({
+              paths:v3RevealPaths(emblemPalm,palmReveal),
+              color:colors.emblem
+            });
+          }else if(sceneName==='diriyah'){
+            const baseReveal=clamp01(t/.30);
+            const archReveal=clamp01((t-.08)/.92);
+
+            groups.push({
+              paths:v3RevealPaths(paths.diriyah.slice(0,1),baseReveal),
+              color:colors.diriyah
+            });
+            groups.push({
+              paths:v3RevealPaths(paths.diriyah.slice(1),archReveal),
+              color:colors.diriyah
+            });
+          }else if(sceneName==='horse'){
+            const reveal=clamp01(t/.72);
+            const detailsReveal=clamp01((reveal-.14)/.86);
+            const travel=-.08+ease*.14;
+            const bob=Math.sin(t*Math.PI*2)*.03;
+
+            groups.push({
+              paths:v3TransformPaths(v3RevealPaths(paths.horse.slice(0,1),reveal),1,1,travel,bob),
+              color:colors.horse
+            });
+            groups.push({
+              paths:v3TransformPaths(v3RevealPaths(paths.horse.slice(1),detailsReveal),1,1,travel,bob),
+              color:colors.horse
+            });
+          }else if(sceneName==='camel'){
+            const reveal=clamp01(t/.76);
+            const detailsReveal=clamp01((reveal-.14)/.86);
+            const travel=.10-ease*.16;
+            const bob=Math.sin(t*Math.PI*1.6)*.025;
+
+            groups.push({
+              paths:v3TransformPaths(v3RevealPaths(paths.camel.slice(0,1),reveal),1,1,travel,bob),
+              color:colors.camel
+            });
+            groups.push({
+              paths:v3TransformPaths(v3RevealPaths(paths.camel.slice(1),detailsReveal),1,1,travel,bob),
+              color:colors.camel
+            });
+          }else if(sceneName==='final'){
+            const wordReveal=clamp01(t/.54);
+            const numberReveal=clamp01((t-.18)/.26);
+            const emblemReveal=clamp01((t-.62)/.26);
+
+            groups.push({
+              paths:v3RevealPaths(finalSaudi,wordReveal),
+              color:colors.saudi
+            });
+            groups.push({
+              paths:v3RevealPaths(final96,numberReveal),
+              color:colors.n96
+            });
+            if(emblemReveal>0){
+              groups.push({
+                paths:v3RevealPaths(finalEmblem,emblemReveal),
+                color:colors.saudi
+              });
+            }
           }
+
+          frames.push(v3MakeFrame(frameIndex++,groups));
         }
       }
 
       const tracks=new Map([[0,frames]]);
+      const duration=scenePlan.reduce((sum,[,seconds])=>sum+seconds,0);
       return {
         frames,tracks,
         totalPoints:frames.length*SAUDI_POINTS_PER_FRAME,
         blanked:0,paletteFallbacks:0,eof:true,bytes:0,
-        custom:true,duration:data.duration||36,fps
+        custom:true,duration,fps
       };
     }
 
@@ -1660,7 +1733,7 @@
       if(!item) throw new Error('Unknown laser show');
 
       if(item.kind==='vector-v3'){
-        if(initial) setLoadProgress(28,'تحميل مسارات عرض السعودية الجديدة…');
+        if(initial) setLoadProgress(28,'تحميل عرض السعودية الاحترافي…');
 
         const sourceAsset=await buildSaudiV3Asset();
         const loader=new ILDALoader();
@@ -1673,7 +1746,7 @@
 
         ensureSaudiAudio().catch(err=>console.warn('[ABODEN LASER] audio preload',err));
 
-        if(initial) setLoadProgress(76,'تم تجهيز عرض السعودية V4…');
+        if(initial) setLoadProgress(76,'تم تجهيز عرض السعودية V5…');
         return asset;
       }
 
