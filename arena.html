@@ -82,6 +82,8 @@
     .status{display:flex;align-items:center;gap:7px;font-size:12px}
     .dot{width:8px;height:8px;border-radius:50%;background:#f5c451;box-shadow:0 0 12px currentColor}
     .status.ready .dot{background:#61eb8b}
+    .status.scanning .dot{background:#5dd5ff;animation:scanPulse 1s ease-in-out infinite}
+    @keyframes scanPulse{0%,100%{opacity:1}50%{opacity:.35}}
     .guide{position:absolute;left:50%;top:40%;transform:translate(-50%,-50%);width:min(86vw,390px);text-align:center;line-height:1.8;text-shadow:0 2px 14px rgba(0,0,0,.95);font-size:14px;padding:0 12px}
     .guide b{display:block;font-size:19px;margin-bottom:5px}
     .guide.hidden{display:none}
@@ -188,8 +190,8 @@
     </div>
 
     <div class="guide" id="guide">
-      <b>امسح الأرض بهدوء</b>
-      حرّك الجوال ببطء فوق السجادة أو الأرضية حتى تصبح الحالة «السطح مستقر»، ثم ثبّت الحلبة كاملة.
+      <b>امسح الأرض حولك أولًا</b>
+      حرّك الجوال ببطء فوق عدة نقاط من الأرضية حتى يكتمل المسح، ثم وجّه الجوال لمكان أبعد قليلًا حتى تصبح الحالة «السطح مستقر» وثبّت الحلبة كاملة.
     </div>
 
     <div class="toast" id="toast"></div>
@@ -343,6 +345,20 @@
     const ARENA_SEGMENTS = 28;
     const ARENA_WALL_HEIGHT = 0.17;
 
+    // Placement is a raycast against an assumed floor plane, so nothing stops
+    // the arena from landing almost under the phone if the user is looking
+    // steeply down. MIN_PLACE_DISTANCE forces the final spot to be a bit
+    // further out; MAX_SURFACE_DISTANCE keeps the old far-range cutoff.
+    const MIN_PLACE_DISTANCE = 2.1;
+    const MAX_SURFACE_DISTANCE = 8;
+
+    // Surface-scanning gate: require the user to sweep the phone across a
+    // handful of distinct floor cells before placement unlocks, so the app
+    // has actually looked around the room instead of trusting the very
+    // first point it sees.
+    const SCAN_CELL_SIZE = 0.42;
+    const SCAN_REQUIRED_CELLS = 5;
+
     const raycaster = new THREE.Raycaster();
     const centerNdc = new THREE.Vector2(0, 0);
     const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
@@ -353,6 +369,30 @@
     let reticleStableMs = 0;
     let surfaceReady = false;
     let lastTick = performance.now();
+
+    const scanCells = new Set();
+    const scanMarkers = [];
+    let scanComplete = false;
+
+    const scanDotGeo = new THREE.RingGeometry(.05,.075,20).rotateX(-Math.PI/2);
+    const scanDotMat = new THREE.MeshBasicMaterial({
+      color:0x5dd5ff,transparent:true,opacity:.75,depthWrite:false,side:THREE.DoubleSide
+    });
+
+    function spawnScanMarker(x,z){
+      const dot = new THREE.Mesh(scanDotGeo,scanDotMat.clone());
+      dot.position.set(x,.006,z);
+      scene.add(dot);
+      scanMarkers.push(dot);
+    }
+
+    function clearScanMarkers(){
+      for(const dot of scanMarkers){
+        scene.remove(dot);
+        dot.material.dispose();
+      }
+      scanMarkers.length = 0;
+    }
 
     function notify(msg){
       toast.textContent = msg;
@@ -808,12 +848,14 @@
 
       raycaster.setFromCamera(centerNdc,camera);
       const hit = raycaster.ray.intersectPlane(groundPlane,hitPoint);
+      const hitDistance = hit ? hit.distanceTo(camera.position) : Infinity;
 
-      if (!hit || hit.distanceTo(camera.position) > 8){
+      if (!hit || hitDistance > MAX_SURFACE_DISTANCE){
         reticle.visible = false;
         if(arenaGroup) arenaGroup.visible = false;
         reticleStableMs = 0;
         surfaceReady = false;
+        status.classList.remove('scanning');
         setStatus('ابحث عن الأرض', false);
         return;
       }
@@ -827,6 +869,39 @@
       if (stablePoint.lengthSq()===0) stablePoint.copy(hit);
       else stablePoint.lerp(hit,.16);
 
+      // Surface-scanning phase: sweep the phone over a handful of distinct
+      // floor cells before placement unlocks, so the app has actually
+      // explored the surface instead of locking onto the very first point
+      // the camera happens to land on.
+      if(!scanComplete){
+        const gx = Math.round(stablePoint.x/SCAN_CELL_SIZE);
+        const gz = Math.round(stablePoint.z/SCAN_CELL_SIZE);
+        const cellKey = gx+','+gz;
+
+        if(!scanCells.has(cellKey)){
+          scanCells.add(cellKey);
+          spawnScanMarker(gx*SCAN_CELL_SIZE,gz*SCAN_CELL_SIZE);
+          if(navigator.vibrate) navigator.vibrate(8);
+        }
+
+        reticle.visible = true;
+        reticle.position.set(stablePoint.x,.008,stablePoint.z);
+        reticle.rotation.y += dt*.6;
+        if(arenaGroup) arenaGroup.visible = false;
+
+        surfaceReady = false;
+        status.classList.add('scanning');
+        setStatus('🔍 امسح الأرض حولك… ' + scanCells.size + '/' + SCAN_REQUIRED_CELLS, false);
+
+        if(scanCells.size >= SCAN_REQUIRED_CELLS){
+          scanComplete = true;
+          status.classList.remove('scanning');
+          notify('تم مسح المكان! اختر موضع الحلبة الآن');
+          if(navigator.vibrate) navigator.vibrate([12,20,12]);
+        }
+        return;
+      }
+
       reticle.visible = true;
       reticle.position.set(stablePoint.x,.008,stablePoint.z);
       reticle.rotation.y += dt*.12;
@@ -836,11 +911,17 @@
       arenaGroup.scale.setScalar(placementScale);
       arenaGroup.visible = true;
 
-      surfaceReady = reticleStableMs > 700;
-      setStatus(
-        surfaceReady ? 'السطح مستقر — اضبط الحجم ثم ثبّت' : 'ثبّت الجوال قليلًا',
-        surfaceReady
-      );
+      const farEnough = hitDistance >= MIN_PLACE_DISTANCE;
+      surfaceReady = farEnough && reticleStableMs > 700;
+
+      if(!farEnough){
+        setStatus('ابتعد قليلًا عن هذه النقطة', false);
+      }else{
+        setStatus(
+          surfaceReady ? 'السطح مستقر — اضبط الحجم ثم ثبّت' : 'ثبّت الجوال قليلًا',
+          surfaceReady
+        );
+      }
     }
 
     function tickWorld(){
@@ -875,8 +956,13 @@
         return;
       }
 
+      if (!scanComplete){
+        notify('أكمل مسح الأرض حولك أولًا');
+        return;
+      }
+
       if (!surfaceReady){
-        notify('انتظر حتى يستقر المؤشر قليلًا');
+        notify('ابتعد قليلًا عن هذه النقطة أو انتظر حتى يستقر المؤشر');
         return;
       }
 
@@ -953,6 +1039,11 @@
       prevHit.set(999,999,999);
       stablePoint.set(0,0,0);
 
+      scanCells.clear();
+      scanComplete = false;
+      clearScanMarkers();
+      status.classList.remove('scanning');
+
       controls.reset();
 
       body = null;
@@ -967,7 +1058,7 @@
 
       guide.classList.remove('hidden');
       placeBtn.textContent = 'ثبّت الحلبة';
-      setStatus('أعد مسح الأرض واضبط الحجم', true);
+      setStatus('امسح الأرض حولك', false);
 
       try{
         XR8.XrController.recenter();
