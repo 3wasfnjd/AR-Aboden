@@ -559,7 +559,7 @@
       // camera.position or its projection matrix here; doing so offsets the
       // virtual characters from the real camera on iPhone.
       setStatus('امسح الأرض',true);
-      requestAnimationFrame(loop);
+      lastTime=performance.now();
     }
 
     function updatePlacement(dt){
@@ -634,9 +634,9 @@
       notify('تم تغيير موقع الترول');
     }
 
-    function loop(now){
-      requestAnimationFrame(loop);
+    function tick(){
       if(!camera||!scene)return;
+      const now=performance.now();
       const dt=Math.min(1/30,(now-lastTime)/1000||.016);
       lastTime=now;
 
@@ -662,6 +662,11 @@
             notify('فشل تشغيل تجربة الرعب');
           }
         },
+        // Runs inside XR8's own per-frame pipeline (same tick that just
+        // updated the AR camera pose) instead of a detached
+        // requestAnimationFrame loop, so the reticle/troll no longer lag a
+        // frame behind fast camera movement.
+        onUpdate:tick,
         onException:error=>{
           console.error(error);
           notify('حدث خطأ في التتبع');

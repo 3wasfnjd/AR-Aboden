@@ -1458,12 +1458,11 @@
       await prepareRocketModel();
       createAllBalloons();
       lastTime=performance.now();
-      requestAnimationFrame(loop);
     }
 
-    function loop(now){
-      requestAnimationFrame(loop);
+    function tick(){
       if(!scene||!camera) return;
+      const now=performance.now();
       const dt=Math.min(1/30,(now-lastTime)/1000||.016);
       lastTime=now;
       updateBalloons(dt,now);
@@ -1486,6 +1485,11 @@
             notify('فشل تجهيز التجربة');
           }
         },
+        // Runs inside XR8's own per-frame pipeline (same tick that just
+        // updated the AR camera pose) instead of a detached
+        // requestAnimationFrame loop, so balloons/rockets no longer lag a
+        // frame behind fast camera movement.
+        onUpdate:tick,
         onException:(error)=>{
           console.error(error);
           notify('حدث خطأ في التتبع');
