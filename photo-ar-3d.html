@@ -3,35 +3,822 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
-  <meta name="theme-color" content="#090b14">
+  <meta name="theme-color" content="#05070c">
   <title>تركيب صورة AR 3D — عبودين</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/@8thwall/engine-binary@1/dist/xr.js"
+          async crossorigin="anonymous" data-preload-chunks="slam"></script>
+
+  <script type="importmap">
+  {
+    "imports":{
+      "three":"https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.module.js"
+    }
+  }
+  </script>
+
   <style>
     *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-    html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#05070c;color:#fff;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Tahoma,Arial,sans-serif}
-    body{display:grid;place-items:end center;min-height:100dvh;background:
-      radial-gradient(circle at 50% 24%,rgba(119,95,220,.24),transparent 35%),
-      linear-gradient(180deg,#0d1120,#05070c 68%)}
-    .top{position:fixed;top:max(14px,env(safe-area-inset-top));left:14px;right:14px;display:flex;justify-content:space-between;align-items:center}
-    a{color:#fff;text-decoration:none;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.06);border-radius:999px;padding:9px 12px;font-size:12px;font-weight:900}
-    .tag{font-size:11px;color:#aeb8c5}
-    .panel{width:min(520px,calc(100% - 28px));margin-bottom:max(22px,env(safe-area-inset-bottom));border:1px solid rgba(255,255,255,.11);background:rgba(255,255,255,.06);border-radius:28px;padding:24px;backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
-    .icon{width:78px;height:78px;border-radius:24px;display:grid;place-items:center;margin:0 auto 18px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.1);font-size:34px}
-    h1{margin:0 0 10px;text-align:center;font-size:28px}
-    p{margin:0;color:#c5ced9;text-align:center;line-height:1.8;font-size:14px}
-    .note{margin-top:16px;padding:12px 14px;border-radius:16px;background:rgba(0,0,0,.2);color:#aab4c0;font-size:12px;line-height:1.7}
+    :root{
+      --app-w:100vw;--app-h:100dvh;
+      --panel:rgba(6,10,17,.80);--line:rgba(255,255,255,.14);
+      --muted:#b6c0cd;--accent:#8de6ff;--ok:#87f0b9;
+    }
+    html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#03060b;color:#fff;
+      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Tahoma,Arial,sans-serif}
+    body{position:fixed;left:0;top:0;width:var(--app-w);height:var(--app-h);overscroll-behavior:none;touch-action:none}
+    button,input,label,a{font:inherit}
+    #camerafeed{
+      position:fixed!important;left:0!important;top:0!important;
+      width:var(--app-w)!important;height:var(--app-h)!important;
+      display:block!important;z-index:0!important;touch-action:none
+    }
+    .ui{position:fixed;inset:0;width:var(--app-w);height:var(--app-h);z-index:20;pointer-events:none}
+    .ui>*{pointer-events:none}
+    .top{
+      position:absolute;top:max(12px,env(safe-area-inset-top));left:12px;right:12px;
+      display:flex;align-items:center;justify-content:space-between;gap:9px
+    }
+    .top>*{pointer-events:auto}
+    .pill,.home{
+      border:1px solid var(--line);background:rgba(5,9,15,.73);color:#fff;
+      backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+      border-radius:999px;padding:9px 12px;font-size:11px;font-weight:900;
+      box-shadow:0 8px 28px rgba(0,0,0,.22)
+    }
+    .home{text-decoration:none}
+    .status{display:flex;align-items:center;gap:7px;max-width:62vw}
+    .statusText{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .dot{width:7px;height:7px;border-radius:50%;background:#768292;box-shadow:0 0 10px rgba(255,255,255,.18)}
+    .status.ready .dot{background:var(--ok);box-shadow:0 0 12px rgba(135,240,185,.65)}
+    .guide{
+      position:absolute;left:50%;top:18%;transform:translateX(-50%);
+      width:min(90vw,470px);text-align:center;font-size:13px;line-height:1.7;
+      text-shadow:0 2px 12px rgba(0,0,0,.95);transition:.22s
+    }
+    .guide b{display:block;font-size:18px;margin-bottom:3px}
+    .guide.hidden{opacity:0;visibility:hidden;transform:translate(-50%,-7px)}
+    .toast{
+      position:absolute;left:50%;top:12%;transform:translate(-50%,-8px);opacity:0;visibility:hidden;
+      transition:.18s;background:rgba(4,8,14,.88);border:1px solid var(--line);
+      border-radius:999px;padding:9px 14px;font-size:11px;white-space:nowrap
+    }
+    .toast.show{opacity:1;visibility:visible;transform:translate(-50%,0)}
+    .controls{
+      pointer-events:auto!important;position:absolute;left:10px;right:10px;
+      bottom:max(10px,env(safe-area-inset-bottom));padding:12px;
+      border:1px solid var(--line);border-radius:24px;background:var(--panel);
+      backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);
+      box-shadow:0 18px 52px rgba(0,0,0,.34)
+    }
+    .row{display:grid;grid-template-columns:1.15fr 1fr 1fr;gap:8px}
+    .btn,.fileBtn{
+      min-height:46px;border:1px solid rgba(255,255,255,.13);border-radius:15px;
+      background:rgba(255,255,255,.08);color:#fff;font-size:12px;font-weight:900;
+      display:flex;align-items:center;justify-content:center;gap:6px;touch-action:manipulation
+    }
+    .btn.primary,.fileBtn.primary{background:#fff;color:#081019;border-color:#fff}
+    .btn:disabled{opacity:.36}
+    #fileInput{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+    .adjust{
+      display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:8px
+    }
+    .adjust .btn{min-height:42px}
+    .sliders{display:grid;grid-template-columns:1fr 1fr;gap:11px;margin-top:10px}
+    .slider label{display:flex;justify-content:space-between;gap:8px;color:var(--muted);
+      font-size:10px;font-weight:850;margin-bottom:6px}
+    .slider output{color:#fff;font-variant-numeric:tabular-nums}
+    input[type=range]{width:100%;accent-color:#fff;touch-action:manipulation}
+    .bottomRow{display:grid;grid-template-columns:1fr 70px 1fr;align-items:center;gap:8px;margin-top:9px}
+    .mini{
+      border:0;background:transparent;color:#c8d1dc;font-size:10px;font-weight:850;
+      padding:8px;touch-action:manipulation
+    }
+    .mini:disabled{opacity:.35}
+    .shutter{
+      width:60px;height:60px;border-radius:50%;justify-self:center;border:5px solid rgba(255,255,255,.27);
+      background:#fff;color:#081019;font-size:21px;font-weight:900;touch-action:manipulation
+    }
+    #intro{
+      position:fixed;inset:0;z-index:50;display:flex;align-items:flex-end;justify-content:center;
+      padding:18px 18px max(26px,env(safe-area-inset-bottom));
+      background:radial-gradient(circle at 50% 25%,rgba(101,86,210,.28),transparent 34%),
+      linear-gradient(180deg,#0d1222,#05070c 70%)
+    }
+    .card{
+      width:min(100%,520px);border:1px solid rgba(255,255,255,.12);border-radius:28px;
+      background:rgba(255,255,255,.06);padding:24px;
+      backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px)
+    }
+    .icon{
+      width:78px;height:78px;border-radius:24px;display:grid;place-items:center;margin:0 auto 17px;
+      background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.1);font-size:34px
+    }
+    .card h1{margin:0 0 10px;text-align:center;font-size:27px}
+    .card p{margin:0 0 18px;text-align:center;color:#c9d1dc;font-size:14px;line-height:1.8}
+    .start{
+      width:100%;height:58px;border:0;border-radius:18px;background:#fff;color:#081019;
+      font-size:15px;font-weight:950
+    }
+    .tiny{font-size:10px!important;color:#9da8b6!important;margin:11px 0 0!important}
+    .error{display:none;color:#ffc0c0;font-size:11px;line-height:1.7;text-align:center;margin-top:11px}
+    @media(max-width:430px){
+      .sliders{grid-template-columns:1fr}
+      .controls{padding:10px}.btn,.fileBtn{min-height:43px;font-size:11px}
+      .guide{top:16%}
+    }
+    @media(orientation:landscape) and (max-height:520px){
+      .controls{left:auto;right:10px;width:350px;top:max(55px,env(safe-area-inset-top));bottom:auto}
+      .guide{top:12%;left:35%}.sliders{grid-template-columns:1fr}
+    }
   </style>
 </head>
 <body>
-  <div class="top">
-    <a href="./photo.html">← اختيار النمط</a>
-    <div class="tag">PHOTO AR · 3D</div>
+  <canvas id="camerafeed"></canvas>
+
+  <div class="ui">
+    <div class="top">
+      <a class="home" href="./photo.html">← الأنماط</a>
+      <div class="pill status" id="status"><span class="dot"></span><span class="statusText" id="statusText">جاهز</span></div>
+    </div>
+
+    <div class="guide" id="guide">
+      <b>امسح الأرض بهدوء</b>
+      اختر صورة، وجّه المؤشر نحو الأرض ثم اضغط «ثبّت هنا». بعد التثبيت يمكنك التحرك حول الصورة.
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <section class="controls" id="controls" style="display:none">
+      <div class="row">
+        <label class="fileBtn primary" for="fileInput">＋ إضافة صورة</label>
+        <button class="btn" id="placeBtn" disabled>ثبّت هنا</button>
+        <button class="btn" id="orientationBtn">عمودي</button>
+      </div>
+
+      <div class="adjust">
+        <button class="btn" id="smallerBtn">− تصغير</button>
+        <button class="btn" id="rotateBtn">↻ تدوير</button>
+        <button class="btn" id="largerBtn">＋ تكبير</button>
+      </div>
+
+      <div class="sliders">
+        <div class="slider">
+          <label><span>الشفافية</span><output id="opacityValue">100%</output></label>
+          <input id="opacity" type="range" min="0" max="100" value="100" step="1">
+        </div>
+        <div class="slider">
+          <label><span>نعومة الحواف</span><output id="featherValue">18%</output></label>
+          <input id="feather" type="range" min="0" max="45" value="18" step="1">
+        </div>
+      </div>
+
+      <div class="bottomRow">
+        <button class="mini" id="resetBtn">إعادة الضبط</button>
+        <button class="shutter" id="captureBtn" disabled aria-label="التقاط صورة">●</button>
+        <button class="mini" id="removeBtn">حذف الصورة</button>
+      </div>
+    </section>
   </div>
 
-  <section class="panel">
-    <div class="icon">◫</div>
-    <h1>مسار 3D مستقل</h1>
-    <p>هذا المسار مخصص للنسخة التي ستثبت الصورة على سطح حقيقي وتبقيها في مكانها عند تحريك الجوال.</p>
-    <div class="note">النسخة العادية بقيت في <b>photo-ar.html</b> بدون أي تغيير. سنبني التتبع ثلاثي الأبعاد هنا فقط.</div>
+  <input id="fileInput" type="file" accept="image/*">
+
+  <section id="intro">
+    <div class="card">
+      <div class="icon">◫</div>
+      <h1>تركيب صورة AR — 3D</h1>
+      <p>ثبّت الصورة في نقطة حقيقية داخل المكان ثم تحرّك حولها. الإصدار الأول يستخدم الأرضية كنقطة تثبيت مستقرة.</p>
+      <button class="start" id="startBtn" disabled>جاري تجهيز المحرك…</button>
+      <div class="error" id="errorBox"></div>
+      <p class="tiny">بعد التثبيت: إصبع واحد يسحب الصورة على الأرض، وإصبعان يكبّرانها ويدوّرانها.</p>
+    </div>
   </section>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { GroundPlacement } from './js/ar/GroundPlacement.js?v=photo3d-1';
+
+    window.THREE = THREE;
+
+    const canvas = document.getElementById('camerafeed');
+    const intro = document.getElementById('intro');
+    const startBtn = document.getElementById('startBtn');
+    const errorBox = document.getElementById('errorBox');
+    const controls = document.getElementById('controls');
+    const status = document.getElementById('status');
+    const statusText = document.getElementById('statusText');
+    const guide = document.getElementById('guide');
+    const toast = document.getElementById('toast');
+
+    const fileInput = document.getElementById('fileInput');
+    const placeBtn = document.getElementById('placeBtn');
+    const orientationBtn = document.getElementById('orientationBtn');
+    const smallerBtn = document.getElementById('smallerBtn');
+    const largerBtn = document.getElementById('largerBtn');
+    const rotateBtn = document.getElementById('rotateBtn');
+    const resetBtn = document.getElementById('resetBtn');
+    const removeBtn = document.getElementById('removeBtn');
+    const captureBtn = document.getElementById('captureBtn');
+
+    const opacityInput = document.getElementById('opacity');
+    const featherInput = document.getElementById('feather');
+    const opacityValue = document.getElementById('opacityValue');
+    const featherValue = document.getElementById('featherValue');
+
+    let xrReady=false, xrStarted=false, sceneReady=false, startupFailed=false;
+    let scene=null, camera=null, renderer=null, reticle=null;
+    let photoRoot=null, photoMesh=null, photoMaterial=null, photoTexture=null;
+    let selectedImage=null, maskCanvas=null;
+    let placed=false, surfaceReady=false, previewInitialized=false;
+    let latestWorldPoints=[], nextGroundSample=0, lastTick=performance.now();
+    let baseYaw=0, rotationOffset=0;
+    let orientation='vertical';
+    let photoSize=.72;
+    let opacity=1;
+    let feather=.18;
+
+    const MIN_SIZE=.18, MAX_SIZE=2.4;
+    const placement = new GroundPlacement();
+    const raycaster = new THREE.Raycaster();
+    const groundPlane = new THREE.Plane(new THREE.Vector3(0,1,0),0);
+    const hitPoint = new THREE.Vector3();
+    const stablePoint = new THREE.Vector3();
+    const centerNdc = new THREE.Vector2(0,0);
+    const dragNdc = new THREE.Vector2();
+
+    const pointers = new Map();
+    let gesture=null;
+
+    function clamp(v,min,max){return Math.min(max,Math.max(min,v));}
+    function angleDelta(a,b){
+      let d=b-a;
+      while(d>Math.PI)d-=Math.PI*2;
+      while(d<-Math.PI)d+=Math.PI*2;
+      return d;
+    }
+
+    function setStatus(text,ready=false){
+      statusText.textContent=text;
+      status.classList.toggle('ready',!!ready);
+    }
+
+    function notify(text){
+      toast.textContent=text;
+      toast.classList.add('show');
+      clearTimeout(notify.timer);
+      notify.timer=setTimeout(()=>toast.classList.remove('show'),1800);
+    }
+
+    function syncVisualViewport(){
+      const vv=window.visualViewport;
+      const w=Math.round(vv?.width||innerWidth||document.documentElement.clientWidth);
+      const h=Math.round(vv?.height||innerHeight||document.documentElement.clientHeight);
+      document.documentElement.style.setProperty('--app-w',w+'px');
+      document.documentElement.style.setProperty('--app-h',h+'px');
+      canvas.style.setProperty('left','0px','important');
+      canvas.style.setProperty('top','0px','important');
+      canvas.style.setProperty('width',w+'px','important');
+      canvas.style.setProperty('height',h+'px','important');
+      requestAnimationFrame(()=>{
+        canvas.style.setProperty('width',w+'px','important');
+        canvas.style.setProperty('height',h+'px','important');
+        if(renderer?.setSize) renderer.setSize(w,h,false);
+      });
+    }
+
+    syncVisualViewport();
+    addEventListener('resize',syncVisualViewport,{passive:true});
+    addEventListener('orientationchange',()=>{
+      setTimeout(syncVisualViewport,80);
+      setTimeout(syncVisualViewport,350);
+    },{passive:true});
+    if(window.visualViewport){
+      visualViewport.addEventListener('resize',syncVisualViewport,{passive:true});
+      visualViewport.addEventListener('scroll',syncVisualViewport,{passive:true});
+    }
+
+    function buildMaskCanvas(){
+      if(!selectedImage) return null;
+      const size=1024;
+      const c=document.createElement('canvas');
+      c.width=c.height=size;
+      const x=c.getContext('2d',{willReadFrequently:false});
+      const iw=selectedImage.naturalWidth||selectedImage.width;
+      const ih=selectedImage.naturalHeight||selectedImage.height;
+      const side=Math.min(iw,ih);
+      const sx=(iw-side)/2, sy=(ih-side)/2;
+
+      x.clearRect(0,0,size,size);
+      x.drawImage(selectedImage,sx,sy,side,side,0,0,size,size);
+      x.globalCompositeOperation='destination-in';
+
+      const r=size/2;
+      const inner=clamp(1-feather,.50,1);
+      const g=x.createRadialGradient(r,r,0,r,r,r);
+      g.addColorStop(0,'rgba(0,0,0,1)');
+      g.addColorStop(inner,'rgba(0,0,0,1)');
+      if(inner<1) g.addColorStop(Math.min(1,inner+(1-inner)*.48),'rgba(0,0,0,.74)');
+      g.addColorStop(1,'rgba(0,0,0,0)');
+      x.fillStyle=g;
+      x.fillRect(0,0,size,size);
+      x.globalCompositeOperation='source-over';
+      return c;
+    }
+
+    function rebuildTexture(){
+      if(!selectedImage || !photoMaterial) return;
+      maskCanvas=buildMaskCanvas();
+      const texture=new THREE.CanvasTexture(maskCanvas);
+      texture.colorSpace=THREE.SRGBColorSpace;
+      texture.minFilter=THREE.LinearFilter;
+      texture.magFilter=THREE.LinearFilter;
+      texture.generateMipmaps=true;
+      if(photoTexture) photoTexture.dispose();
+      photoTexture=texture;
+      photoMaterial.map=texture;
+      photoMaterial.needsUpdate=true;
+      photoMesh.visible=true;
+      updatePhotoTransform();
+    }
+
+    function updatePhotoTransform(){
+      if(!photoRoot || !photoMesh) return;
+      photoRoot.scale.setScalar(photoSize);
+      photoRoot.rotation.set(0,baseYaw+rotationOffset,0);
+
+      if(orientation==='vertical'){
+        photoMesh.rotation.set(0,0,0);
+        photoMesh.position.set(0,.515,0);
+      }else{
+        photoMesh.rotation.set(-Math.PI/2,0,0);
+        photoMesh.position.set(0,.018,0);
+      }
+
+      photoMaterial.opacity=opacity;
+    }
+
+    function faceCameraYaw(point){
+      if(!camera) return 0;
+      return Math.atan2(camera.position.x-point.x,camera.position.z-point.z);
+    }
+
+    function setupScene(){
+      const xrScene=XR8.Threejs.xrScene();
+      scene=xrScene.scene;
+      camera=xrScene.camera;
+      renderer=xrScene.renderer;
+      syncVisualViewport();
+      setTimeout(syncVisualViewport,80);
+      setTimeout(syncVisualViewport,300);
+
+      reticle=new THREE.Group();
+      const ring=new THREE.Mesh(
+        new THREE.RingGeometry(.08,.11,48).rotateX(-Math.PI/2),
+        new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:.96,depthWrite:false,side:THREE.DoubleSide})
+      );
+      const outer=new THREE.Mesh(
+        new THREE.RingGeometry(.16,.172,64).rotateX(-Math.PI/2),
+        new THREE.MeshBasicMaterial({color:0x82dfff,transparent:true,opacity:.55,depthWrite:false,side:THREE.DoubleSide})
+      );
+      reticle.add(ring,outer);
+      reticle.visible=false;
+      scene.add(reticle);
+
+      photoMaterial=new THREE.MeshBasicMaterial({
+        color:0xffffff,transparent:true,opacity:1,depthWrite:false,
+        side:THREE.DoubleSide,alphaTest:.005
+      });
+      photoMesh=new THREE.Mesh(new THREE.PlaneGeometry(1,1),photoMaterial);
+      photoMesh.visible=false;
+
+      photoRoot=new THREE.Group();
+      photoRoot.visible=false;
+      photoRoot.add(photoMesh);
+      scene.add(photoRoot);
+
+      placement.reset();
+      sceneReady=true;
+      lastTick=performance.now();
+      if(selectedImage) rebuildTexture();
+
+      requestAnimationFrame(()=>{
+        if(startupFailed) return;
+        intro.style.display='none';
+        controls.style.display='block';
+        setStatus('حرّك الجوال لمسح الأرضية',false);
+      });
+    }
+
+    function worldModule(){
+      return {
+        name:'aboden-photo-ar-3d',
+        onStart:()=>{
+          try{
+            setupScene();
+            dispatchEvent(new Event('resize'));
+          }catch(err){
+            console.error(err);
+            startupFailure('تعذر تجهيز مشهد 3D. أعد تحميل الصفحة وحاول مرة أخرى.');
+          }
+        },
+        onUpdate:({processCpuResult})=>{
+          if(!sceneReady) return;
+          const now=performance.now();
+          const reality=processCpuResult?.reality;
+          placement.observe({
+            now,
+            status:reality?.trackingStatus,
+            position:reality?.position,
+            rotation:reality?.rotation
+          });
+          latestWorldPoints=reality?.worldPoints||[];
+          tick(now);
+        },
+        onCameraStatusChange:({status})=>{
+          if(status==='failed') startupFailure('تعذر فتح الكاميرا. اسمح بالكاميرا ثم أعد المحاولة.');
+        },
+        onException:(err)=>{
+          console.error(err);
+          if(!sceneReady) startupFailure('تعذر تشغيل تتبع المكان.');
+          else setStatus('ضعف التتبع — حرّك الجوال ببطء',false);
+        }
+      };
+    }
+
+    function startupFailure(message){
+      startupFailed=true;
+      xrStarted=false;
+      sceneReady=false;
+      controls.style.display='none';
+      intro.style.display='flex';
+      errorBox.style.display='block';
+      errorBox.textContent=message;
+      startBtn.disabled=false;
+      startBtn.textContent='إعادة تحميل التجربة';
+    }
+
+    function updatePlacement(dt,now){
+      if(placed){
+        reticle.visible=false;
+        return;
+      }
+
+      if(!placement.trackingReady(now)){
+        placement.invalidate('tracking');
+      }else if(now>=nextGroundSample){
+        nextGroundSample=now+100;
+        camera.updateMatrixWorld(true);
+        raycaster.setFromCamera(centerNdc,camera);
+        const hit=raycaster.ray.intersectPlane(groundPlane,hitPoint);
+
+        if(!hit || hit.distanceTo(camera.position)>6 || raycaster.ray.direction.y>-.12){
+          placement.invalidate('aim');
+        }else{
+          const observations=[...latestWorldPoints];
+          try{
+            observations.push(...XR8.XrController.hitTest(.5,.5,['FEATURE_POINT']));
+          }catch(_){}
+          placement.sample(hit,observations,now);
+        }
+      }
+
+      surfaceReady=placement.canLock(now);
+      placeBtn.disabled=!(surfaceReady&&selectedImage);
+
+      if(!placement.candidate){
+        reticle.visible=false;
+        previewInitialized=false;
+        if(photoRoot) photoRoot.visible=false;
+        const messages={
+          tracking:'حرّك الجوال ببطء حتى يستقر التتبع',
+          aim:'وجّه منتصف الشاشة نحو الأرض',
+          surface:'امسح أرضية واضحة التفاصيل'
+        };
+        setStatus(messages[placement.reason]||'امسح الأرضية',false);
+        return;
+      }
+
+      const p=placement.candidate;
+      if(!previewInitialized){
+        stablePoint.set(p.x,p.y,p.z);
+        previewInitialized=true;
+      }else{
+        stablePoint.lerp(hitPoint.set(p.x,p.y,p.z),1-Math.exp(-12*dt));
+      }
+
+      reticle.visible=true;
+      reticle.position.copy(stablePoint);
+      reticle.position.y+=.008;
+
+      if(selectedImage&&photoRoot){
+        photoRoot.position.copy(stablePoint);
+        baseYaw=faceCameraYaw(stablePoint);
+        updatePhotoTransform();
+        photoRoot.visible=true;
+      }
+
+      setStatus(selectedImage
+        ? (placement.surface==='estimated'?'اختر المكان ثم اضغط ثبّت هنا':'الموضع مستقر — اضغط ثبّت هنا')
+        : 'المكان جاهز — اختر صورة أولًا',surfaceReady&&!!selectedImage);
+    }
+
+    function tick(now){
+      const dt=Math.min(.1,Math.max(0,(now-lastTick)/1000));
+      lastTick=now;
+      updatePlacement(dt,now);
+      if(placed){
+        setStatus(placement.status==='NORMAL'?'الصورة مثبتة في المكان':'الصورة مثبتة — التتبع ضعيف',placement.status==='NORMAL');
+      }
+    }
+
+    function placePhoto(){
+      if(placed){
+        movePhoto();
+        return;
+      }
+      if(!selectedImage) return notify('اختر صورة أولًا');
+      if(!surfaceReady || !reticle?.visible) return notify('وجّه الكاميرا للأرض حتى يظهر المؤشر');
+
+      const anchor=placement.lock(performance.now(),{manual:true});
+      if(!anchor) return notify('حرّك الجوال قليلًا ثم حاول التثبيت');
+
+      stablePoint.set(anchor.x,anchor.y,anchor.z);
+      photoRoot.position.copy(stablePoint);
+      baseYaw=faceCameraYaw(stablePoint);
+      updatePhotoTransform();
+      photoRoot.visible=true;
+
+      placed=true;
+      reticle.visible=false;
+      guide.classList.add('hidden');
+      placeBtn.textContent='نقل الصورة';
+      placeBtn.disabled=false;
+      captureBtn.disabled=false;
+      notify('تم تثبيت الصورة في المكان');
+      if(navigator.vibrate) navigator.vibrate(28);
+    }
+
+    function movePhoto(){
+      placed=false;
+      surfaceReady=false;
+      placement.reset();
+      latestWorldPoints=[];
+      nextGroundSample=0;
+      previewInitialized=false;
+      reticle.visible=false;
+      if(photoRoot) photoRoot.visible=false;
+      guide.classList.remove('hidden');
+      placeBtn.textContent='ثبّت هنا';
+      placeBtn.disabled=true;
+      captureBtn.disabled=true;
+      setStatus('أعد مسح الأرضية لاختيار موضع جديد',false);
+    }
+
+    function resetAll(){
+      photoSize=.72;
+      opacity=1;
+      feather=.18;
+      rotationOffset=0;
+      orientation='vertical';
+      opacityInput.value='100';
+      featherInput.value='18';
+      opacityValue.value='100%';
+      featherValue.value='18%';
+      orientationBtn.textContent='عمودي';
+      updatePhotoTransform();
+      if(selectedImage) rebuildTexture();
+      if(placed) notify('تمت إعادة إعدادات الصورة');
+    }
+
+    function loadSelectedImage(file){
+      const url=URL.createObjectURL(file);
+      const img=new Image();
+      img.onload=()=>{
+        if(selectedImage?.__url) URL.revokeObjectURL(selectedImage.__url);
+        img.__url=url;
+        selectedImage=img;
+        rebuildTexture();
+        placeBtn.disabled=!(surfaceReady&&selectedImage);
+        notify(placed?'تم استبدال الصورة':'الصورة جاهزة — اختر مكان التثبيت');
+      };
+      img.onerror=()=>{
+        URL.revokeObjectURL(url);
+        notify('تعذر قراءة هذه الصورة');
+      };
+      img.src=url;
+    }
+
+    fileInput.addEventListener('change',()=>{
+      const file=fileInput.files?.[0];
+      if(file) loadSelectedImage(file);
+      fileInput.value='';
+    });
+
+    placeBtn.addEventListener('click',placePhoto);
+
+    orientationBtn.addEventListener('click',()=>{
+      orientation=orientation==='vertical'?'flat':'vertical';
+      orientationBtn.textContent=orientation==='vertical'?'عمودي':'مسطح';
+      updatePhotoTransform();
+      notify(orientation==='vertical'?'الصورة عمودية':'الصورة مسطحة على الأرض');
+    });
+
+    smallerBtn.addEventListener('click',()=>{
+      photoSize=clamp(photoSize*.86,MIN_SIZE,MAX_SIZE);
+      updatePhotoTransform();
+    });
+    largerBtn.addEventListener('click',()=>{
+      photoSize=clamp(photoSize*1.16,MIN_SIZE,MAX_SIZE);
+      updatePhotoTransform();
+    });
+    rotateBtn.addEventListener('click',()=>{
+      rotationOffset+=Math.PI/12;
+      updatePhotoTransform();
+    });
+
+    opacityInput.addEventListener('input',()=>{
+      opacity=Number(opacityInput.value)/100;
+      opacityValue.value=opacityInput.value+'%';
+      updatePhotoTransform();
+    });
+
+    featherInput.addEventListener('input',()=>{
+      feather=Number(featherInput.value)/100;
+      featherValue.value=featherInput.value+'%';
+      clearTimeout(featherInput._timer);
+      featherInput._timer=setTimeout(rebuildTexture,40);
+    });
+
+    resetBtn.addEventListener('click',resetAll);
+
+    removeBtn.addEventListener('click',()=>{
+      selectedImage=null;
+      maskCanvas=null;
+      if(photoTexture){photoTexture.dispose();photoTexture=null;}
+      if(photoMaterial){photoMaterial.map=null;photoMaterial.needsUpdate=true;}
+      if(photoMesh) photoMesh.visible=false;
+      if(placed) movePhoto();
+      placeBtn.disabled=true;
+      notify('تم حذف الصورة');
+    });
+
+    function pointerPos(e){return {x:e.clientX,y:e.clientY};}
+
+    canvas.addEventListener('pointerdown',(e)=>{
+      if(!placed||!selectedImage) return;
+      e.preventDefault();
+      canvas.setPointerCapture?.(e.pointerId);
+      pointers.set(e.pointerId,pointerPos(e));
+
+      if(pointers.size===1){
+        gesture={type:'drag'};
+      }else if(pointers.size===2){
+        const [a,b]=[...pointers.values()];
+        const dx=b.x-a.x,dy=b.y-a.y;
+        gesture={
+          type:'pinch',
+          startDistance:Math.hypot(dx,dy)||1,
+          startAngle:Math.atan2(dy,dx),
+          startSize:photoSize,
+          startRotation:rotationOffset
+        };
+      }
+    },{passive:false});
+
+    canvas.addEventListener('pointermove',(e)=>{
+      if(!pointers.has(e.pointerId)||!placed||!selectedImage) return;
+      e.preventDefault();
+      pointers.set(e.pointerId,pointerPos(e));
+
+      if(pointers.size===1){
+        const p=[...pointers.values()][0];
+        dragNdc.set((p.x/innerWidth)*2-1,-(p.y/innerHeight)*2+1);
+        camera.updateMatrixWorld(true);
+        raycaster.setFromCamera(dragNdc,camera);
+        const hit=raycaster.ray.intersectPlane(groundPlane,hitPoint);
+        if(hit&&hit.distanceTo(camera.position)<6){
+          photoRoot.position.copy(hit);
+          stablePoint.copy(hit);
+        }
+      }else if(pointers.size>=2){
+        const [a,b]=[...pointers.values()];
+        if(gesture?.type!=='pinch'){
+          const dx=b.x-a.x,dy=b.y-a.y;
+          gesture={
+            type:'pinch',startDistance:Math.hypot(dx,dy)||1,startAngle:Math.atan2(dy,dx),
+            startSize:photoSize,startRotation:rotationOffset
+          };
+        }
+        const dx=b.x-a.x,dy=b.y-a.y;
+        const dist=Math.hypot(dx,dy)||1;
+        const ang=Math.atan2(dy,dx);
+        photoSize=clamp(gesture.startSize*(dist/gesture.startDistance),MIN_SIZE,MAX_SIZE);
+        rotationOffset=gesture.startRotation+angleDelta(gesture.startAngle,ang);
+        updatePhotoTransform();
+      }
+    },{passive:false});
+
+    function endPointer(e){
+      pointers.delete(e.pointerId);
+      try{canvas.releasePointerCapture?.(e.pointerId)}catch(_){}
+      if(pointers.size===0) gesture=null;
+      else if(pointers.size===1) gesture={type:'drag'};
+      else gesture=null;
+    }
+    canvas.addEventListener('pointerup',endPointer,{passive:false});
+    canvas.addEventListener('pointercancel',endPointer,{passive:false});
+
+    captureBtn.addEventListener('click',async()=>{
+      if(!placed) return notify('ثبّت الصورة أولًا');
+      try{
+        const blob=await new Promise(resolve=>{
+          requestAnimationFrame(()=>canvas.toBlob(resolve,'image/jpeg',.94));
+        });
+        if(!blob) throw new Error('capture-failed');
+
+        const file=new File([blob],'aboden-photo-ar-3d-'+Date.now()+'.jpg',{type:'image/jpeg'});
+        if(navigator.canShare?.({files:[file]})){
+          try{
+            await navigator.share({files:[file],title:'Aboden AR 3D'});
+            return;
+          }catch(err){
+            if(err?.name==='AbortError') return;
+          }
+        }
+
+        const url=URL.createObjectURL(blob);
+        const a=document.createElement('a');
+        a.href=url;a.download=file.name;
+        document.body.appendChild(a);a.click();a.remove();
+        setTimeout(()=>URL.revokeObjectURL(url),3000);
+        notify('تم تجهيز الصورة');
+      }catch(err){
+        console.error(err);
+        notify('تعذر الحفظ المباشر — استخدم لقطة الشاشة مؤقتًا');
+      }
+    });
+
+    startBtn.addEventListener('click',()=>{
+      if(startupFailed){location.reload();return;}
+      if(!xrReady||xrStarted) return;
+      xrStarted=true;
+      startBtn.disabled=true;
+      startBtn.textContent='جاري فتح الكاميرا…';
+      errorBox.style.display='none';
+      try{
+        XR8.run({canvas});
+        syncVisualViewport();
+        setTimeout(syncVisualViewport,120);
+        setTimeout(syncVisualViewport,500);
+      }catch(err){
+        console.error(err);
+        startupFailure('تعذر تشغيل الكاميرا أو World Tracking.');
+      }
+    });
+
+    function initializeXR(){
+      if(xrReady||!window.XR8||!window.THREE) return;
+      try{
+        XR8.XrController.configure({
+          disableWorldTracking:false,
+          enableLighting:true,
+          enableWorldPoints:true,
+          scale:'absolute'
+        });
+
+        XR8.addCameraPipelineModules([
+          XR8.GlTextureRenderer.pipelineModule(),
+          XR8.Threejs.pipelineModule(),
+          XR8.XrController.pipelineModule(),
+          worldModule()
+        ]);
+
+        xrReady=true;
+        startBtn.disabled=false;
+        startBtn.textContent='ابدأ مسح الأرض';
+      }catch(err){
+        console.error(err);
+        errorBox.style.display='block';
+        errorBox.textContent='لم يكتمل تحميل محرك AR. حدّث الصفحة وحاول مرة أخرى.';
+      }
+    }
+
+    document.addEventListener('visibilitychange',()=>{
+      if(!document.hidden){
+        lastTick=performance.now();
+        syncVisualViewport();
+      }
+    });
+
+    if(window.XR8) initializeXR();
+    else window.addEventListener('xrloaded',initializeXR,{once:true});
+
+    setTimeout(()=>{
+      if(!xrReady){
+        errorBox.style.display='block';
+        errorBox.textContent='محرك AR يستغرق وقتًا أطول من المتوقع. تحقق من الاتصال ثم أعد تحميل الصفحة.';
+      }
+    },12000);
+  </script>
 </body>
 </html>
