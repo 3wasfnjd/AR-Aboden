@@ -219,8 +219,16 @@
     const RIM_RADIUS = .225;
     const SCORE_RADIUS = .175;
     const OUTER_RADIUS = .32;
-    const HOOP_DISTANCE = 3.1;
+    const HOOP_DISTANCE = 6.2;
     const HOOP_HEIGHT = 2.15;
+
+    // Virtual floor the ball bounces off of instead of sinking through —
+    // there's no real hit-test/depth surface tracked in this experience,
+    // so floorY (an assumed real-world height, set in placeHoop()) is
+    // treated as a solid plane for the ball only.
+    const FLOOR_BOUNCE_RESTITUTION = .42;
+    const FLOOR_BOUNCE_FRICTION = .65;
+    const FLOOR_SETTLE_SPEED = .55;
 
     // Measured directly off hoop.glb: after loading it through
     // GLTFLoader (which resolves the model's own baked axis-correction
@@ -619,7 +627,7 @@
       ball.velocity.set(vx,vy,vz);
       ball.flying = true;
       ball.scored = null;
-      ball.life = 2.6;
+      ball.life = 3.2;
       ball.prevPosition.copy(start);
 
       const pan = THREE.MathUtils.clamp((originScreenX/window.innerWidth-.5)*1.6,-.8,.8);
@@ -698,18 +706,41 @@
         }
       }
 
-      if(ball.position.y < floorY || ball.life <= 0){
-        if(!ball.settleTimer){
+      // Virtual floor: bounce (with energy/friction loss) instead of
+      // sinking through, then settle once the bounce is too weak to
+      // read as a real bounce anymore.
+      const floorContactY = floorY+BALL_RADIUS;
+      if(ball.position.y <= floorContactY && ball.velocity.y < 0){
+        ball.position.y = floorContactY;
+
+        const impactSpeed = Math.abs(ball.velocity.y);
+        ball.velocity.y = -ball.velocity.y*FLOOR_BOUNCE_RESTITUTION;
+        ball.velocity.x *= FLOOR_BOUNCE_FRICTION;
+        ball.velocity.z *= FLOOR_BOUNCE_FRICTION;
+
+        playThud(0,THREE.MathUtils.clamp(impactSpeed*.05,.08,.3));
+        if(navigator.vibrate) navigator.vibrate(6);
+
+        if(Math.abs(ball.velocity.y) < FLOOR_SETTLE_SPEED && !ball.settleTimer){
           if(ball.scored === null){
             streak = 0;
             streakEl.textContent = streak;
             notify('فاتت السلة، حاول مرة أخرى');
           }
-          playThud(0,.22);
-          ball.settleTimer = .35;
+          ball.settleTimer = .3;
         }
+      }
+
+      if(ball.settleTimer > 0){
         ball.settleTimer -= dt;
         if(ball.settleTimer <= 0) resetBallToHand();
+      }else if(ball.life <= 0){
+        if(ball.scored === null){
+          streak = 0;
+          streakEl.textContent = streak;
+          notify('فاتت السلة، حاول مرة أخرى');
+        }
+        resetBallToHand();
       }
     }
 
