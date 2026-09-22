@@ -53,16 +53,47 @@ function makeReticle(){const g=new THREE.Group();const ring=new THREE.Mesh(new T
 // forward convention a camera itself uses, so no correction rotation is
 // needed here, just centring and a length-based scale.
 const RIFLE_URL='./assets/gallery/rifle.glb';
+// Only the exposed barrel tube is shown as the view-model, not the whole gun.
+// The mesh is a single unnamed blob (no separate barrel/receiver nodes), so
+// the front section is isolated by dropping any triangle that reaches past
+// a cutoff measured off a to-scale render with 10%-of-length gridlines —
+// the last point before the handguard bulk begins.
+const BARREL_FRACTION=.4;
+function trimToBarrel(geometry,cutoffZ){
+ const src=geometry.index?geometry.toNonIndexed():geometry;
+ const pos=src.attributes.position,triCount=pos.count/3;
+ const groups=src.groups.length?src.groups:[{start:0,count:pos.count,materialIndex:0}];
+ const triMat=new Array(triCount);
+ for(const g of groups){const from=g.start/3,to=(g.start+g.count)/3;for(let t=from;t<to;t++)triMat[t]=g.materialIndex;}
+ const attrs=Object.keys(src.attributes);const kept={};for(const name of attrs)kept[name]=[];const keptMat=[];
+ for(let t=0;t<triCount;t++){
+  const i=t*3;
+  if(pos.getZ(i)>cutoffZ||pos.getZ(i+1)>cutoffZ||pos.getZ(i+2)>cutoffZ)continue;
+  for(let v=0;v<3;v++)for(const name of attrs){const a=src.attributes[name];for(let c=0;c<a.itemSize;c++)kept[name].push(a.getComponent(i+v,c));}
+  keptMat.push(triMat[t]);
+ }
+ const out=new THREE.BufferGeometry();
+ for(const name of attrs){const a=src.attributes[name];out.setAttribute(name,new THREE.BufferAttribute(new Float32Array(kept[name]),a.itemSize));}
+ for(let t=0,runStart=0;t<=keptMat.length;t++){
+  if(t===keptMat.length||keptMat[t]!==keptMat[runStart]){out.addGroup(runStart*3,(t-runStart)*3,keptMat[runStart]);runStart=t;}
+ }
+ out.computeBoundingBox();out.computeBoundingSphere();
+ return out;
+}
 let rifleTemplate=null;
 async function prepareRifle(){
  const gltf=await new GLTFLoader().loadAsync(RIFLE_URL);
  const raw=gltf.scene;raw.updateMatrixWorld(true);
+ const fullBox=new THREE.Box3().setFromObject(raw),fullSize=fullBox.getSize(new THREE.Vector3()),fullCenter=fullBox.getCenter(new THREE.Vector3());
+ const cutoffZ=fullCenter.z-BARREL_FRACTION*(fullSize.z/2);
+ raw.traverse(o=>{if(o.isMesh){o.geometry=trimToBarrel(o.geometry,cutoffZ);o.castShadow=false;o.receiveShadow=false;}});
  const box=new THREE.Box3().setFromObject(raw),size=box.getSize(new THREE.Vector3()),center=box.getCenter(new THREE.Vector3());
  raw.position.sub(center);
- raw.traverse(o=>{if(o.isMesh){o.castShadow=false;o.receiveShadow=false;}});
  rifleTemplate=new THREE.Group();rifleTemplate.name='rifle-view';rifleTemplate.add(raw);
- rifleTemplate.scale.setScalar(.72/size.z);
- rifleTemplate.position.set(0,-.2,-.34);rifleTemplate.rotation.x=-.06;
+ // Same real-world scale the full gun used (calibrated against fullSize),
+ // not stretched to refill the old on-screen length now that less remains.
+ rifleTemplate.scale.setScalar(.72/fullSize.z);
+ rifleTemplate.position.set(0,-.22,-.55);rifleTemplate.rotation.x=-.06;
 }
 function buildRifle(){return rifleTemplate.clone(true);}
 function syncHUD(){ $('score').textContent=round.score;$('timer').textContent=Math.ceil(round.time);$('accuracy').textContent=round.shots?`${accuracy(round)}%`:'—';$('ammo').textContent=round.remaining;$('timeBar').style.width=`${round.time/ROUND_SECONDS*100}%`;$('timer').classList.toggle('urgent',round.time<10);$('ammoPips').innerHTML=Array.from({length:6},(_,i)=>`<i class="${i<round.magazine?'':'empty'}"></i>`).join('');$('reload').textContent=round.reload>0?'جاري التلقيم…':'تلقيم ↻';$('fire').disabled=round.reload>0||round.magazine===0;}
