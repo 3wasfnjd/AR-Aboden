@@ -14,13 +14,20 @@ function circle(parent,r,mat,z){const mesh=new THREE.Mesh(new THREE.CircleGeomet
 
 export async function createStage(onProgress){
  const loader=new GLTFLoader();
- const [gltf,targetGLTF]=await Promise.all([loader.loadAsync(BOOTH_URL,onProgress),loader.loadAsync('./assets/gallery/duck-target.glb')]);
+ const [gltf,targetGLTF,canGLTF]=await Promise.all([loader.loadAsync(BOOTH_URL,onProgress),loader.loadAsync('./assets/gallery/duck-target.glb'),loader.loadAsync('./assets/gallery/tin-can.glb')]);
  const raw=gltf.scene;raw.updateMatrixWorld(true);
  let source;targetGLTF.scene.traverse(o=>{if(o.isMesh&&!source)source=o;});
  if(!source)throw new Error('تعذر تحميل هدف البطّة.');
  // Targets are separate assets: replacing the booth never changes hit logic.
  const duckGeometry=source.geometry.clone();
  const duckMaterial=source.material.clone();duckMaterial.side=THREE.DoubleSide;duckMaterial.transparent=false;duckMaterial.alphaTest=.45;duckMaterial.depthWrite=true;
+ // Tin can: already close to real can proportions with its base near y=0 —
+ // just centred on X/Z and scaled to the target stack height (canH below).
+ const canRaw=canGLTF.scene;canRaw.updateMatrixWorld(true);
+ const canBox=new THREE.Box3().setFromObject(canRaw),canSize=canBox.getSize(new THREE.Vector3()),canCenter=canBox.getCenter(new THREE.Vector3());
+ canRaw.position.set(-canCenter.x,-canBox.min.y,-canCenter.z);
+ canRaw.traverse(o=>{if(o.isMesh){o.castShadow=false;o.receiveShadow=false;}});
+ const canTemplate=new THREE.Group();canTemplate.add(canRaw);canTemplate.scale.setScalar(.22/canSize.y);
  const root=new THREE.Group();root.name='gallery-stage';const model=new THREE.Group();model.name='replaceable-booth';root.add(model);model.add(raw);
  raw.traverse(o=>{if(o.isMesh){o.castShadow=false;o.receiveShadow=false;for(const m of (Array.isArray(o.material)?o.material:[o.material])){if(m.name==='color_texture'){m.transparent=false;m.alphaTest=.45;m.depthWrite=true;}if(m.emissiveIntensity>1)m.emissiveIntensity=1;}}});
  for(const name of ['duckk','duckk1','duckk2']){const o=raw.getObjectByName(name);if(o)o.visible=false;}
@@ -55,14 +62,11 @@ export async function createStage(onProgress){
  // the fixed/moving mode toggle. Each can is its own pivot rooted at its
  // own base so the existing fold-over hit animation tips it convincingly,
  // and the three sit directly on top of one another.
- const canSilver=new THREE.MeshStandardMaterial({color:0xd7dade,roughness:.32,metalness:.78});
- const canLabel=new THREE.MeshStandardMaterial({color:0xa33728,roughness:.5,metalness:.15});
- const canH=.22,canR=.085;
+ const canH=.22;
  for(let i=0;i<3;i++){
   const pivot=new THREE.Group();pivot.position.set(0,.67+canH*i,FRONT_Z+.02);rack.add(pivot);
-  const body=new THREE.Mesh(new THREE.CylinderGeometry(canR,canR,canH,20),canSilver);body.position.y=canH/2;pivot.add(body);
-  const label=new THREE.Mesh(new THREE.CylinderGeometry(canR+.002,canR+.002,canH*.4,20),canLabel);label.position.y=canH/2;pivot.add(label);
-  const target={kind:'can',index:i,pivot,hitObject:body,cooldown:0,fall:0,baseX:0,flash:0};body.userData.target=target;targets.push(target);
+  const mesh=canTemplate.clone(true);pivot.add(mesh);
+  const target={kind:'can',index:i,pivot,hitObject:mesh,cooldown:0,fall:0,baseX:0,flash:0};mesh.traverse(o=>{if(o.isMesh)o.userData.target=target;});targets.push(target);
  }
  const particles=[];const particleGeo=new THREE.SphereGeometry(.012,6,4);const particleMat=new THREE.MeshBasicMaterial({color:0xffd883});
  const sparkPool=Array.from({length:30},()=>{const p=new THREE.Mesh(particleGeo,particleMat);p.visible=false;root.add(p);return p;});
