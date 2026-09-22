@@ -189,7 +189,7 @@
       <p>ثبّت الصورة مسطحة على الأرضية الحقيقية ثم تحرّك حولها. تبقى الصورة ملتصقة بمستوى الأرض بعد التثبيت.</p>
       <button class="start" id="startBtn" disabled>جاري تجهيز المحرك…</button>
       <div class="error" id="errorBox"></div>
-      <p class="tiny">بعد التثبيت: إصبع واحد يسحب الصورة على الأرض، وإصبعان يكبّرانها ويدوّرانها.</p>
+      <p class="tiny">بعد التثبيت تُقفل الصورة في مكانها. للتغيير استخدم «نقل الصورة»، بينما يبقى التكبير والتدوير متاحين.</p>
     </div>
   </section>
 
@@ -230,6 +230,8 @@
     let placed=false, surfaceReady=false, previewInitialized=false;
     let latestWorldPoints=[], nextGroundSample=0, lastTick=performance.now();
     let baseYaw=0, rotationOffset=0;
+    let lockedPosition=null;
+    let lockedYaw=0;
     let photoSize=.72;
     let opacity=1;
     let feather=.18;
@@ -477,7 +479,12 @@
         }
       }
 
-      surfaceReady=placement.canLock(now);
+      // Strict floor lock: only allow placement after a supported feature-point
+      // patch has remained stable long enough. Estimated ground is intentionally
+      // rejected because it can slide when the phone jitters.
+      surfaceReady=placement.canLock(now) &&
+        placement.surface==='supported' &&
+        placement.ready;
       placeBtn.disabled=!(surfaceReady&&selectedImage);
 
       if(!placement.candidate){
@@ -512,17 +519,33 @@
         photoRoot.visible=true;
       }
 
-      setStatus(selectedImage
-        ? (placement.surface==='estimated'?'اختر المكان ثم اضغط ثبّت هنا':'الموضع مستقر — اضغط ثبّت هنا')
-        : 'المكان جاهز — اختر صورة أولًا',surfaceReady&&!!selectedImage);
+      if(!selectedImage){
+        setStatus('المكان قيد الفحص — اختر صورة أولًا',false);
+      }else if(placement.surface!=='supported'){
+        setStatus('حرّك الجوال ببطء فوق أرضية فيها تفاصيل حتى يثبت السطح',false);
+      }else if(!placement.ready){
+        setStatus('اثبت الجوال لحظة لتأكيد نقطة التثبيت',false);
+      }else{
+        setStatus('السطح ثابت — اضغط ثبّت هنا',true);
+      }
     }
 
     function tick(now){
       const dt=Math.min(.1,Math.max(0,(now-lastTick)/1000));
       lastTick=now;
       updatePlacement(dt,now);
-      if(placed){
-        setStatus(placement.status==='NORMAL'?'الصورة مثبتة في المكان':'الصورة مثبتة — التتبع ضعيف',placement.status==='NORMAL');
+
+      if(placed && lockedPosition && photoRoot){
+        // Hard-lock the anchor every frame. This also prevents accidental
+        // position changes from pointer noise or later placement updates.
+        photoRoot.position.copy(lockedPosition);
+        baseYaw=lockedYaw;
+        updatePhotoTransform();
+        photoRoot.visible=true;
+        setStatus(
+          placement.status==='NORMAL'?'الصورة مقفلة في مكانها':'الصورة مقفلة — التتبع ضعيف',
+          placement.status==='NORMAL'
+        );
       }
     }
 
@@ -538,11 +561,16 @@
       if(!anchor) return notify('حرّك الجوال قليلًا ثم حاول التثبيت');
 
       stablePoint.set(anchor.x,anchor.y,anchor.z);
-      photoRoot.position.copy(stablePoint);
-      baseYaw=faceCameraYaw(stablePoint);
+      lockedPosition=new THREE.Vector3(anchor.x,anchor.y,anchor.z);
+      photoRoot.position.copy(lockedPosition);
+      baseYaw=faceCameraYaw(lockedPosition);
+      lockedYaw=baseYaw;
       updatePhotoTransform();
       photoRoot.visible=true;
 
+      // Bake the world transform once. From this point, camera motion must not
+      // alter the photo's world position. Moving it again requires "نقل الصورة".
+      photoRoot.updateMatrix();
       placed=true;
       reticle.visible=false;
       guide.classList.add('hidden');
@@ -556,6 +584,7 @@
     function movePhoto(){
       placed=false;
       surfaceReady=false;
+      lockedPosition=null;
       placement.reset();
       latestWorldPoints=[];
       nextGroundSample=0;
@@ -657,7 +686,8 @@
       pointers.set(e.pointerId,pointerPos(e));
 
       if(pointers.size===1){
-        gesture={type:'drag'};
+        // Single-finger drag is intentionally disabled in strict-lock mode.
+        gesture={type:'locked'};
       }else if(pointers.size===2){
         const [a,b]=[...pointers.values()];
         const dx=b.x-a.x,dy=b.y-a.y;
@@ -677,15 +707,8 @@
       pointers.set(e.pointerId,pointerPos(e));
 
       if(pointers.size===1){
-        const p=[...pointers.values()][0];
-        dragNdc.set((p.x/innerWidth)*2-1,-(p.y/innerHeight)*2+1);
-        camera.updateMatrixWorld(true);
-        raycaster.setFromCamera(dragNdc,camera);
-        const hit=raycaster.ray.intersectPlane(groundPlane,hitPoint);
-        if(hit&&hit.distanceTo(camera.position)<6){
-          photoRoot.position.copy(hit);
-          stablePoint.copy(hit);
-        }
+        // Position stays frozen. Use "نقل الصورة" to choose a new anchor.
+        return;
       }else if(pointers.size>=2){
         const [a,b]=[...pointers.values()];
         if(gesture?.type!=='pinch'){
@@ -708,7 +731,7 @@
       pointers.delete(e.pointerId);
       try{canvas.releasePointerCapture?.(e.pointerId)}catch(_){}
       if(pointers.size===0) gesture=null;
-      else if(pointers.size===1) gesture={type:'drag'};
+      else if(pointers.size===1) gesture={type:'locked'};
       else gesture=null;
     }
     canvas.addEventListener('pointerup',endPointer,{passive:false});
