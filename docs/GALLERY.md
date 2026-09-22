@@ -1,11 +1,18 @@
 # رماية عبودين
 
-Open `gallery.html` from the home page. Choose mixed, stationary or moving targets.
-The AR button starts the existing 8th Wall camera engine. Aim towards a clear
-space in front of you, adjust scale/height if needed, and place the stage.
-Placement uses a horizontal plane relative to the initial camera pose; this is
-not semantic floor or furniture detection. Real-device tracking must be checked
-on the intended phone/browser.
+Open `gallery.html` from the home page. The AR button starts the existing 8th
+Wall camera engine straight into ground scanning — the same `GroundPlacement`
+mechanism (`js/ar/GroundPlacement.js`) arena.html uses: an initial ray/plane
+guess refined by real XR8 feature-point evidence, not a fixed assumed floor
+height. Move the phone slowly over a clear, well-lit floor until the reticle
+appears and steadies, adjust scale if needed, then tap "ثبّت هنا" to place the
+stage. Requires `XR8.XrController.configure({..., scale:'absolute'})`, since
+`GroundPlacement` reasons in real metres. Real-device tracking must still be
+checked on the intended phone/browser.
+
+Target mode (mixed, stationary or moving) is chosen after placement, on the
+"ready" panel — there is no separate mode-selection page before entering AR,
+matching the rest of the experiences.
 
 The camera-free preview is fully playable by clicking/tapping a target. A mouse
 can also aim while Space or the trigger button fires. R reloads; Escape pauses.
