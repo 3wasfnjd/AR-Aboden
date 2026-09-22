@@ -244,7 +244,8 @@ export function createSoldier(index, weapon='ak'){
   root.add(muzzle);
 
   root.userData.parts={lLeg:lLeg.pivot,rLeg:rLeg.pivot,lArm:lArm.pivot,rArm:rArm.pivot,gun,muzzle,head};
-  root.scale.setScalar(.94);
+  fallbackVisual.scale.setScalar(.94);
+  root.scale.setScalar(1);
   root.traverse(o=>{ if(o.isMesh){o.castShadow=true;o.receiveShadow=true;} });
   // Upgrade asynchronously. The primitive body remains as a reliable fallback
   // until the skinned GLB and its animation clips are ready.
