@@ -58,11 +58,11 @@ export class ArenaAutopilot {
     } else {
       this.steer=clamp(-error*2,-1,1);throttle=.85;grip=4;
     }
-    const turnGrip=this.handbrake?1:clamp(this.speed/(.95*this.scale),.2,1);
+    const turnGrip=this.handbrake?1:clamp(this.speed/(.65*this.scale),.2,1);
     const turn=-this.steer*turnGrip*(this.handbrake?3.8:2.8);
     this.angularSpeed+=(turn-this.angularSpeed)*(1-Math.exp(-4*dt));
     this.heading=wrap(this.heading+this.angularSpeed*dt);
-    const targetSpeed=.95*this.scale*throttle*(this.handbrake?.8:1);
+    const targetSpeed=.65*this.scale*throttle*(this.handbrake?.8:1);
     this.speed+=(targetSpeed-this.speed)*(1-Math.exp(-2*dt));
     this.vx+=(Math.sin(this.heading)*this.speed-this.vx)*(1-Math.exp(-grip*dt));
     this.vz+=(Math.cos(this.heading)*this.speed-this.vz)*(1-Math.exp(-grip*dt));
