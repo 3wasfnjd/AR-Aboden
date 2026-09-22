@@ -110,6 +110,33 @@
       box-shadow:0 0 0 4px rgba(224,45,55,.14)
     }
     .recordBtn:disabled{opacity:.36}
+    .recordingHud{
+      position:fixed;z-index:80;left:50%;
+      bottom:max(18px,env(safe-area-inset-bottom));
+      transform:translateX(-50%);
+      display:none;align-items:center;gap:10px;
+      pointer-events:auto
+    }
+    .recordingHud .stopRecord{
+      min-width:166px;min-height:46px;border:1px solid rgba(255,255,255,.22);
+      border-radius:999px;background:rgba(214,37,48,.94);color:#fff;
+      font-size:12px;font-weight:950;box-shadow:0 10px 34px rgba(0,0,0,.35);
+      backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+      touch-action:manipulation
+    }
+    .recordingHud .hudTime{
+      min-width:58px;padding:9px 11px;border-radius:999px;
+      background:rgba(4,8,14,.78);border:1px solid rgba(255,255,255,.14);
+      color:#fff;font-size:11px;font-weight:900;text-align:center;
+      font-variant-numeric:tabular-nums;
+      backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)
+    }
+    body.recording-mode .controls,
+    body.recording-mode .top,
+    body.recording-mode .guide{
+      opacity:0!important;visibility:hidden!important;pointer-events:none!important
+    }
+    body.recording-mode .recordingHud{display:flex}
     #intro{
       position:fixed;inset:0;z-index:50;display:flex;align-items:flex-end;justify-content:center;
       padding:18px 18px max(26px,env(safe-area-inset-bottom));
@@ -203,6 +230,11 @@
 
   <input id="fileInput" type="file" accept="image/*,video/*">
 
+  <div class="recordingHud" id="recordingHud">
+    <button class="stopRecord" id="stopRecordBtn" type="button">■ إيقاف التسجيل</button>
+    <span class="hudTime" id="hudRecordTime">00:00</span>
+  </div>
+
   <section id="intro">
     <div class="card">
       <div class="icon">◫</div>
@@ -241,6 +273,9 @@
     const captureBtn = document.getElementById('captureBtn');
     const recordBtn = document.getElementById('recordBtn');
     const recordTime = document.getElementById('recordTime');
+    const recordingHud = document.getElementById('recordingHud');
+    const stopRecordBtn = document.getElementById('stopRecordBtn');
+    const hudRecordTime = document.getElementById('hudRecordTime');
     const videoTools = document.getElementById('videoTools');
     const playPauseBtn = document.getElementById('playPauseBtn');
     const muteBtn = document.getElementById('muteBtn');
@@ -267,6 +302,8 @@
 
     let mediaRecorder=null;
     let recordingStream=null;
+    let recordingCanvasStream=null;
+    let recordingAudioStream=null;
     let recordedChunks=[];
     let recordTimer=null;
     let recordStartedAt=0;
@@ -977,7 +1014,9 @@
       const seconds=Math.floor((Date.now()-recordStartedAt)/1000);
       const mm=String(Math.floor(seconds/60)).padStart(2,'0');
       const ss=String(seconds%60).padStart(2,'0');
-      recordTime.textContent=` ${mm}:${ss}`;
+      const stamp=`${mm}:${ss}`;
+      recordTime.textContent=' '+stamp;
+      hudRecordTime.textContent=stamp;
     }
 
     async function shareRecordedVideo(blob,mimeType){
@@ -1006,6 +1045,37 @@
       notify('تم تجهيز تسجيل الفيديو');
     }
 
+    async function getRecordingAudioTrack(){
+      // canvas.captureStream() only contains video. Try to capture the chosen
+      // video's own audio first; if the browser cannot expose it, use the mic.
+      if(selectedVideo && !selectedVideo.muted){
+        try{
+          const capture=selectedVideo.captureStream?.() || selectedVideo.mozCaptureStream?.();
+          const track=capture?.getAudioTracks?.()[0];
+          if(track) return {track,stream:capture,source:'media'};
+        }catch(err){
+          console.warn('Selected-video audio capture unavailable',err);
+        }
+      }
+
+      try{
+        if(!navigator.mediaDevices?.getUserMedia) return null;
+        const mic=await navigator.mediaDevices.getUserMedia({
+          video:false,
+          audio:{
+            echoCancellation:true,
+            noiseSuppression:true,
+            autoGainControl:true
+          }
+        });
+        const track=mic.getAudioTracks()[0];
+        return track ? {track,stream:mic,source:'microphone'} : null;
+      }catch(err){
+        console.warn('Microphone unavailable',err);
+        return null;
+      }
+    }
+
     async function startRecording(){
       if(!placed) return notify('ثبّت الوسائط أولًا');
       if(!canvas.captureStream || !window.MediaRecorder){
@@ -1015,7 +1085,21 @@
 
       const mimeType=pickRecorderMimeType();
       try{
-        recordingStream=canvas.captureStream(30);
+        recordingCanvasStream=canvas.captureStream(30);
+        const videoTracks=recordingCanvasStream.getVideoTracks();
+        if(!videoTracks.length) throw new Error('canvas-video-track-missing');
+
+        const audioInfo=await getRecordingAudioTrack();
+        recordingAudioStream=audioInfo?.stream||null;
+
+        // The previous implementation passed canvas.captureStream() directly
+        // to MediaRecorder, so it had zero audio tracks. Build a combined
+        // MediaStream explicitly so the recording contains sound.
+        recordingStream=new MediaStream([
+          ...videoTracks,
+          ...(audioInfo?.track ? [audioInfo.track] : [])
+        ]);
+
         recordedChunks=[];
         mediaRecorder=mimeType
           ? new MediaRecorder(recordingStream,{mimeType,videoBitsPerSecond:8000000})
@@ -1035,9 +1119,16 @@
           recordTimer=null;
           recordStartedAt=0;
           recordTime.textContent='';
+          hudRecordTime.textContent='00:00';
+          document.body.classList.remove('recording-mode');
           recordBtn.classList.remove('recording');
           if(recordBtn.childNodes[0]) recordBtn.childNodes[0].nodeValue='● تسجيل فيديو ';
+
+          recordingCanvasStream?.getTracks?.().forEach(track=>track.stop());
+          recordingAudioStream?.getTracks?.().forEach(track=>track.stop());
           recordingStream?.getTracks?.().forEach(track=>track.stop());
+          recordingCanvasStream=null;
+          recordingAudioStream=null;
           recordingStream=null;
 
           const type=mediaRecorder?.mimeType||mimeType||'video/webm';
@@ -1052,11 +1143,20 @@
         updateRecordClock();
         recordTimer=setInterval(updateRecordClock,500);
         recordBtn.classList.add('recording');
-        recordBtn.childNodes[0].nodeValue='■ إيقاف التسجيل ';
-        notify('بدأ تسجيل الفيديو');
+        if(recordBtn.childNodes[0]) recordBtn.childNodes[0].nodeValue='■ إيقاف التسجيل ';
+        document.body.classList.add('recording-mode');
+
+        if(audioInfo?.source==='media') notify('بدأ التسجيل بصوت الفيديو');
+        else if(audioInfo?.source==='microphone') notify('بدأ التسجيل مع صوت الميكروفون');
+        else notify('بدأ التسجيل بدون صوت — اسمح بالميكروفون لإضافة الصوت');
       }catch(err){
         console.error(err);
+        document.body.classList.remove('recording-mode');
+        recordingCanvasStream?.getTracks?.().forEach(track=>track.stop());
+        recordingAudioStream?.getTracks?.().forEach(track=>track.stop());
         recordingStream?.getTracks?.().forEach(track=>track.stop());
+        recordingCanvasStream=null;
+        recordingAudioStream=null;
         recordingStream=null;
         mediaRecorder=null;
         notify('تعذر بدء تسجيل الفيديو على هذا الجهاز');
@@ -1066,8 +1166,12 @@
     function stopRecording(){
       if(mediaRecorder?.state==='recording'){
         try{mediaRecorder.stop();}catch(err){console.warn(err);}
+      }else{
+        document.body.classList.remove('recording-mode');
       }
     }
+
+    stopRecordBtn.addEventListener('click',stopRecording);
 
     recordBtn.addEventListener('click',()=>{
       if(mediaRecorder?.state==='recording') stopRecording();
