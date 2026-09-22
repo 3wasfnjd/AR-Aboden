@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
 <meta name="theme-color" content="#102520"><title>رماية عبودين · كرنفال AR</title>
-<link rel="stylesheet" href="./css/gallery.css?v=1">
+<link rel="stylesheet" href="./css/gallery.css?v=2">
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.185.1/examples/jsm/"}}</script>
 </head>
 <body data-state="intro">
@@ -12,22 +12,22 @@
 <header class="topbar"><a href="./index.html" class="home" aria-label="العودة للتجارب">↗ <span>التجارب</span></a><span class="wordmark">ABODEN <b>FAIRGROUND</b></span><button id="sound" class="icon-btn" aria-label="كتم الصوت" title="الصوت">♪</button></header>
 <section id="intro" class="intro">
 <div class="intro-content minimal">
-<button id="enterAR" class="enter-btn" disabled><span>جاري التجهيز…</span><span>↗</span></button>
-<button id="preview" class="text-button" disabled>معاينة بدون كاميرا</button>
-<p id="loadStatus" class="load-status" role="status">تحميل المنصة</p>
-<a class="credit" href="./assets/gallery/CREDITS.md" target="_blank" rel="noopener">مصادر النماذج</a>
+<p id="loadStatus" class="load-status" role="status">جاري تجهيز الكاميرا…</p>
+<button id="enterAR" class="enter-btn" hidden><span>فتح الكاميرا</span><span>↗</span></button>
 </div>
 </section>
 <div id="hud" class="hud" hidden><div class="hud-item"><small>النقاط</small><strong id="score">0</strong></div><div class="hud-item timer"><small>الوقت</small><strong id="timer">60</strong><div class="timer-track"><i id="timeBar"></i></div></div><div class="hud-item"><small>الدقة</small><strong id="accuracy">—</strong></div></div>
 <div id="crosshair" class="crosshair" hidden><i></i></div><div id="hitText" class="hit-text" aria-live="polite"></div><div id="countdown" class="countdown" hidden></div>
-<section id="placement" class="bottom-panel" hidden><span class="eyebrow">01 / ضع المنصة</span><h2 id="placementTitle">امسح الأرض ببطء</h2><p>حرّك الجوال قليلًا ثم وجّهه نحو مساحة أرضية واضحة أمامك. عند استقرار المؤشر اختر المكان واضغط ثبّت هنا.</p><div class="sliders"><label>الحجم <input id="scale" type="range" min="65" max="130" value="100" aria-label="حجم المنصة"></label></div><button id="place" class="primary" disabled>ثبّت هنا</button></section>
-<section id="ready" class="bottom-panel" hidden><span class="eyebrow" id="modeBadge">تحدّي مختلط</span><h2>كل طلقة لها حساب.</h2><div class="modes" role="group" aria-label="نوع الأهداف"><button data-mode="mixed" aria-pressed="true" class="selected">تحدّي مختلط</button><button data-mode="moving" aria-pressed="false">متحركة</button><button data-mode="fixed" aria-pressed="false">ثابتة</button></div><p id="aimHelp">حرّك الجوال للتصويب واضغط الزناد. مركز الهدف يمنح نقاطًا إضافية.</p><div class="legend"><span><i class="disc"></i> ثابت: ١٠ / المركز: ٢٥</span><span><i class="duck"></i> متحرك: ٣٥</span></div><button id="startRound" class="primary">ابدأ الجولة <span>60s / 24</span></button><button id="reposition" class="text-button">تغيير مكان المنصة</button></section>
+<section id="placement" class="placement-dock" hidden>
+<span id="placementTitle">حرّك الجوال ببطء لمسح الأرضية</span>
+<button id="place" class="place-button" disabled>ثبّت المنصة</button>
+</section>
 <div id="controls" class="controls" hidden><div class="ammo"><small>الطلقات المتبقية</small><strong id="ammo">24</strong><div id="ammoPips" class="ammo-pips"></div><button id="reload" class="reload">تلقيم ↻</button></div><button id="fire" class="trigger" aria-label="إطلاق طلقة"><span class="trigger-ring"></span><b>إطلاق</b><small>اضغط</small></button></div>
 <button id="pause" class="pause icon-btn" hidden aria-label="إيقاف مؤقت">Ⅱ</button>
-<section id="results" class="modal" hidden><div class="result-card"><span class="eyebrow">ABODEN FAIRGROUND</span><div class="medal" id="medal">✦</div><h2 id="resultTitle">جولة مكتملة</h2><strong id="finalScore" class="final-score">0</strong><span class="score-label">نقطة</span><p id="resultComment"></p><div class="result-stats"><span>الإصابات <b id="finalHits"></b></span><span>الدقّة <b id="finalAccuracy"></b></span><span>أفضل نتيجة <b id="best"></b></span></div><button id="again" class="primary">جولة جديدة ↻</button><a class="text-button" href="./gallery.html">تغيير التحدّي</a></div></section>
+<section id="results" class="modal" hidden><div class="result-card"><span class="eyebrow">ABODEN FAIRGROUND</span><div class="medal" id="medal">✦</div><h2 id="resultTitle">جولة مكتملة</h2><strong id="finalScore" class="final-score">0</strong><span class="score-label">نقطة</span><p id="resultComment"></p><div class="result-stats"><span>الإصابات <b id="finalHits"></b></span><span>الدقّة <b id="finalAccuracy"></b></span><span>أفضل نتيجة <b id="best"></b></span></div><button id="again" class="primary">جولة جديدة ↻</button><a class="text-button" href="./gallery.html">إعادة تثبيت المنصة</a></div></section>
 <section id="paused" class="modal" hidden><div class="result-card"><span class="eyebrow">استراحة قصيرة</span><h2>الجولة متوقفة</h2><p id="pauseReason">تابع عندما تكون مستعدًا.</p><button id="resume" class="primary">متابعة الجولة</button><a class="text-button" href="./gallery.html">الخروج من الجولة</a></div></section>
 <div id="error" class="error" role="alert" hidden><strong>تعذّر التشغيل</strong><p id="errorText"></p><button id="retry" class="primary" onclick="location.reload()">إعادة المحاولة</button><a href="./index.html" class="text-button">العودة للتجارب</a></div>
-<script type="module" src="./js/gallery/main.js?v=2"></script>
+<script type="module" src="./js/gallery/main.js?v=3"></script>
 <script>
 setTimeout(function(){if(!window.galleryLoaded){document.getElementById('errorText').textContent='لم يكتمل تحميل التجربة. تحقق من اتصال الإنترنت ثم أعد المحاولة.';document.getElementById('error').hidden=false;}},45000);
 </script>

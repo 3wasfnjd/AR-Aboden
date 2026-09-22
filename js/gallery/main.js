@@ -5,28 +5,28 @@ import {createRound,accuracy,spendShot,reloadRound,tickRound,ROUND_SECONDS} from
 import {GalleryAudio} from './audio.js';
 import {GroundPlacement} from '../ar/GroundPlacement.js';
 const $=id=>document.getElementById(id);
-const ui={intro:$('intro'),hud:$('hud'),placement:$('placement'),ready:$('ready'),controls:$('controls'),results:$('results'),paused:$('paused'),crosshair:$('crosshair'),countdown:$('countdown'),pause:$('pause')};
+const ui={intro:$('intro'),hud:$('hud'),placement:$('placement'),controls:$('controls'),results:$('results'),paused:$('paused'),crosshair:$('crosshair'),countdown:$('countdown'),pause:$('pause')};
 let canvas=$('camerafeed'),renderer,scene,camera,stage,reticle,rifle;
 let state='intro',mode='mixed',ar=false,busy=false,round=createRound(),elapsed=0,last=performance.now(),cooldown=0,count=3,pausedFrom='playing';
 // Real ground detection, the same mechanism arena.html uses: an initial
 // ray/plane guess refined by XR8 feature-point evidence (see GroundPlacement).
 const placement=new GroundPlacement();
 let latestWorldPoints=[],nextGroundSample=0,previewInitialized=false,surfaceReady=false,stageScale=1;
-let xrLoaded=false,xrStarted=false,xrTimer=null,trackingLost=false;
+let xrLoaded=false,xrStarted=false,xrConfigured=false,xrTimer=null,trackingLost=false;
 const point=new THREE.Vector3(),stablePoint=new THREE.Vector3(),forward=new THREE.Vector3(),ray=new THREE.Raycaster(),centerNdc=new THREE.Vector2(0,0),pointer=new THREE.Vector2(),groundPlane=new THREE.Plane(new THREE.Vector3(0,1,0),0);
-const sound=new GalleryAudio();const labels={mixed:'تحدّي مختلط',fixed:'أهداف ثابتة',moving:'بطّات متحركة'};
+const sound=new GalleryAudio();
 let hitTimer,hudElapsed=0,lastShotAt=-Infinity;
 function showState(next){state=next;document.body.dataset.state=next;for(const [key,el]of Object.entries(ui))el.hidden=true;
  if(next==='intro')ui.intro.hidden=false;
  if(next==='placing')ui.placement.hidden=false;
- if(next==='ready')ui.ready.hidden=false;
  if(['playing','countdown','paused'].includes(next)){ui.hud.hidden=false;ui.crosshair.hidden=false;}
  if(next==='playing'){ui.controls.hidden=false;ui.pause.hidden=false;}
  if(next==='countdown')ui.countdown.hidden=false;
  if(next==='results')ui.results.hidden=false;
  if(next==='paused')ui.paused.hidden=false;
  if(reticle)reticle.visible=next==='placing';
- if(rifle)rifle.visible=['ready','countdown','playing','paused'].includes(next);
+ if(rifle)rifle.visible=['countdown','playing','paused'].includes(next);
+ $('sound').hidden=['intro','placing'].includes(next);
  $('vignette').hidden=ar;
  if(!ar&&camera)framePreview();
 }
@@ -97,8 +97,8 @@ async function prepareRifle(){
 }
 function buildRifle(){return rifleTemplate.clone(true);}
 function syncHUD(){ $('score').textContent=round.score;$('timer').textContent=Math.ceil(round.time);$('accuracy').textContent=round.shots?`${accuracy(round)}%`:'—';$('ammo').textContent=round.remaining;$('timeBar').style.width=`${round.time/ROUND_SECONDS*100}%`;$('timer').classList.toggle('urgent',round.time<10);$('ammoPips').innerHTML=Array.from({length:6},(_,i)=>`<i class="${i<round.magazine?'':'empty'}"></i>`).join('');$('reload').textContent=round.reload>0?'جاري التلقيم…':'تلقيم ↻';$('fire').disabled=round.reload>0||round.magazine===0;}
-function setMode(value){mode=value;stage?.setMode(mode);document.querySelectorAll('[data-mode]').forEach(b=>{b.classList.toggle('selected',b.dataset.mode===mode);b.setAttribute('aria-pressed',String(b.dataset.mode===mode));});$('modeBadge').textContent=labels[mode];}
-function beginPreview(){if(!stage||busy)return;sound.unlock();ar=false;stage.root.position.set(0,0,0);stage.root.rotation.y=0;stage.root.scale.setScalar(1);stage.root.visible=true;stage.reset();elapsed=0;setMode(mode);$('aimHelp').textContent='اضغط على الهدف لإطلاق النار، أو وجّه المؤشر إليه واستخدم الزناد. مركز الهدف يمنح نقاطًا إضافية.';$('reposition').textContent='العودة للبداية';showState('ready');}
+function setMode(value){mode=value;stage?.setMode(mode);}
+function beginPreview(){if(!stage||busy)return;sound.unlock();ar=false;stage.root.position.set(0,0,0);stage.root.rotation.y=0;stage.root.scale.setScalar(1);stage.root.visible=true;stage.reset();elapsed=0;setMode(mode);startRound();}
 function startRound(){sound.unlock();round=createRound();elapsed=0;cooldown=0;lastShotAt=-Infinity;stage.reset();stage.setMode(mode);count=3;$('countdown').textContent='3';sound.tick();syncHUD();pointer.set(0,0);positionCrosshair();showState('countdown');}
 function finish(){showState('results');sound.finish();const a=accuracy(round);$('finalScore').textContent=round.score;$('finalHits').textContent=`${round.hits} / ${round.shots}`;$('finalAccuracy').textContent=`${a}%`;
  const key=`aboden-gallery-best-${mode}`;let best=round.score;try{best=Math.max(Number(localStorage.getItem(key))||0,round.score);localStorage.setItem(key,String(best));}catch{}
@@ -146,49 +146,62 @@ function updatePlacement(dt,now){if(!camera||!stage)return;
 }
 function place(){if(!surfaceReady)return;const anchor=placement.lock(performance.now(),{manual:true});if(!anchor)return;
  stage.root.position.set(anchor.x,anchor.y,anchor.z);stage.root.rotation.y=Math.atan2(camera.position.x-anchor.x,camera.position.z-anchor.z);stage.root.scale.setScalar(stageScale);
- reticle.visible=false;showState('ready');$('aimHelp').textContent='حرّك الجوال للتصويب واضغط الزناد. مركز الهدف يمنح نقاطًا إضافية.';$('reposition').textContent='تغيير مكان المنصة';}
-function reposition(){if(!ar){showState('intro');return;}stage.reset();placement.reset();previewInitialized=false;showState('placing');}
+ reticle.visible=false;startRound();toast('تم تثبيت المنصة');}
 function loadXR(){return new Promise((resolve,reject)=>{
  if(window.XR8){resolve();return;}let settled=false;const done=()=>{if(settled)return;settled=true;clearTimeout(timer);resolve();};const timer=setTimeout(()=>{if(!settled){settled=true;reject(new Error('استغرق محرك الواقع المعزز وقتًا طويلًا. تحقق من الاتصال وأعد المحاولة.'));}},30000);
- window.addEventListener('xrloaded',done,{once:true});const script=document.createElement('script');script.src='https://cdn.jsdelivr.net/npm/@8thwall/engine-binary@1/dist/xr.js';script.crossOrigin='anonymous';script.async=true;script.setAttribute('data-preload-chunks','slam');script.onerror=()=>{clearTimeout(timer);reject(new Error('تعذر تحميل محرك الواقع المعزز. يمكنك استخدام المعاينة بدون كاميرا.'));};document.head.appendChild(script);
+ window.addEventListener('xrloaded',done,{once:true});const script=document.createElement('script');script.src='https://cdn.jsdelivr.net/npm/@8thwall/engine-binary@1/dist/xr.js';script.crossOrigin='anonymous';script.async=true;script.setAttribute('data-preload-chunks','slam');script.onerror=()=>{clearTimeout(timer);reject(new Error('تعذر تحميل محرك الواقع المعزز. تحقق من اتصال الإنترنت وأعد المحاولة.'));};document.head.appendChild(script);
  });}
-async function enterAR(){if(!stage||busy)return;busy=true;sound.unlock();$('enterAR').disabled=true;$('enterAR').firstElementChild.textContent='جاري تشغيل الكاميرا…';$('loadStatus').textContent='اسمح باستخدام الكاميرا عند ظهور الطلب.';
+async function configureAR(){
+ if(xrConfigured)return;
+ window.THREE=THREE;await loadXR();xrLoaded=true;
+ // The preview WebGL context must not be reused by the XR camera pipeline.
+ if(renderer){renderer.dispose();canvas.replaceWith(canvas.cloneNode(false));canvas=$('camerafeed');renderer=null;}
+ ar=true;pointer.set(0,0);positionCrosshair();resize();
+ XR8.XrController.configure({disableWorldTracking:false,enableLighting:true,enableWorldPoints:true,scale:'absolute'});
+ XR8.addCameraPipelineModules([XR8.GlTextureRenderer.pipelineModule(),XR8.Threejs.pipelineModule(),XR8.XrController.pipelineModule(),{
+  name:'aboden-fairground',
+  onStart:()=>{try{const xr=XR8.Threejs.xrScene();scene=xr.scene;camera=xr.camera;renderer=xr.renderer;renderer.shadowMap.enabled=false;scene.add(stage.root);stage.root.visible=false;lights();reticle=makeReticle();rifle=buildRifle();camera.add(rifle);scene.add(camera);stage.root.rotation.y=0;placement.reset();busy=false;xrStarted=true;clearTimeout(xrTimer);$('enterAR').hidden=true;showState('placing');resize();}catch(err){console.error(err);fail('تعذر تجهيز المنصة في الكاميرا. أعد المحاولة.');}},
+  onUpdate:({processCpuResult})=>{const now=performance.now();const reality=processCpuResult?.reality;placement.observe({now,status:reality?.trackingStatus,position:reality?.position,rotation:reality?.rotation});latestWorldPoints=reality?.worldPoints||[];},
+  onException:error=>{console.error(error);fail('تعذر تشغيل الكاميرا أو التتبع. اسمح بالكاميرا وافتح الرابط في Safari أو Chrome مباشرة.');},
+  onCameraStatusChange:({status})=>{if(status==='failed')fail('لم نتمكن من فتح الكاميرا. تحقق من الإذن وأعد المحاولة.');},
+  listeners:[{event:'reality.trackingstatus',process:({detail})=>{const status=detail?.status;trackingLost=status==='LIMITED';if(trackingLost)pauseGame('توقف التتبع مؤقتًا. حرّك الجوال ببطء نحو مكان واضح ومضاء.');}}]
+ }]);
+ xrConfigured=true;
+}
+function showCameraFallback(){
+ busy=false;clearTimeout(xrTimer);showState('intro');
+ $('enterAR').hidden=false;$('enterAR').disabled=false;$('enterAR').firstElementChild.textContent='فتح الكاميرا';
+ $('loadStatus').textContent='اضغط مرة واحدة للسماح باستخدام الكاميرا';
+}
+async function enterAR({manual=true}={}){
+ if(!stage||busy||xrStarted)return;
+ busy=true;if(manual)sound.unlock();
+ $('enterAR').disabled=true;$('loadStatus').textContent='جاري فتح الكاميرا…';
  try{
-  window.THREE=THREE;await loadXR();xrLoaded=true;
-  // The preview context must not be reused by the XR camera pipeline.
-  renderer.dispose();canvas.replaceWith(canvas.cloneNode(false));canvas=$('camerafeed');renderer=null;ar=true;pointer.set(0,0);positionCrosshair();resize();
-  // scale:'absolute' is required by GroundPlacement, which reasons in real
-  // metres (see js/ar/GroundPlacement.js), matching arena.html's own setup.
-  XR8.XrController.configure({disableWorldTracking:false,enableLighting:true,enableWorldPoints:true,scale:'absolute'});
-  XR8.addCameraPipelineModules([XR8.GlTextureRenderer.pipelineModule(),XR8.Threejs.pipelineModule(),XR8.XrController.pipelineModule(),{
-   name:'aboden-fairground',
-   onStart:()=>{try{const xr=XR8.Threejs.xrScene();scene=xr.scene;camera=xr.camera;renderer=xr.renderer;renderer.shadowMap.enabled=false;scene.add(stage.root);stage.root.visible=false;lights();reticle=makeReticle();rifle=buildRifle();camera.add(rifle);scene.add(camera);stage.root.rotation.y=0;placement.reset();busy=false;xrStarted=true;clearTimeout(xrTimer);showState('placing');resize();}catch(err){console.error(err);fail('تعذر تجهيز المنصة في الكاميرا. أعد المحاولة.');}},
-   onUpdate:({processCpuResult})=>{const now=performance.now();const reality=processCpuResult?.reality;placement.observe({now,status:reality?.trackingStatus,position:reality?.position,rotation:reality?.rotation});latestWorldPoints=reality?.worldPoints||[];},
-   onException:error=>{console.error(error);fail('تعذر تشغيل الكاميرا أو التتبع. اسمح بالكاميرا وافتح الرابط في Safari أو Chrome مباشرة.');},
-   onCameraStatusChange:({status})=>{if(status==='failed')fail('لم نتمكن من فتح الكاميرا. تحقق من الإذن وأعد المحاولة.');},
-   listeners:[{event:'reality.trackingstatus',process:({detail})=>{const status=detail?.status;trackingLost=status==='LIMITED';if(trackingLost)pauseGame('توقف التتبع مؤقتًا. حرّك الجوال ببطء نحو مكان واضح ومضاء.');} }]
-  }]);
+  await configureAR();
   xrTimer=setTimeout(()=>{if(!xrStarted)fail('لم يبدأ تتبع الكاميرا. تحقق من الإذن، ثم أعد المحاولة.');},30000);
   await XR8.run({canvas});
- }catch(err){console.error(err);fail(err.message||'تعذر بدء الواقع المعزز.');}
+ }catch(err){
+  console.error(err);
+  if(!manual&&!xrStarted){showCameraFallback();return;}
+  fail(err.message||'تعذر بدء الواقع المعزز.');
+ }
 }
 function loop(now){requestAnimationFrame(loop);const realDt=Math.max(0,(now-last)/1000||.016),dt=Math.min(.1,realDt);last=now;if(!stage||!renderer||!camera)return;
  if(state!=='paused'&&!document.hidden){cooldown=Math.max(0,cooldown-realDt);
   if(state==='placing')updatePlacement(dt,now);
   if(state==='countdown'){const old=Math.ceil(count);count-=realDt;if(count<=0){showState('playing');}else if(Math.ceil(count)!==old){$('countdown').textContent=Math.ceil(count);sound.tick();}}
   if(state==='playing'){const finished=tickRound(round,realDt);elapsed+=dt;hudElapsed+=realDt;if(hudElapsed>=.1){syncHUD();hudElapsed=0;}if(finished)finish();}
-  if(['intro','ready','playing','placing'].includes(state)){if(state!=='playing')elapsed+=dt;stage.update(dt,elapsed,true);}
+  if(['intro','playing','placing'].includes(state)){if(state!=='playing')elapsed+=dt;stage.update(dt,elapsed,true);}
  }
  if(!ar){if(state==='intro')stage.root.rotation.y=Math.sin(now*.00013)*.08;renderer.render(scene,camera);}
 }
-$('enterAR').addEventListener('click',enterAR);$('preview').addEventListener('click',beginPreview);$('startRound').addEventListener('click',startRound);$('again').addEventListener('click',startRound);$('place').addEventListener('click',place);$('reposition').addEventListener('click',reposition);
+$('enterAR').addEventListener('click',()=>enterAR({manual:true}));$('again').addEventListener('click',startRound);$('place').addEventListener('click',place);
 $('fire').addEventListener('pointerdown',e=>{e.preventDefault();fire();});$('reload').addEventListener('click',reload);$('pause').addEventListener('click',()=>pauseGame());$('resume').addEventListener('click',resume);
 $('sound').addEventListener('click',()=>{sound.unlock();sound.muted=!sound.muted;$('sound').textContent=sound.muted?'×':'♪';$('sound').setAttribute('aria-label',sound.muted?'تشغيل الصوت':'كتم الصوت');});
-$('scale').addEventListener('input',e=>{stageScale=Number(e.target.value)/100;});
-for(const b of document.querySelectorAll('[data-mode]'))b.addEventListener('click',()=>setMode(b.dataset.mode));
 window.addEventListener('resize',resize);window.visualViewport?.addEventListener('resize',resize);window.addEventListener('orientationchange',()=>{setTimeout(resize,250);});document.addEventListener('visibilitychange',()=>{if(document.hidden)pauseGame('توقفت الجولة عند مغادرة الشاشة.');else last=performance.now();});window.addEventListener('pagehide',()=>{try{if(ar)XR8.stop();sound.ctx?.suspend();}catch{}});
 window.addEventListener('keydown',e=>{if(e.code==='Space'){e.preventDefault();fire();}if(e.code==='KeyR')reload();if(e.code==='Escape')state==='paused'?resume():pauseGame();});
-async function boot(){try{initPreview();bindCanvas();resize();requestAnimationFrame(loop);[stage]=await Promise.all([createStage(e=>{$('loadStatus').textContent=e.total?`تحميل المنصة ${Math.round(e.loaded/e.total*100)}%`:'جاري تحميل المنصة…';}),prepareRifle()]);scene.add(stage.root);window.galleryLoaded=true;setMode(mode);framePreview();$('enterAR').disabled=false;$('enterAR').firstElementChild.textContent='ضع الكشك في مكانك';$('preview').disabled=false;$('loadStatus').textContent='جاهز · افتح الكاميرا أو جرّب المعاينة';if(new URLSearchParams(location.search).has('preview'))beginPreview();
+async function boot(){try{initPreview();bindCanvas();resize();requestAnimationFrame(loop);[stage]=await Promise.all([createStage(e=>{$('loadStatus').textContent=e.total?`تحميل المنصة ${Math.round(e.loaded/e.total*100)}%`:'جاري تحميل المنصة…';}),prepareRifle()]);scene.add(stage.root);stage.root.visible=false;window.galleryLoaded=true;setMode('mixed');framePreview();if(new URLSearchParams(location.search).has('preview'))beginPreview();else if(/iP(hone|ad|od)/.test(navigator.userAgent))showCameraFallback();else enterAR({manual:false});
  // Exposed only in an explicit QA session, never enabled by the normal link.
  if(new URLSearchParams(location.search).has('qa'))window.galleryQA={THREE,get stage(){return stage;},get camera(){return camera;},get state(){return state;},get round(){return round;},get renderer(){return renderer;},fire,beginPreview,startRound,pauseGame,resume,setMode,finish,aimTarget:(index)=>{const t=stage.targets[index];t.hitObject.updateWorldMatrix(true,false);const p=new THREE.Box3().setFromObject(t.hitObject).getCenter(new THREE.Vector3()).project(camera);pointer.set(p.x,p.y);positionCrosshair();return{x:(p.x*.5+.5)*innerWidth,y:(-p.y*.5+.5)*innerHeight};}};
  }catch(err){console.error(err);fail('تعذر تحميل الكشك. تحقق من اتصال الإنترنت ثم أعد المحاولة.');}}
