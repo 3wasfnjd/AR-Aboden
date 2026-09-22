@@ -144,14 +144,14 @@
 
     <div class="guide" id="guide">
       <b>امسح الأرض بهدوء</b>
-      اختر صورة، وجّه المؤشر نحو الأرض ثم اضغط «ثبّت هنا». ستوضع الصورة مسطحة على نفس مستوى الأرضية.
+      اختر صورة أو فيديو، وجّه المؤشر نحو الأرض ثم اضغط «ثبّت هنا». ستوضع الوسائط مسطحة على نفس مستوى الأرضية.
     </div>
 
     <div class="toast" id="toast"></div>
 
     <section class="controls" id="controls" style="display:none">
       <div class="row">
-        <label class="fileBtn primary" for="fileInput">＋ إضافة صورة</label>
+        <label class="fileBtn primary" for="fileInput">＋ إضافة صورة/فيديو</label>
         <button class="btn" id="placeBtn" disabled>ثبّت هنا</button>
       </div>
 
@@ -159,6 +159,12 @@
         <button class="btn" id="smallerBtn">− تصغير</button>
         <button class="btn" id="rotateBtn">↻ تدوير</button>
         <button class="btn" id="largerBtn">＋ تكبير</button>
+      </div>
+
+      <div class="adjust videoTools" id="videoTools" style="display:none">
+        <button class="btn" id="playPauseBtn">▶ تشغيل</button>
+        <button class="btn" id="muteBtn">🔇 صامت</button>
+        <button class="btn" id="restartVideoBtn">↺ البداية</button>
       </div>
 
       <div class="sliders">
@@ -180,16 +186,16 @@
     </section>
   </div>
 
-  <input id="fileInput" type="file" accept="image/*">
+  <input id="fileInput" type="file" accept="image/*,video/*">
 
   <section id="intro">
     <div class="card">
       <div class="icon">◫</div>
       <h1>تركيب صورة AR — 3D</h1>
-      <p>ثبّت الصورة مسطحة على الأرضية الحقيقية ثم تحرّك حولها. تبقى الصورة ملتصقة بمستوى الأرض بعد التثبيت.</p>
+      <p>ثبّت صورة أو فيديو مسطحًا على الأرضية الحقيقية ثم تحرّك حوله. تبقى الوسائط مقفلة على مستوى الأرض بعد التثبيت.</p>
       <button class="start" id="startBtn" disabled>جاري تجهيز المحرك…</button>
       <div class="error" id="errorBox"></div>
-      <p class="tiny">بعد التثبيت تُقفل الصورة في مكانها. للتغيير استخدم «نقل الصورة»، بينما يبقى التكبير والتدوير متاحين.</p>
+      <p class="tiny">بعد التثبيت تُقفل الوسائط في مكانها. يدعم النمط صورة أو فيديو دائريًا مع التكبير والتدوير والشفافية.</p>
     </div>
   </section>
 
@@ -217,6 +223,10 @@
     const resetBtn = document.getElementById('resetBtn');
     const removeBtn = document.getElementById('removeBtn');
     const captureBtn = document.getElementById('captureBtn');
+    const videoTools = document.getElementById('videoTools');
+    const playPauseBtn = document.getElementById('playPauseBtn');
+    const muteBtn = document.getElementById('muteBtn');
+    const restartVideoBtn = document.getElementById('restartVideoBtn');
 
     const opacityInput = document.getElementById('opacity');
     const featherInput = document.getElementById('feather');
@@ -225,8 +235,8 @@
 
     let xrReady=false, xrStarted=false, sceneReady=false, startupFailed=false;
     let scene=null, camera=null, renderer=null, reticle=null;
-    let photoRoot=null, photoMesh=null, photoMaterial=null, photoTexture=null;
-    let selectedImage=null, maskCanvas=null;
+    let photoRoot=null, photoMesh=null, photoMaterial=null, photoTexture=null, alphaMaskTexture=null;
+    let selectedImage=null, selectedVideo=null, mediaType=null, maskCanvas=null;
     let placed=false, surfaceReady=false, previewInitialized=false;
     let latestWorldPoints=[], nextGroundSample=0, lastTick=performance.now();
     let baseYaw=0, rotationOffset=0;
@@ -296,6 +306,67 @@
       visualViewport.addEventListener('scroll',syncVisualViewport,{passive:true});
     }
 
+    function hasMedia(){
+      return !!(selectedImage || selectedVideo);
+    }
+
+    function disposeTexture(texture){
+      if(texture){
+        try{texture.dispose();}catch(_){}
+      }
+    }
+
+    function clearCurrentMedia(){
+      if(selectedImage?.__url) URL.revokeObjectURL(selectedImage.__url);
+      if(selectedVideo){
+        try{selectedVideo.pause();}catch(_){}
+        if(selectedVideo.__url) URL.revokeObjectURL(selectedVideo.__url);
+        try{selectedVideo.removeAttribute('src'); selectedVideo.load();}catch(_){}
+      }
+      selectedImage=null;
+      selectedVideo=null;
+      mediaType=null;
+      maskCanvas=null;
+
+      disposeTexture(photoTexture);
+      disposeTexture(alphaMaskTexture);
+      photoTexture=null;
+      alphaMaskTexture=null;
+
+      if(photoMaterial){
+        photoMaterial.map=null;
+        photoMaterial.alphaMap=null;
+        photoMaterial.needsUpdate=true;
+      }
+      if(photoMesh) photoMesh.visible=false;
+
+      videoTools.style.display='none';
+      playPauseBtn.textContent='▶ تشغيل';
+      muteBtn.textContent='🔇 صامت';
+    }
+
+    function buildAlphaMaskTexture(){
+      const size=512;
+      const c=document.createElement('canvas');
+      c.width=c.height=size;
+      const x=c.getContext('2d');
+      const r=size/2;
+      const inner=clamp(1-feather,.50,1);
+      const g=x.createRadialGradient(r,r,0,r,r,r);
+      g.addColorStop(0,'rgb(255,255,255)');
+      g.addColorStop(inner,'rgb(255,255,255)');
+      if(inner<1) g.addColorStop(Math.min(1,inner+(1-inner)*.48),'rgb(190,190,190)');
+      g.addColorStop(1,'rgb(0,0,0)');
+      x.fillStyle=g;
+      x.fillRect(0,0,size,size);
+
+      const texture=new THREE.CanvasTexture(c);
+      texture.minFilter=THREE.LinearFilter;
+      texture.magFilter=THREE.LinearFilter;
+      texture.generateMipmaps=true;
+      return texture;
+    }
+
     function buildMaskCanvas(){
       if(!selectedImage) return null;
       const size=1024;
@@ -332,9 +403,53 @@
       texture.minFilter=THREE.LinearFilter;
       texture.magFilter=THREE.LinearFilter;
       texture.generateMipmaps=true;
-      if(photoTexture) photoTexture.dispose();
+      disposeTexture(photoTexture);
+      disposeTexture(alphaMaskTexture);
+      alphaMaskTexture=null;
       photoTexture=texture;
       photoMaterial.map=texture;
+      photoMaterial.alphaMap=null;
+      photoMaterial.needsUpdate=true;
+      photoMesh.visible=true;
+      updatePhotoTransform();
+    }
+
+    function applyVideoCrop(texture,video){
+      const vw=video.videoWidth||1;
+      const vh=video.videoHeight||1;
+      texture.offset.set(0,0);
+      texture.repeat.set(1,1);
+      if(vw>vh){
+        const rx=vh/vw;
+        texture.repeat.x=rx;
+        texture.offset.x=(1-rx)/2;
+      }else if(vh>vw){
+        const ry=vw/vh;
+        texture.repeat.y=ry;
+        texture.offset.y=(1-ry)/2;
+      }
+    }
+
+    function rebuildVideoTexture({replaceMap=false}={}){
+      if(!selectedVideo || !photoMaterial) return;
+
+      if(replaceMap || !photoTexture || !photoTexture.isVideoTexture){
+        disposeTexture(photoTexture);
+        const texture=new THREE.VideoTexture(selectedVideo);
+        texture.colorSpace=THREE.SRGBColorSpace;
+        texture.minFilter=THREE.LinearFilter;
+        texture.magFilter=THREE.LinearFilter;
+        texture.generateMipmaps=false;
+        applyVideoCrop(texture,selectedVideo);
+        photoTexture=texture;
+        photoMaterial.map=texture;
+      }else{
+        applyVideoCrop(photoTexture,selectedVideo);
+      }
+
+      disposeTexture(alphaMaskTexture);
+      alphaMaskTexture=buildAlphaMaskTexture();
+      photoMaterial.alphaMap=alphaMaskTexture;
       photoMaterial.needsUpdate=true;
       photoMesh.visible=true;
       updatePhotoTransform();
@@ -397,6 +512,7 @@
       sceneReady=true;
       lastTick=performance.now();
       if(selectedImage) rebuildTexture();
+      else if(selectedVideo) rebuildVideoTexture({replaceMap:true});
 
       requestAnimationFrame(()=>{
         if(startupFailed) return;
@@ -485,7 +601,7 @@
       surfaceReady=placement.canLock(now) &&
         placement.surface==='supported' &&
         placement.ready;
-      placeBtn.disabled=!(surfaceReady&&selectedImage);
+      placeBtn.disabled=!(surfaceReady&&hasMedia());
 
       if(!placement.candidate){
         reticle.visible=false;
@@ -512,15 +628,15 @@
       reticle.position.copy(stablePoint);
       reticle.position.y+=.008;
 
-      if(selectedImage&&photoRoot){
+      if(hasMedia()&&photoRoot){
         photoRoot.position.copy(stablePoint);
         baseYaw=faceCameraYaw(stablePoint);
         updatePhotoTransform();
         photoRoot.visible=true;
       }
 
-      if(!selectedImage){
-        setStatus('المكان قيد الفحص — اختر صورة أولًا',false);
+      if(!hasMedia()){
+        setStatus('المكان قيد الفحص — اختر صورة أو فيديو أولًا',false);
       }else if(placement.surface!=='supported'){
         setStatus('حرّك الجوال ببطء فوق أرضية فيها تفاصيل حتى يثبت السطح',false);
       }else if(!placement.ready){
@@ -554,7 +670,7 @@
         movePhoto();
         return;
       }
-      if(!selectedImage) return notify('اختر صورة أولًا');
+      if(!hasMedia()) return notify('اختر صورة أو فيديو أولًا');
       if(!surfaceReady || !reticle?.visible) return notify('وجّه الكاميرا للأرض حتى يظهر المؤشر');
 
       const anchor=placement.lock(performance.now(),{manual:true});
@@ -609,19 +725,21 @@
       featherValue.value='18%';
       updatePhotoTransform();
       if(selectedImage) rebuildTexture();
-      if(placed) notify('تمت إعادة إعدادات الصورة');
+      else if(selectedVideo) rebuildVideoTexture();
+      if(placed) notify('تمت إعادة إعدادات الوسائط');
     }
 
     function loadSelectedImage(file){
       const url=URL.createObjectURL(file);
       const img=new Image();
       img.onload=()=>{
-        if(selectedImage?.__url) URL.revokeObjectURL(selectedImage.__url);
+        clearCurrentMedia();
         img.__url=url;
         selectedImage=img;
+        mediaType='image';
         rebuildTexture();
-        placeBtn.disabled=!(surfaceReady&&selectedImage);
-        notify(placed?'تم استبدال الصورة':'الصورة جاهزة — اختر مكان التثبيت');
+        placeBtn.disabled=!(surfaceReady&&hasMedia());
+        notify(placed?'تم استبدال الوسائط بصورة':'الصورة جاهزة — اختر مكان التثبيت');
       };
       img.onerror=()=>{
         URL.revokeObjectURL(url);
@@ -630,10 +748,70 @@
       img.src=url;
     }
 
+    function loadSelectedVideo(file){
+      const url=URL.createObjectURL(file);
+      const video=document.createElement('video');
+      video.playsInline=true;
+      video.loop=true;
+      video.muted=true;
+      video.preload='metadata';
+      video.src=url;
+
+      const fail=()=>{
+        URL.revokeObjectURL(url);
+        notify('تعذر قراءة هذا الفيديو');
+      };
+
+      video.addEventListener('loadedmetadata',()=>{
+        clearCurrentMedia();
+        video.__url=url;
+        selectedVideo=video;
+        mediaType='video';
+        rebuildVideoTexture({replaceMap:true});
+        videoTools.style.display='grid';
+        playPauseBtn.textContent='▶ تشغيل';
+        muteBtn.textContent='🔇 صامت';
+        placeBtn.disabled=!(surfaceReady&&hasMedia());
+        notify(placed?'تم استبدال الوسائط بفيديو — اضغط تشغيل':'الفيديو جاهز — اضغط تشغيل ثم ثبّت');
+      },{once:true});
+      video.addEventListener('error',fail,{once:true});
+      video.load();
+    }
+
     fileInput.addEventListener('change',()=>{
       const file=fileInput.files?.[0];
-      if(file) loadSelectedImage(file);
+      if(!file) return;
+      if(file.type.startsWith('video/')) loadSelectedVideo(file);
+      else if(file.type.startsWith('image/')) loadSelectedImage(file);
+      else notify('اختر صورة أو فيديو مدعومًا');
       fileInput.value='';
+    });
+
+    playPauseBtn.addEventListener('click',async()=>{
+      if(!selectedVideo) return;
+      if(selectedVideo.paused){
+        try{
+          await selectedVideo.play();
+          playPauseBtn.textContent='Ⅱ إيقاف';
+        }catch(err){
+          console.warn(err);
+          notify('اضغط تشغيل مرة أخرى للسماح بتشغيل الفيديو');
+        }
+      }else{
+        selectedVideo.pause();
+        playPauseBtn.textContent='▶ تشغيل';
+      }
+    });
+
+    muteBtn.addEventListener('click',()=>{
+      if(!selectedVideo) return;
+      selectedVideo.muted=!selectedVideo.muted;
+      muteBtn.textContent=selectedVideo.muted?'🔇 صامت':'🔊 صوت';
+    });
+
+    restartVideoBtn.addEventListener('click',()=>{
+      if(!selectedVideo) return;
+      try{selectedVideo.currentTime=0;}catch(_){}
     });
 
     placeBtn.addEventListener('click',placePhoto);
@@ -661,26 +839,25 @@
       feather=Number(featherInput.value)/100;
       featherValue.value=featherInput.value+'%';
       clearTimeout(featherInput._timer);
-      featherInput._timer=setTimeout(rebuildTexture,40);
+      featherInput._timer=setTimeout(()=>{
+        if(selectedImage) rebuildTexture();
+        else if(selectedVideo) rebuildVideoTexture();
+      },40);
     });
 
     resetBtn.addEventListener('click',resetAll);
 
     removeBtn.addEventListener('click',()=>{
-      selectedImage=null;
-      maskCanvas=null;
-      if(photoTexture){photoTexture.dispose();photoTexture=null;}
-      if(photoMaterial){photoMaterial.map=null;photoMaterial.needsUpdate=true;}
-      if(photoMesh) photoMesh.visible=false;
+      clearCurrentMedia();
       if(placed) movePhoto();
       placeBtn.disabled=true;
-      notify('تم حذف الصورة');
+      notify('تم حذف الوسائط');
     });
 
     function pointerPos(e){return {x:e.clientX,y:e.clientY};}
 
     canvas.addEventListener('pointerdown',(e)=>{
-      if(!placed||!selectedImage) return;
+      if(!placed||!hasMedia()) return;
       e.preventDefault();
       canvas.setPointerCapture?.(e.pointerId);
       pointers.set(e.pointerId,pointerPos(e));
@@ -702,7 +879,7 @@
     },{passive:false});
 
     canvas.addEventListener('pointermove',(e)=>{
-      if(!pointers.has(e.pointerId)||!placed||!selectedImage) return;
+      if(!pointers.has(e.pointerId)||!placed||!hasMedia()) return;
       e.preventDefault();
       pointers.set(e.pointerId,pointerPos(e));
 
