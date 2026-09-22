@@ -1,34 +1,652 @@
 <!doctype html>
 <html lang="ar" dir="rtl">
 <head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
-<meta name="theme-color" content="#102520"><title>رماية عبودين · كرنفال AR</title>
-<link rel="stylesheet" href="./css/gallery.css?v=2">
-<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.185.1/examples/jsm/"}}</script>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+  <meta name="theme-color" content="#05070b">
+  <title>رماية عبودين — AR</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/@8thwall/engine-binary@1/dist/xr.js"
+          async crossorigin="anonymous" data-preload-chunks="slam"></script>
+
+  <script type="importmap">
+  {
+    "imports":{
+      "three":"https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.module.js",
+      "three/addons/":"https://cdn.jsdelivr.net/npm/three@0.185.1/examples/jsm/"
+    }
+  }
+  </script>
+
+  <style>
+    *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+    :root{--app-w:100vw;--app-h:100dvh}
+    html{margin:0;width:100%;height:100%;overflow:hidden;background:#03060b}
+    body{
+      position:fixed;left:0;top:0;margin:0;
+      width:var(--app-w);height:var(--app-h);
+      overflow:hidden;background:#03060b;touch-action:none;
+      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Tahoma,Arial,sans-serif;
+      color:#fff;overscroll-behavior:none
+    }
+    button,a{font:inherit}
+    #camerafeed{
+      position:fixed!important;left:0!important;top:0!important;
+      width:var(--app-w)!important;height:var(--app-h)!important;
+      display:block!important;z-index:0!important
+    }
+    .ui{position:fixed;left:0;top:0;width:var(--app-w);height:var(--app-h);z-index:20;pointer-events:none}
+    .home-btn{
+      position:fixed;left:14px;top:max(14px,env(safe-area-inset-top));z-index:60;
+      pointer-events:auto;text-decoration:none;color:#fff;
+      background:rgba(5,10,17,.76);border:1px solid rgba(255,255,255,.16);
+      border-radius:999px;padding:9px 13px;font-size:12px;font-weight:900;line-height:1;
+      backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+      box-shadow:0 8px 28px rgba(0,0,0,.24);touch-action:manipulation
+    }
+    .home-btn:active{transform:scale(.96)}
+    .top{
+      position:absolute;top:max(14px,env(safe-area-inset-top));left:112px;right:14px;
+      display:flex;align-items:center;justify-content:space-between;gap:10px
+    }
+    .pill{
+      background:rgba(5,10,17,.70);border:1px solid rgba(255,255,255,.14);
+      backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+      border-radius:999px;padding:9px 12px;box-shadow:0 8px 28px rgba(0,0,0,.25);
+      font-size:12px;font-weight:800
+    }
+    .score{font-size:13px}
+    .crosshair{
+      position:absolute;left:50%;top:50%;width:36px;height:36px;
+      transform:translate(-50%,-50%);filter:drop-shadow(0 2px 4px #000)
+    }
+    .crosshair:before,.crosshair:after{content:"";position:absolute;background:#fff;border-radius:2px}
+    .crosshair:before{width:2px;height:36px;left:17px;top:0}
+    .crosshair:after{height:2px;width:36px;left:0;top:17px}
+    .crosshair .dot{
+      position:absolute;width:6px;height:6px;border-radius:50%;background:#ff4d55;
+      left:15px;top:15px;box-shadow:0 0 10px #ff4d55
+    }
+    .guide{
+      position:absolute;left:50%;top:35%;width:min(88vw,420px);
+      transform:translate(-50%,-50%);text-align:center;line-height:1.8;font-size:14px;
+      text-shadow:0 2px 14px rgba(0,0,0,.95);transition:.2s
+    }
+    .guide b{display:block;font-size:19px;margin-bottom:4px}
+    .guide.hidden{opacity:0;visibility:hidden}
+    .fire{
+      pointer-events:auto;position:absolute;right:20px;
+      bottom:max(28px,env(safe-area-inset-bottom));width:88px;height:88px;border-radius:50%;
+      border:2px solid rgba(255,255,255,.38);background:rgba(214,38,50,.80);
+      color:#fff;font-size:15px;font-weight:950;box-shadow:0 10px 30px rgba(0,0,0,.30);
+      touch-action:none
+    }
+    .fire:active{transform:scale(.93)}
+    .fire span{display:block;font-size:10px;font-weight:700;opacity:.76;margin-top:3px}
+    .recenter{
+      pointer-events:auto;position:absolute;left:18px;
+      bottom:max(32px,env(safe-area-inset-bottom));border:1px solid rgba(255,255,255,.17);
+      background:rgba(5,10,17,.72);color:#fff;border-radius:16px;
+      padding:11px 14px;font-weight:850;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)
+    }
+    .toast{
+      position:absolute;left:50%;top:16%;transform:translate(-50%,-6px);opacity:0;
+      transition:.18s;background:rgba(5,10,17,.82);border:1px solid rgba(255,255,255,.14);
+      border-radius:999px;padding:9px 14px;font-size:12px;white-space:nowrap
+    }
+    .toast.show{opacity:1;transform:translate(-50%,0)}
+    .hitflash{position:absolute;inset:0;border:0 solid rgba(255,255,255,0);pointer-events:none;transition:.08s}
+    .hitflash.on{border-width:6px;border-color:rgba(255,255,255,.48)}
+    #intro{
+      position:fixed;inset:0;z-index:40;
+      background:radial-gradient(circle at 50% 28%,#26323f 0,#0b1118 46%,#03060b 100%);
+      display:flex;align-items:flex-end;justify-content:center;
+      padding:22px 18px max(28px,env(safe-area-inset-bottom))
+    }
+    .card{
+      width:min(100%,520px);background:rgba(255,255,255,.07);
+      border:1px solid rgba(255,255,255,.12);border-radius:28px;padding:24px;
+      backdrop-filter:blur(15px);-webkit-backdrop-filter:blur(15px)
+    }
+    .target-icon{
+      width:78px;height:78px;border-radius:50%;margin:0 auto 18px;
+      background:
+        radial-gradient(circle,#de3546 0 11%,#fff 12% 28%,#de3546 29% 45%,#fff 46% 61%,#273443 62% 100%);
+      box-shadow:0 18px 45px rgba(0,0,0,.26),inset 0 0 0 2px rgba(255,255,255,.18)
+    }
+    .card h1{margin:0 0 10px;font-size:28px;text-align:center}
+    .card p{margin:0 0 18px;color:#d6dce6;font-size:14px;line-height:1.85;text-align:center}
+    .start{
+      width:100%;height:58px;border:0;border-radius:18px;background:#fff;color:#091019;
+      font-size:16px;font-weight:950
+    }
+    .tiny{font-size:11px!important;color:#aab4c3!important;margin-top:12px!important}
+    .tiny a{color:#cfd8e5}
+    .error{display:none;margin-top:12px;color:#ffc0c0;font-size:12px;line-height:1.7;text-align:center}
+    @media(orientation:landscape) and (max-height:520px){
+      .guide{top:27%}.fire{width:76px;height:76px}.card{padding:18px}.target-icon{width:58px;height:58px;margin-bottom:10px}
+      .card h1{font-size:23px}.card p{font-size:12px;margin-bottom:12px}.start{height:48px}
+    }
+  </style>
 </head>
-<body data-state="intro">
-<canvas id="camerafeed" aria-label="منصة الرماية ثلاثية الأبعاد"></canvas>
-<div class="vignette" id="vignette"></div>
-<header class="topbar"><a href="./index.html" class="home" aria-label="العودة للتجارب">↗ <span>التجارب</span></a><span class="wordmark">ABODEN <b>FAIRGROUND</b></span><button id="sound" class="icon-btn" aria-label="كتم الصوت" title="الصوت">♪</button></header>
-<section id="intro" class="intro">
-<div class="intro-content minimal">
-<p id="loadStatus" class="load-status" role="status">جاري تجهيز الكاميرا…</p>
-<button id="enterAR" class="enter-btn" hidden><span>فتح الكاميرا</span><span>↗</span></button>
-</div>
-</section>
-<div id="hud" class="hud" hidden><div class="hud-item"><small>النقاط</small><strong id="score">0</strong></div><div class="hud-item timer"><small>الوقت</small><strong id="timer">60</strong><div class="timer-track"><i id="timeBar"></i></div></div><div class="hud-item"><small>الدقة</small><strong id="accuracy">—</strong></div></div>
-<div id="crosshair" class="crosshair" hidden><i></i></div><div id="hitText" class="hit-text" aria-live="polite"></div><div id="countdown" class="countdown" hidden></div>
-<section id="placement" class="placement-dock" hidden>
-<span id="placementTitle">حرّك الجوال ببطء لمسح الأرضية</span>
-<button id="place" class="place-button" disabled>ثبّت المنصة</button>
-</section>
-<div id="controls" class="controls" hidden><div class="ammo"><small>الطلقات المتبقية</small><strong id="ammo">24</strong><div id="ammoPips" class="ammo-pips"></div><button id="reload" class="reload">تلقيم ↻</button></div><button id="fire" class="trigger" aria-label="إطلاق طلقة"><span class="trigger-ring"></span><b>إطلاق</b><small>اضغط</small></button></div>
-<button id="pause" class="pause icon-btn" hidden aria-label="إيقاف مؤقت">Ⅱ</button>
-<section id="results" class="modal" hidden><div class="result-card"><span class="eyebrow">ABODEN FAIRGROUND</span><div class="medal" id="medal">✦</div><h2 id="resultTitle">جولة مكتملة</h2><strong id="finalScore" class="final-score">0</strong><span class="score-label">نقطة</span><p id="resultComment"></p><div class="result-stats"><span>الإصابات <b id="finalHits"></b></span><span>الدقّة <b id="finalAccuracy"></b></span><span>أفضل نتيجة <b id="best"></b></span></div><button id="again" class="primary">جولة جديدة ↻</button><a class="text-button" href="./gallery.html">إعادة تثبيت المنصة</a></div></section>
-<section id="paused" class="modal" hidden><div class="result-card"><span class="eyebrow">استراحة قصيرة</span><h2>الجولة متوقفة</h2><p id="pauseReason">تابع عندما تكون مستعدًا.</p><button id="resume" class="primary">متابعة الجولة</button><a class="text-button" href="./gallery.html">الخروج من الجولة</a></div></section>
-<div id="error" class="error" role="alert" hidden><strong>تعذّر التشغيل</strong><p id="errorText"></p><button id="retry" class="primary" onclick="location.reload()">إعادة المحاولة</button><a href="./index.html" class="text-button">العودة للتجارب</a></div>
-<script type="module" src="./js/gallery/main.js?v=3"></script>
-<script>
-setTimeout(function(){if(!window.galleryLoaded){document.getElementById('errorText').textContent='لم يكتمل تحميل التجربة. تحقق من اتصال الإنترنت ثم أعد المحاولة.';document.getElementById('error').hidden=false;}},45000);
-</script>
-</body></html>
+<body>
+  <canvas id="camerafeed"></canvas>
+  <a class="home-btn" href="./index.html" aria-label="العودة إلى الصفحة الرئيسية">⌂ الرئيسية</a>
+
+  <div class="ui" id="gameUi" style="display:none">
+    <div class="top">
+      <div class="pill">◎ رماية عبودين</div>
+      <div class="pill score">النقاط: <span id="score">0</span></div>
+    </div>
+
+    <div class="crosshair"><span class="dot"></span></div>
+
+    <div class="guide" id="guide">
+      <b>وجّه الجوال نحو الهدف</b>
+      ضع علامة التصويب على البطّة أو العلبة ثم اضغط إطلاق.
+    </div>
+
+    <div class="toast" id="toast"></div>
+    <div class="hitflash" id="hitflash"></div>
+
+    <button class="recenter" id="recenterBtn">إعادة توزيع</button>
+    <button class="fire" id="fireBtn">إطلاق<span>اضغط</span></button>
+  </div>
+
+  <div id="intro">
+    <div class="card">
+      <div class="target-icon"></div>
+      <h1>رماية عبودين</h1>
+      <p>شغّل الكاميرا وستظهر أهداف الرماية أمامك مباشرة. وجّه علامة التصويب إلى الهدف واضغط إطلاق.</p>
+      <button class="start" id="startBtn" disabled>جاري تجهيز AR…</button>
+      <div class="error" id="errorBox"></div>
+      <p class="tiny">تستخدم التجربة موديلات البندقية والعلب والبطّات الموجودة في المشروع. <a href="./assets/gallery/CREDITS.md" target="_blank" rel="noopener">مصادر الموديلات</a></p>
+    </div>
+  </div>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
+    window.THREE=THREE;
+
+    const canvas=document.getElementById('camerafeed');
+    const intro=document.getElementById('intro');
+    const gameUi=document.getElementById('gameUi');
+    const startBtn=document.getElementById('startBtn');
+    const errorBox=document.getElementById('errorBox');
+    const scoreEl=document.getElementById('score');
+    const guide=document.getElementById('guide');
+    const recenterBtn=document.getElementById('recenterBtn');
+    const fireBtn=document.getElementById('fireBtn');
+    const toast=document.getElementById('toast');
+    const hitflash=document.getElementById('hitflash');
+
+    let xrReady=false;
+    let xrStarted=false;
+    let scene,camera,renderer;
+    let rangeRoot=null;
+    let rifle=null;
+    let rifleTemplate=null;
+    let duckTemplate=null;
+    let canTemplate=null;
+    let score=0;
+    let lastTime=performance.now();
+    let firstShot=true;
+
+    const targets=[];
+    const raycaster=new THREE.Raycaster();
+    const centerNdc=new THREE.Vector2(0,0);
+    const camPos=new THREE.Vector3();
+    const forward=new THREE.Vector3();
+    const rangeCenter=new THREE.Vector3();
+
+    function syncVisualViewport(){
+      const vv=window.visualViewport;
+      const w=Math.round(vv?.width||window.innerWidth||document.documentElement.clientWidth);
+      const h=Math.round(vv?.height||window.innerHeight||document.documentElement.clientHeight);
+      document.documentElement.style.setProperty('--app-w',w+'px');
+      document.documentElement.style.setProperty('--app-h',h+'px');
+      canvas.style.setProperty('width',w+'px','important');
+      canvas.style.setProperty('height',h+'px','important');
+      requestAnimationFrame(()=>{if(renderer?.setSize)renderer.setSize(w,h,false);});
+    }
+    syncVisualViewport();
+    window.addEventListener('resize',syncVisualViewport,{passive:true});
+    window.addEventListener('orientationchange',()=>{setTimeout(syncVisualViewport,80);setTimeout(syncVisualViewport,350);},{passive:true});
+    window.visualViewport?.addEventListener('resize',syncVisualViewport,{passive:true});
+
+    function notify(msg){
+      toast.textContent=msg;
+      toast.classList.add('show');
+      clearTimeout(window.__shootToast);
+      window.__shootToast=setTimeout(()=>toast.classList.remove('show'),900);
+    }
+
+    function normalizeModel(raw,targetHeight){
+      raw.updateMatrixWorld(true);
+      const box=new THREE.Box3().setFromObject(raw);
+      const size=box.getSize(new THREE.Vector3());
+      const center=box.getCenter(new THREE.Vector3());
+      raw.position.x-=center.x;
+      raw.position.z-=center.z;
+      raw.position.y-=box.min.y;
+      const holder=new THREE.Group();
+      holder.add(raw);
+      holder.scale.setScalar(targetHeight/Math.max(size.y,.001));
+      holder.traverse(o=>{
+        if(!o.isMesh)return;
+        o.castShadow=false;
+        o.receiveShadow=false;
+        if(o.material){
+          o.material=o.material.clone();
+          o.material.side=THREE.DoubleSide;
+        }
+      });
+      return holder;
+    }
+
+    const BARREL_FRACTION=.4;
+    function trimToBarrel(geometry,cutoffZ){
+      const src=geometry.index?geometry.toNonIndexed():geometry;
+      const pos=src.attributes.position;
+      if(!pos)return src;
+      const triCount=pos.count/3;
+      const groups=src.groups.length?src.groups:[{start:0,count:pos.count,materialIndex:0}];
+      const triMat=new Array(triCount).fill(0);
+      for(const g of groups){
+        const from=Math.floor(g.start/3),to=Math.floor((g.start+g.count)/3);
+        for(let t=from;t<to;t++)triMat[t]=g.materialIndex;
+      }
+      const names=Object.keys(src.attributes);
+      const kept={};
+      for(const n of names)kept[n]=[];
+      const keptMat=[];
+      for(let t=0;t<triCount;t++){
+        const i=t*3;
+        if(pos.getZ(i)>cutoffZ||pos.getZ(i+1)>cutoffZ||pos.getZ(i+2)>cutoffZ)continue;
+        for(let v=0;v<3;v++){
+          for(const n of names){
+            const a=src.attributes[n];
+            for(let c=0;c<a.itemSize;c++){
+              const index=(i+v)*a.itemSize+c;
+              kept[n].push(a.array[index]);
+            }
+          }
+        }
+        keptMat.push(triMat[t]);
+      }
+      const out=new THREE.BufferGeometry();
+      for(const n of names){
+        const a=src.attributes[n];
+        out.setAttribute(n,new THREE.BufferAttribute(new Float32Array(kept[n]),a.itemSize));
+      }
+      let runStart=0;
+      for(let t=1;t<=keptMat.length;t++){
+        if(t===keptMat.length||keptMat[t]!==keptMat[runStart]){
+          out.addGroup(runStart*3,(t-runStart)*3,keptMat[runStart]);
+          runStart=t;
+        }
+      }
+      out.computeBoundingBox();
+      out.computeBoundingSphere();
+      return out;
+    }
+
+    async function prepareModels(){
+      const loader=new GLTFLoader();
+      const [duckGltf,canGltf,rifleGltf]=await Promise.all([
+        loader.loadAsync('./assets/gallery/duck-target.glb'),
+        loader.loadAsync('./assets/gallery/tin-can.glb'),
+        loader.loadAsync('./assets/gallery/rifle.glb')
+      ]);
+
+      duckTemplate=normalizeModel(duckGltf.scene,.40);
+      canTemplate=normalizeModel(canGltf.scene,.22);
+
+      const raw=rifleGltf.scene;
+      raw.updateMatrixWorld(true);
+      const fullBox=new THREE.Box3().setFromObject(raw);
+      const fullSize=fullBox.getSize(new THREE.Vector3());
+      const fullCenter=fullBox.getCenter(new THREE.Vector3());
+      const cutoffZ=fullCenter.z-BARREL_FRACTION*(fullSize.z/2);
+      raw.traverse(o=>{if(o.isMesh)o.geometry=trimToBarrel(o.geometry,cutoffZ);});
+      raw.updateMatrixWorld(true);
+      const box=new THREE.Box3().setFromObject(raw);
+      const center=box.getCenter(new THREE.Vector3());
+      raw.position.sub(center);
+      rifleTemplate=new THREE.Group();
+      rifleTemplate.add(raw);
+      rifleTemplate.scale.setScalar(.72/Math.max(fullSize.z,.001));
+      rifleTemplate.position.set(0,-.22,-.55);
+      rifleTemplate.rotation.x=-.06;
+      rifleTemplate.traverse(o=>{if(o.isMesh){o.castShadow=false;o.receiveShadow=false;}});
+    }
+
+    const metal=new THREE.MeshStandardMaterial({color:0x28323b,roughness:.58,metalness:.48});
+    const edge=new THREE.MeshStandardMaterial({color:0xc8a75d,roughness:.42,metalness:.52});
+    function addBox(parent,w,h,d,mat,x,y,z){
+      const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat);
+      m.position.set(x,y,z);
+      parent.add(m);
+      return m;
+    }
+
+    function tagTarget(root,target){
+      root.traverse(o=>{if(o.isMesh)o.userData.shootingTarget=target;});
+    }
+
+    function createCan(x,y,z,index){
+      const pivot=new THREE.Group();
+      pivot.position.set(x,y,z);
+      const model=canTemplate.clone(true);
+      pivot.add(model);
+      const target={
+        kind:'can',index,pivot,model,points:10,active:true,
+        base:new THREE.Vector3(x,y,z),vx:0,vy:0,vz:0,spin:0,resetAt:0
+      };
+      tagTarget(model,target);
+      rangeRoot.add(pivot);
+      targets.push(target);
+    }
+
+    function createDuck(x,y,z,index){
+      const pivot=new THREE.Group();
+      pivot.position.set(x,y,z);
+      const model=duckTemplate.clone(true);
+      pivot.add(model);
+      const target={
+        kind:'duck',index,pivot,model,points:25,active:true,
+        base:new THREE.Vector3(x,y,z),phase:index*2.1,resetAt:0,fall:0
+      };
+      tagTarget(model,target);
+      rangeRoot.add(pivot);
+      targets.push(target);
+    }
+
+    function buildRange(){
+      if(rangeRoot)scene.remove(rangeRoot);
+      targets.length=0;
+      rangeRoot=new THREE.Group();
+      rangeRoot.name='aboden-shooting-range';
+
+      addBox(rangeRoot,2.65,.10,.30,metal,0,.58,0);
+      addBox(rangeRoot,2.70,.025,.34,edge,0,.64,0);
+      addBox(rangeRoot,2.55,.06,.11,metal,0,1.20,0);
+      for(const x of [-1.28,1.28])addBox(rangeRoot,.08,1.35,.10,metal,x,.86,0);
+
+      const canXs=[-.23,0,.23];
+      createCan(canXs[0],.66,.02,0);
+      createCan(canXs[1],.66,.02,1);
+      createCan(canXs[2],.66,.02,2);
+      createCan(-.115,.88,.02,3);
+      createCan(.115,.88,.02,4);
+      createCan(0,1.10,.02,5);
+
+      createDuck(-.92,1.28,.03,0);
+      createDuck(0,1.28,.03,1);
+      createDuck(.92,1.28,.03,2);
+
+      scene.add(rangeRoot);
+      positionRangeFromCamera();
+    }
+
+    function positionRangeFromCamera(){
+      if(!camera||!rangeRoot)return;
+      camera.getWorldPosition(camPos);
+      camera.getWorldDirection(forward);
+      forward.y=0;
+      if(forward.lengthSq()<.0001)forward.set(0,0,-1);
+      forward.normalize();
+
+      rangeCenter.copy(camPos).addScaledVector(forward,2.65);
+      rangeCenter.y=Math.max(.10,camPos.y-1.35);
+
+      rangeRoot.position.copy(rangeCenter);
+      rangeRoot.rotation.y=Math.atan2(camPos.x-rangeCenter.x,camPos.z-rangeCenter.z);
+      resetTargets();
+    }
+
+    function resetTarget(t){
+      t.active=true;
+      t.resetAt=0;
+      t.pivot.visible=true;
+      t.pivot.position.copy(t.base);
+      t.pivot.rotation.set(0,0,0);
+      if(t.kind==='can'){
+        t.vx=t.vy=t.vz=t.spin=0;
+      }else{
+        t.fall=0;
+      }
+    }
+
+    function resetTargets(){
+      for(const t of targets)resetTarget(t);
+    }
+
+    function knockTarget(t){
+      if(!t.active)return;
+      t.active=false;
+      t.resetAt=performance.now()+1600;
+      if(t.kind==='can'){
+        t.vy=.9+Math.random()*.45;
+        t.vx=(Math.random()-.5)*.85;
+        t.vz=.35+Math.random()*.25;
+        t.spin=(Math.random()<.5?-1:1)*(5+Math.random()*3);
+      }else{
+        t.fall=0;
+      }
+    }
+
+    function findTarget(object){
+      let o=object;
+      while(o&&!o.userData.shootingTarget)o=o.parent;
+      return o?.userData.shootingTarget||null;
+    }
+
+    function fire(){
+      if(!xrStarted||!camera||!rangeRoot)return;
+      camera.updateMatrixWorld(true);
+      rangeRoot.updateMatrixWorld(true);
+      raycaster.setFromCamera(centerNdc,camera);
+
+      const activeMeshes=[];
+      for(const t of targets){
+        if(!t.active)continue;
+        t.model.traverse(o=>{if(o.isMesh)activeMeshes.push(o);});
+      }
+
+      const hit=raycaster.intersectObjects(activeMeshes,false)[0];
+      if(hit){
+        const target=findTarget(hit.object);
+        if(target&&target.active){
+          knockTarget(target);
+          score+=target.points;
+          scoreEl.textContent=String(score);
+          notify(target.kind==='duck'?'إصابة بطّة +25':'إصابة علبة +10');
+          hitflash.classList.add('on');
+          setTimeout(()=>hitflash.classList.remove('on'),70);
+          if(navigator.vibrate)navigator.vibrate([15,12,25]);
+        }
+      }else{
+        notify('لم تصب الهدف');
+        if(navigator.vibrate)navigator.vibrate(7);
+      }
+
+      if(firstShot){
+        firstShot=false;
+        guide.classList.add('hidden');
+      }
+
+      if(rifle){
+        rifle.rotation.x=-.11;
+        setTimeout(()=>{if(rifle)rifle.rotation.x=-.06;},80);
+      }
+    }
+
+    function updateTargets(dt,now){
+      for(const t of targets){
+        if(t.active){
+          if(t.kind==='duck'){
+            t.pivot.position.x=t.base.x+Math.sin(now*.0013+t.phase)*.20;
+          }
+          continue;
+        }
+
+        if(t.kind==='can'){
+          t.vy-=4.8*dt;
+          t.pivot.position.x+=t.vx*dt;
+          t.pivot.position.y+=t.vy*dt;
+          t.pivot.position.z+=t.vz*dt;
+          t.pivot.rotation.x+=t.spin*dt;
+          t.pivot.rotation.z+=t.spin*.6*dt;
+        }else{
+          t.fall=Math.min(1,t.fall+dt*4.8);
+          t.pivot.rotation.x=-t.fall*Math.PI*.52;
+        }
+
+        if(now>=t.resetAt)resetTarget(t);
+      }
+    }
+
+    fireBtn.addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation();fire();});
+
+    recenterBtn.addEventListener('click',e=>{
+      e.preventDefault();
+      if(!camera)return;
+      positionRangeFromCamera();
+      score=0;
+      scoreEl.textContent='0';
+      firstShot=true;
+      guide.classList.remove('hidden');
+      try{XR8.XrController.recenter();}catch{}
+      notify('تمت إعادة الأهداف أمامك');
+    });
+
+    async function setupScene(){
+      const xrScene=XR8.Threejs.xrScene();
+      scene=xrScene.scene;
+      camera=xrScene.camera;
+      renderer=xrScene.renderer;
+
+      renderer.shadowMap.enabled=false;
+      syncVisualViewport();
+      setTimeout(syncVisualViewport,80);
+      setTimeout(syncVisualViewport,350);
+
+      scene.add(new THREE.HemisphereLight(0xffffff,0x66707e,1.75));
+      const key=new THREE.DirectionalLight(0xffffff,1.35);
+      key.position.set(2,4,1);
+      scene.add(key);
+
+      camera.position.set(0,1.5,2.0);
+      XR8.XrController.updateCameraProjectionMatrix({
+        origin:camera.position,
+        facing:camera.quaternion
+      });
+
+      guide.innerHTML='<b>جاري تجهيز الأهداف…</b>لحظات بسيطة';
+      await prepareModels();
+      buildRange();
+
+      rifle=rifleTemplate.clone(true);
+      camera.add(rifle);
+      scene.add(camera);
+
+      guide.innerHTML='<b>وجّه الجوال نحو الهدف</b>ضع علامة التصويب على البطّة أو العلبة ثم اضغط إطلاق.';
+      lastTime=performance.now();
+    }
+
+    function tick(){
+      if(!scene||!camera)return;
+      const now=performance.now();
+      const dt=Math.min(1/30,(now-lastTime)/1000||.016);
+      lastTime=now;
+      updateTargets(dt,now);
+    }
+
+    function worldModule(){
+      return{
+        name:'aboden-simple-shooting',
+        onStart:async()=>{
+          try{
+            await setupScene();
+            window.dispatchEvent(new Event('resize'));
+          }catch(err){
+            console.error(err);
+            notify('فشل تحميل موديلات الرماية');
+          }
+        },
+        onUpdate:tick,
+        onException:error=>{
+          console.error(error);
+          notify('حدث خطأ في التتبع');
+        }
+      };
+    }
+
+    startBtn.addEventListener('click',()=>{
+      if(!xrReady||xrStarted)return;
+      xrStarted=true;
+      startBtn.disabled=true;
+      startBtn.textContent='جاري فتح الكاميرا…';
+      errorBox.style.display='none';
+
+      try{
+        intro.style.display='none';
+        gameUi.style.display='block';
+        XR8.run({canvas});
+        syncVisualViewport();
+        setTimeout(syncVisualViewport,120);
+        setTimeout(syncVisualViewport,500);
+        setTimeout(syncVisualViewport,1200);
+      }catch(err){
+        console.error(err);
+        xrStarted=false;
+        intro.style.display='flex';
+        gameUi.style.display='none';
+        errorBox.style.display='block';
+        errorBox.textContent='تعذر تشغيل AR. حدّث الصفحة وحاول مرة أخرى.';
+        startBtn.disabled=false;
+        startBtn.textContent='حاول مرة أخرى';
+      }
+    });
+
+    function initializeXR(){
+      if(xrReady||!window.XR8||!window.THREE)return;
+      try{
+        XR8.XrController.configure({
+          disableWorldTracking:false,
+          enableLighting:true,
+          enableWorldPoints:true,
+          scale:'responsive'
+        });
+
+        XR8.addCameraPipelineModules([
+          XR8.GlTextureRenderer.pipelineModule(),
+          XR8.Threejs.pipelineModule(),
+          XR8.XrController.pipelineModule(),
+          worldModule()
+        ]);
+
+        xrReady=true;
+        startBtn.disabled=false;
+        startBtn.textContent='ابدأ التجربة';
+      }catch(err){
+        console.error(err);
+        errorBox.style.display='block';
+        errorBox.textContent='لم يكتمل تحميل محرك AR. أعد تحميل الصفحة.';
+      }
+    }
+
+    if(window.XR8)initializeXR();
+    else window.addEventListener('xrloaded',initializeXR,{once:true});
+
+    setTimeout(()=>{
+      if(!xrReady){
+        errorBox.style.display='block';
+        errorBox.textContent='محرك AR يستغرق وقتًا أطول من المتوقع. تحقق من الاتصال ثم أعد تحميل الصفحة.';
+      }
+    },12000);
+  </script>
+</body>
+</html>
