@@ -8,6 +8,14 @@ This experiment adapts combat-system ideas and balancing values from:
 
 The AR-Aboden integration is a fresh XR8/mobile implementation rather than a copy of the original mission runtime. It reuses the MIT-licensed weapon balance and AI-state concepts (patrol, suspicious, combat, search/reposition).
 
+## Enemy character model
+
+The AR enemy presentation uses the **Character Soldier** from Quaternius' Toon Shooter Game Kit, released under CC0 1.0. The runtime currently loads the web-optimized `soldier_t.glb` derivative published by the open-source Tiny Strike project. Tiny Strike documents that this GLB is derived from the Quaternius CC0 asset and processed for web use.
+
+The integration keeps its own invisible hit proxies for head/torso/arms/legs, normalizes the rendered GLB to a 1.78 m target height, aligns its lowest bound with the detected AR floor, and locks each enemy root to the captured floor Y while AI movement changes only X/Z.
+
+Animation clips used when present: `Idle`, `Walk`, `Idle_Shoot`, `Walk_Shoot`, and `Death`. The primitive soldier remains as a fallback if the external GLB cannot be loaded.
+
 ## Audio
 
 This experiment intentionally does **not** use the Project I.G.I. recordings present in `operation-ink/public/sounds/igi/`.
