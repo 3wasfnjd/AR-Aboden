@@ -305,6 +305,13 @@
     let recordingCanvasStream=null;
     let recordingAudioStream=null;
     let recordedChunks=[];
+
+    let internalAudioContext=null;
+    let internalAudioSource=null;
+    let internalAudioDestination=null;
+    let internalMonitorGain=null;
+    let internalAudioVideo=null;
+    let videoSoundEnabled=false;
     let recordTimer=null;
     let recordStartedAt=0;
 
@@ -378,7 +385,23 @@
       }
     }
 
+    function destroyInternalAudioGraph(){
+      try{internalAudioSource?.disconnect();}catch(_){}
+      try{internalMonitorGain?.disconnect();}catch(_){}
+      try{internalAudioDestination?.disconnect?.();}catch(_){}
+      if(internalAudioContext){
+        try{internalAudioContext.close();}catch(_){}
+      }
+      internalAudioContext=null;
+      internalAudioSource=null;
+      internalAudioDestination=null;
+      internalMonitorGain=null;
+      internalAudioVideo=null;
+    }
+
     function clearCurrentMedia(){
+      destroyInternalAudioGraph();
+      videoSoundEnabled=false;
       if(selectedImage?.__url) URL.revokeObjectURL(selectedImage.__url);
       if(selectedVideo){
         try{selectedVideo.pause();}catch(_){}
@@ -863,6 +886,7 @@
       if(!selectedVideo) return;
       if(selectedVideo.paused){
         try{
+          await ensureInternalVideoAudio();
           await selectedVideo.play();
           playPauseBtn.textContent='Ⅱ إيقاف';
         }catch(err){
@@ -875,10 +899,16 @@
       }
     });
 
-    muteBtn.addEventListener('click',()=>{
+    muteBtn.addEventListener('click',async()=>{
       if(!selectedVideo) return;
-      selectedVideo.muted=!selectedVideo.muted;
-      muteBtn.textContent=selectedVideo.muted?'🔇 صامت':'🔊 صوت';
+      videoSoundEnabled=!videoSoundEnabled;
+      try{
+        await ensureInternalVideoAudio();
+        if(internalMonitorGain) internalMonitorGain.gain.value=videoSoundEnabled?1:0;
+      }catch(err){
+        console.warn(err);
+      }
+      muteBtn.textContent=videoSoundEnabled?'🔊 صوت':'🔇 صامت';
     });
 
     restartVideoBtn.addEventListener('click',()=>{
@@ -1045,35 +1075,70 @@
       notify('تم تجهيز تسجيل الفيديو');
     }
 
-    async function getRecordingAudioTrack(){
-      // canvas.captureStream() only contains video. Try to capture the chosen
-      // video's own audio first; if the browser cannot expose it, use the mic.
-      if(selectedVideo && !selectedVideo.muted){
-        try{
-          const capture=selectedVideo.captureStream?.() || selectedVideo.mozCaptureStream?.();
-          const track=capture?.getAudioTracks?.()[0];
-          if(track) return {track,stream:capture,source:'media'};
-        }catch(err){
-          console.warn('Selected-video audio capture unavailable',err);
+    async function ensureInternalVideoAudio(){
+      if(!selectedVideo) return null;
+
+      if(internalAudioVideo===selectedVideo &&
+         internalAudioContext &&
+         internalAudioDestination){
+        if(internalAudioContext.state==='suspended'){
+          try{await internalAudioContext.resume();}catch(_){}
         }
+        if(internalMonitorGain) internalMonitorGain.gain.value=videoSoundEnabled?1:0;
+        return internalAudioDestination;
       }
 
-      try{
-        if(!navigator.mediaDevices?.getUserMedia) return null;
-        const mic=await navigator.mediaDevices.getUserMedia({
-          video:false,
-          audio:{
-            echoCancellation:true,
-            noiseSuppression:true,
-            autoGainControl:true
-          }
-        });
-        const track=mic.getAudioTracks()[0];
-        return track ? {track,stream:mic,source:'microphone'} : null;
-      }catch(err){
-        console.warn('Microphone unavailable',err);
+      destroyInternalAudioGraph();
+
+      const AudioCtx=window.AudioContext||window.webkitAudioContext;
+      if(!AudioCtx) throw new Error('web-audio-unavailable');
+
+      const ctx=new AudioCtx();
+      // Keep the media element itself unmuted so its PCM reaches Web Audio.
+      // Speaker volume is controlled separately with monitorGain.
+      selectedVideo.muted=false;
+
+      const source=ctx.createMediaElementSource(selectedVideo);
+      const captureDestination=ctx.createMediaStreamDestination();
+      const monitorGain=ctx.createGain();
+      monitorGain.gain.value=videoSoundEnabled?1:0;
+
+      // Internal soundtrack -> recorder.
+      source.connect(captureDestination);
+      // Optional local listening -> device speaker.
+      source.connect(monitorGain);
+      monitorGain.connect(ctx.destination);
+
+      internalAudioContext=ctx;
+      internalAudioSource=source;
+      internalAudioDestination=captureDestination;
+      internalMonitorGain=monitorGain;
+      internalAudioVideo=selectedVideo;
+
+      if(ctx.state==='suspended'){
+        try{await ctx.resume();}catch(_){}
+      }
+
+      return captureDestination;
+    }
+
+    async function getRecordingAudioTrack(){
+      // For a placed video, record the video's own soundtrack directly through
+      // Web Audio. Never fall back to the microphone, because that records room
+      // noise/echo instead of the source video's audio.
+      if(selectedVideo){
+        try{
+          const destination=await ensureInternalVideoAudio();
+          const track=destination?.stream?.getAudioTracks?.()[0];
+          if(track) return {track,stream:destination.stream,source:'media-internal'};
+        }catch(err){
+          console.warn('Internal video audio capture unavailable',err);
+        }
         return null;
       }
+
+      // Image-only AR recordings intentionally contain no microphone audio.
+      return null;
     }
 
     async function startRecording(){
@@ -1125,8 +1190,8 @@
           if(recordBtn.childNodes[0]) recordBtn.childNodes[0].nodeValue='● تسجيل فيديو ';
 
           recordingCanvasStream?.getTracks?.().forEach(track=>track.stop());
-          recordingAudioStream?.getTracks?.().forEach(track=>track.stop());
-          recordingStream?.getTracks?.().forEach(track=>track.stop());
+          // Do not stop recordingAudioStream tracks here: for video they belong
+          // to the persistent WebAudio destination and are reused next time.
           recordingCanvasStream=null;
           recordingAudioStream=null;
           recordingStream=null;
@@ -1146,15 +1211,13 @@
         if(recordBtn.childNodes[0]) recordBtn.childNodes[0].nodeValue='■ إيقاف التسجيل ';
         document.body.classList.add('recording-mode');
 
-        if(audioInfo?.source==='media') notify('بدأ التسجيل بصوت الفيديو');
-        else if(audioInfo?.source==='microphone') notify('بدأ التسجيل مع صوت الميكروفون');
-        else notify('بدأ التسجيل بدون صوت — اسمح بالميكروفون لإضافة الصوت');
+        if(audioInfo?.source==='media-internal') notify('بدأ التسجيل بالصوت الداخلي للفيديو');
+        else if(selectedVideo) notify('بدأ التسجيل بدون صوت — المتصفح لم يوفّر مسار الصوت الداخلي');
+        else notify('بدأ التسجيل بدون ميكروفون');
       }catch(err){
         console.error(err);
         document.body.classList.remove('recording-mode');
         recordingCanvasStream?.getTracks?.().forEach(track=>track.stop());
-        recordingAudioStream?.getTracks?.().forEach(track=>track.stop());
-        recordingStream?.getTracks?.().forEach(track=>track.stop());
         recordingCanvasStream=null;
         recordingAudioStream=null;
         recordingStream=null;
