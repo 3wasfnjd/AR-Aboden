@@ -353,11 +353,11 @@
     const MAX_SURFACE_DISTANCE = 8;
 
     // Surface-scanning gate: require the user to sweep the phone across a
-    // handful of distinct floor cells before placement unlocks, so the app
-    // has actually looked around the room instead of trusting the very
-    // first point it sees.
-    const SCAN_CELL_SIZE = 0.42;
-    const SCAN_REQUIRED_CELLS = 5;
+    // couple of distinct floor cells before placement unlocks, so the app
+    // has looked around a little instead of trusting the very first point
+    // it sees. Kept deliberately quick — a small wrist movement is enough.
+    const SCAN_CELL_SIZE = 0.32;
+    const SCAN_REQUIRED_CELLS = 2;
 
     const raycaster = new THREE.Raycaster();
     const centerNdc = new THREE.Vector2(0, 0);
@@ -861,13 +861,13 @@
       }
 
       const delta = prevHit.distanceTo(hit);
-      if (delta < .018) reticleStableMs += dt*1000;
+      if (delta < .035) reticleStableMs += dt*1000;
       else reticleStableMs = 0;
 
       prevHit.copy(hit);
 
       if (stablePoint.lengthSq()===0) stablePoint.copy(hit);
-      else stablePoint.lerp(hit,.16);
+      else stablePoint.lerp(hit,.28);
 
       // Surface-scanning phase: sweep the phone over a handful of distinct
       // floor cells before placement unlocks, so the app has actually
@@ -912,7 +912,7 @@
       arenaGroup.visible = true;
 
       const farEnough = hitDistance >= MIN_PLACE_DISTANCE;
-      surfaceReady = farEnough && reticleStableMs > 700;
+      surfaceReady = farEnough && reticleStableMs > 350;
 
       if(!farEnough){
         setStatus('ابتعد قليلًا عن هذه النقطة', false);
