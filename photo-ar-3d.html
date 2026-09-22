@@ -1036,7 +1036,7 @@
           recordStartedAt=0;
           recordTime.textContent='';
           recordBtn.classList.remove('recording');
-          recordBtn.textContent='● تسجيل فيديو ';
+          if(recordBtn.childNodes[0]) recordBtn.childNodes[0].nodeValue='● تسجيل فيديو ';
           recordingStream?.getTracks?.().forEach(track=>track.stop());
           recordingStream=null;
 
