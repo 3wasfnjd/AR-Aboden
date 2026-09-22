@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js';
 
 // Adapted for AR-Aboden from the gameplay concepts and balancing values in
 // byteab/operation-ink (MIT). This file is intentionally independent from the
@@ -21,6 +23,112 @@ const ENEMY_WEAPONS = {
 };
 
 const HIT_MULTIPLIER = {head:2.2, torso:1, arm:.6, leg:.7};
+
+const SOLDIER_MODEL_URL = 'https://raw.githubusercontent.com/guyz/tinystrike/main/assets/models/soldier_t.glb';
+const SOLDIER_SOURCE_HEIGHT = 2.1358;
+const SOLDIER_TARGET_HEIGHT = 1.78;
+const SOLDIER_MODEL_SCALE = SOLDIER_TARGET_HEIGHT / SOLDIER_SOURCE_HEIGHT;
+const SOLDIER_GUN_MESH_NAMES = new Set(['AK','SMG','Sniper','Pistol']);
+const SOLDIER_GUN_FOR_WEAPON = {
+  ak:'AK', smg:'SMG', sniper:'Sniper', pistol:'Pistol', shotgun:'AK'
+};
+let soldierAssetPromise = null;
+
+function loadSoldierAsset(){
+  if(soldierAssetPromise) return soldierAssetPromise;
+  soldierAssetPromise = new Promise((resolve,reject)=>{
+    const loader = new GLTFLoader();
+    loader.setCrossOrigin('anonymous');
+    loader.load(
+      SOLDIER_MODEL_URL,
+      gltf=>resolve({scene:gltf.scene,clips:gltf.animations||[]}),
+      undefined,
+      reject
+    );
+  }).catch(err=>{
+    console.warn('[Operation Ink AR] Soldier GLB failed; primitive fallback remains active.',err);
+    soldierAssetPromise = null;
+    return null;
+  });
+  return soldierAssetPromise;
+}
+
+function setSoldierAction(root,name,fade=.14){
+  const u=root?.userData;
+  if(!u?.mixer) return;
+  let action=u.actions?.[name];
+  if(!action) action=u.actions?.Idle || Object.values(u.actions||{})[0];
+  if(!action || u.actionName===name) return;
+
+  const previous=u.actions?.[u.actionName];
+  if(previous && previous!==action) previous.fadeOut(fade);
+
+  action.enabled=true;
+  action.reset();
+  action.fadeIn(fade);
+  if(name==='Death'){
+    action.setLoop(THREE.LoopOnce,1);
+    action.clampWhenFinished=true;
+  }else{
+    action.setLoop(THREE.LoopRepeat,Infinity);
+    action.clampWhenFinished=false;
+  }
+  action.play();
+  u.actionName=name;
+}
+
+async function attachSoldierModel(root){
+  const asset=await loadSoldierAsset();
+  if(!asset || !root?.parent) return false;
+
+  const model=cloneSkeleton(asset.scene);
+  const visual=new THREE.Group();
+  visual.name='quaternius-soldier-visual';
+  visual.rotation.y=Math.PI;
+  visual.scale.setScalar(SOLDIER_MODEL_SCALE);
+  visual.add(model);
+  root.add(visual);
+
+  model.traverse(obj=>{
+    if(obj.isMesh || obj.isSkinnedMesh){
+      obj.castShadow=true;
+      obj.receiveShadow=true;
+      obj.frustumCulled=false;
+    }
+    if(SOLDIER_GUN_MESH_NAMES.has(obj.name)){
+      obj.visible=obj.name===SOLDIER_GUN_FOR_WEAPON[root.userData.weapon];
+    }
+  });
+
+  root.updateMatrixWorld(true);
+  const box=new THREE.Box3().setFromObject(visual);
+  const rootWorld=new THREE.Vector3();
+  root.getWorldPosition(rootWorld);
+  if(Number.isFinite(box.min.y)){
+    visual.position.y += rootWorld.y - box.min.y;
+  }
+
+  const mixer=new THREE.AnimationMixer(model);
+  const actions={};
+  for(const clip of asset.clips){
+    if(!clip?.name) continue;
+    actions[clip.name]=mixer.clipAction(clip);
+  }
+
+  root.userData.visual=visual;
+  root.userData.mixer=mixer;
+  root.userData.actions=actions;
+  root.userData.actionName=null;
+  root.userData.fallbackVisual.visible=false;
+  setSoldierAction(root,root.userData.dead?'Death':'Idle',0);
+  mixer.update(0);
+
+  console.info('[Operation Ink AR] Soldier model ready', {
+    animations:Object.keys(actions),
+    height:SOLDIER_TARGET_HEIGHT
+  });
+  return true;
+}
 const UP = new THREE.Vector3(0,1,0);
 const FORWARD = new THREE.Vector3(0,0,1);
 
@@ -74,13 +182,17 @@ function makeWeaponMesh(name, dark){
 
 export function createSoldier(index, weapon='ak'){
   const root = new THREE.Group();
+  const fallbackVisual = new THREE.Group();
+  fallbackVisual.name = 'primitive-soldier-fallback';
+  root.add(fallbackVisual);
   root.name = 'operation-ink-enemy-' + index;
   root.userData = {
     id:index, weapon, health:100, state:'patrol', stateTime:0, fireCooldown:.6+Math.random(),
     reposition:0, target:new THREE.Vector3(), lastKnown:new THREE.Vector3(),
     hitMeshes:[], dead:false, phase:Math.random()*Math.PI*2, stride:0,
     homeAngle:Math.random()*Math.PI*2, homeRadius:1.4+Math.random()*1.4,
-    alertDelay:.18+Math.random()*.36
+    alertDelay:.18+Math.random()*.36,
+    fallbackVisual, visual:null, mixer:null, actions:{}, actionName:null, groundY:0
   };
 
   const uniform = makeMat(0x161a1e);
@@ -91,41 +203,41 @@ export function createSoldier(index, weapon='ak'){
 
   const pelvis = new THREE.Mesh(new THREE.BoxGeometry(.34,.24,.20),uniform);
   pelvis.position.y=.86;
-  root.add(pelvis); markHit(pelvis,root,'torso');
+  fallbackVisual.add(pelvis); markHit(pelvis,root,'torso');
 
   const torso = new THREE.Mesh(new THREE.BoxGeometry(.48,.62,.24),cloth);
   torso.position.y=1.23;
-  root.add(torso); markHit(torso,root,'torso');
+  fallbackVisual.add(torso); markHit(torso,root,'torso');
 
   const vestMesh = new THREE.Mesh(new THREE.BoxGeometry(.52,.40,.29),vest);
   vestMesh.position.set(0,1.25,-.015);
-  root.add(vestMesh); markHit(vestMesh,root,'torso');
+  fallbackVisual.add(vestMesh); markHit(vestMesh,root,'torso');
 
   const head = new THREE.Mesh(new THREE.SphereGeometry(.15,14,10),skin);
   head.position.y=1.68;
-  root.add(head); markHit(head,root,'head');
+  fallbackVisual.add(head); markHit(head,root,'head');
 
   const helmet = new THREE.Mesh(new THREE.SphereGeometry(.166,14,8,0,Math.PI*2,0,Math.PI*.58),uniform);
   helmet.position.y=1.73;
-  root.add(helmet); markHit(helmet,root,'head');
+  fallbackVisual.add(helmet); markHit(helmet,root,'head');
 
   const legGeo = new THREE.CylinderGeometry(.075,.085,.72,8);
   const armGeo = new THREE.CylinderGeometry(.06,.067,.57,8);
 
   const lLeg=limb(legGeo,uniform,-.11,.82,0,0,.015);
   const rLeg=limb(legGeo,uniform,.11,.82,0,0,-.015);
-  root.add(lLeg.pivot,rLeg.pivot);
+  fallbackVisual.add(lLeg.pivot,rLeg.pivot);
   markHit(lLeg.mesh,root,'leg'); markHit(rLeg.mesh,root,'leg');
 
   const lArm=limb(armGeo,cloth,-.31,1.47,0,.15,.10);
   const rArm=limb(armGeo,cloth,.31,1.47,0,-.15,-.10);
-  root.add(lArm.pivot,rArm.pivot);
+  fallbackVisual.add(lArm.pivot,rArm.pivot);
   markHit(lArm.mesh,root,'arm'); markHit(rArm.mesh,root,'arm');
 
   const gun = makeWeaponMesh(weapon,dark);
   gun.position.set(.10,1.27,-.26);
   gun.rotation.y=Math.PI;
-  root.add(gun);
+  fallbackVisual.add(gun);
 
   const muzzle = new THREE.Object3D();
   muzzle.position.set(.10,1.30,-(weapon==='pistol'?.48:weapon==='sniper'?.78:.61));
@@ -134,6 +246,9 @@ export function createSoldier(index, weapon='ak'){
   root.userData.parts={lLeg:lLeg.pivot,rLeg:rLeg.pivot,lArm:lArm.pivot,rArm:rArm.pivot,gun,muzzle,head};
   root.scale.setScalar(.94);
   root.traverse(o=>{ if(o.isMesh){o.castShadow=true;o.receiveShadow=true;} });
+  // Upgrade asynchronously. The primitive body remains as a reliable fallback
+  // until the skinned GLB and its animation clips are ready.
+  queueMicrotask(()=>attachSoldierModel(root));
   return root;
 }
 
@@ -196,6 +311,7 @@ export class OperationInkCombat {
     this.playerWeaponRoot.rotation.set(-.06,-.07,-.02);
     this.camera.add(this.playerWeaponRoot);
     this.setWeapon('ak',true);
+    loadSoldierAsset();
   }
 
   reset(anchor){
@@ -340,8 +456,12 @@ export class OperationInkCombat {
     root.userData.hitMeshes.forEach(m=>{
       const i=this.hitMeshes.indexOf(m); if(i>=0) this.hitMeshes.splice(i,1);
     });
-    root.rotation.z=(Math.random()>.5?1:-1)*1.42;
-    root.position.y+=.05;
+    if(root.userData.mixer){
+      setSoldierAction(root,'Death',.08);
+    }else{
+      root.rotation.z=(Math.random()>.5?1:-1)*1.42;
+      root.position.y=root.userData.groundY+.05;
+    }
     this.onEvent({type:'enemy-dead',position:root.position.clone(),weapon:root.userData.weapon});
     this.pushHud();
     if(this.enemies.every(e=>e.userData.dead)) this.nextWaveTimer=1.7;
@@ -384,6 +504,7 @@ export class OperationInkCombat {
       soldier.rotation.y=angle+Math.PI;
       soldier.userData.homeAngle=angle;
       soldier.userData.homeRadius=radius;
+      soldier.userData.groundY=this.anchor.y;
       soldier.userData.target.copy(soldier.position);
       soldier.userData.lastKnown.copy(player);
       this.scene.add(soldier);
@@ -444,6 +565,28 @@ export class OperationInkCombat {
 
   animateEnemy(enemy,dt,moving){
     const u=enemy.userData,p=u.parts;
+
+    if(u.mixer){
+      if(u.dead){
+        setSoldierAction(enemy,'Death',.08);
+        u.mixer.update(dt);
+        return;
+      }
+      let clip='Idle';
+      if(u.state==='combat'){
+        clip=moving>0 ? 'Walk_Shoot' : 'Idle_Shoot';
+      }else if(u.state==='suspicious'){
+        clip='Idle_Shoot';
+      }else if(moving>0){
+        clip='Walk';
+      }
+      setSoldierAction(enemy,clip);
+      const act=u.actions?.[u.actionName];
+      if(act && (clip==='Walk' || clip==='Walk_Shoot')) act.timeScale=moving>0?.95:1;
+      u.mixer.update(dt);
+      return;
+    }
+
     if(u.dead) return;
     const s=Math.sin(u.stride+u.phase);
     const amp=moving?.62:.07;
@@ -463,7 +606,12 @@ export class OperationInkCombat {
 
   updateEnemy(enemy,dt,player){
     const u=enemy.userData;
-    if(u.dead) return;
+    if(u.dead){
+      if(u.mixer) this.animateEnemy(enemy,dt,0);
+      return;
+    }
+    // Floor lock: enemy roots never inherit animation/root-motion Y drift.
+    enemy.position.y=Number.isFinite(u.groundY)?u.groundY:this.anchor.y;
     u.stateTime+=dt; u.fireCooldown=Math.max(0,u.fireCooldown-dt); u.reposition-=dt;
     const dist=flatDistance(enemy.position,player);
     let moving=0;
