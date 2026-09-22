@@ -206,6 +206,25 @@ export class Vehicle {
     this.container.visible = true;
   }
 
+  // Spectator-only pose adapter. Normal player physics below is unchanged.
+  updateAutonomous(pose, dt) {
+    this.container.position.set(pose.x,pose.y,pose.z);
+    this.container.rotation.set(0,pose.heading,0);
+    this.spherePos.set(pose.x,pose.y+this.sphereRadius,pose.z);
+    this.sphereVel.set(pose.vx,0,pose.vz);
+    this.modelVelocity.copy(this.sphereVel);
+    this.prevModelPos.copy(this.container.position);
+    const scale=this.container.scale.x || 1;
+    this.linearSpeed=pose.speed/scale;
+    this.acceleration=this.linearSpeed;
+    this.inputX=pose.steer;this.inputZ=1;
+    this.handbrake=pose.handbrake;this.driftIntensity=pose.driftIntensity;
+    // Reuse the body lean and countersteer, with frame-rate independent wheels.
+    const wheelAngles=this.wheels.map(w=>w.rotation.x);
+    this._animateVisuals(dt);
+    this.wheels.forEach((wheel,i)=>{wheel.rotation.x=wheelAngles[i]+pose.speed*dt/(.05*scale);});
+  }
+
   update(dt, input = {}) {
     this.inputX = THREE.MathUtils.clamp(input.x || 0, -1, 1);
     this.inputZ = THREE.MathUtils.clamp(input.z || 0, -1, 1);

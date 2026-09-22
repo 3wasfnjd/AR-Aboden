@@ -44,6 +44,7 @@ export function createArenaPhysics(world, centerX = 0, centerZ = 0, options = {}
   const wallThickness = options.wallThickness || 0.09;
   const wallHeight = options.wallHeight || 0.22;
   const floorMargin = options.floorMargin || 0.35;
+  const floorY = options.floorY ?? 0;
 
   const arena = {
     world,
@@ -52,6 +53,7 @@ export function createArenaPhysics(world, centerX = 0, centerZ = 0, options = {}
     wallThickness,
     wallHeight,
     floorMargin,
+    floorY,
     centerX,
     centerZ,
     floor: null,
@@ -64,7 +66,7 @@ export function createArenaPhysics(world, centerX = 0, centerZ = 0, options = {}
     }),
     motionType: MotionType.STATIC,
     objectLayer: world._OL_STATIC,
-    position: [centerX, -0.025, centerZ],
+    position: [centerX, floorY - 0.025, centerZ],
     friction: 5.0,
     restitution: 0.0,
   });
@@ -85,7 +87,7 @@ export function createArenaPhysics(world, centerX = 0, centerZ = 0, options = {}
       }),
       motionType: MotionType.STATIC,
       objectLayer: world._OL_STATIC,
-      position: [x, wallHeight * 0.5, z],
+      position: [x, floorY + wallHeight * 0.5, z],
       quaternion: [0, Math.sin(yaw * 0.5), 0, Math.cos(yaw * 0.5)],
       friction: 0.45,
       restitution: 0.12,
@@ -106,7 +108,7 @@ export function moveArenaPhysics(arena, centerX, centerZ) {
   rigidBody.setPosition(
     arena.world,
     arena.floor,
-    [centerX, -0.025, centerZ],
+    [centerX, (arena.floorY ?? 0) - 0.025, centerZ],
     false
   );
 
@@ -118,7 +120,7 @@ export function moveArenaPhysics(arena, centerX, centerZ) {
     rigidBody.setPosition(
       arena.world,
       arena.walls[i],
-      [x, arena.wallHeight * 0.5, z],
+      [x, (arena.floorY ?? 0) + arena.wallHeight * 0.5, z],
       false
     );
   }

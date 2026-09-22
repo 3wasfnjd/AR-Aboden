@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
   <meta name="theme-color" content="#05070b">
-  <title>AR Aboden — Hajwala Physics</title>
+  <title>AR Aboden — Drift Show</title>
 
   <script src="https://cdn.jsdelivr.net/npm/@8thwall/engine-binary@1/dist/xr.js"
           async crossorigin="anonymous" data-preload-chunks="slam"></script>
@@ -82,74 +82,20 @@
     .status{display:flex;align-items:center;gap:7px;font-size:12px}
     .dot{width:8px;height:8px;border-radius:50%;background:#f5c451;box-shadow:0 0 12px currentColor}
     .status.ready .dot{background:#61eb8b}
-    .status.scanning .dot{background:#5dd5ff;animation:scanPulse 1s ease-in-out infinite}
-    @keyframes scanPulse{0%,100%{opacity:1}50%{opacity:.35}}
     .guide{position:absolute;left:50%;top:40%;transform:translate(-50%,-50%);width:min(86vw,390px);text-align:center;line-height:1.8;text-shadow:0 2px 14px rgba(0,0,0,.95);font-size:14px;padding:0 12px}
     .guide b{display:block;font-size:19px;margin-bottom:5px}
     .guide.hidden{display:none}
     .toast{position:absolute;left:50%;top:18%;transform:translate(-50%,-8px);opacity:0;transition:.2s;background:rgba(5,10,17,.82);border:1px solid rgba(255,255,255,.15);border-radius:999px;padding:10px 15px;font-size:13px;white-space:nowrap;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
     .toast.show{opacity:1;transform:translate(-50%,0)}
-    .mode{position:absolute;left:14px;right:14px;bottom:205px;text-align:center;font-size:11px;opacity:.78;text-shadow:0 2px 10px #000}
+    .mode{position:absolute;left:14px;right:14px;bottom:max(24px,env(safe-area-inset-bottom));text-align:center;font-size:11px;opacity:.78;text-shadow:0 2px 10px #000}
     .controls{position:absolute;inset:0;display:none;pointer-events:none}
-    .steerZone{
-      position:absolute;left:10px;bottom:max(10px,env(safe-area-inset-bottom));
-      width:180px;height:180px;
-      pointer-events:auto;touch-action:none;
-      display:flex;align-items:flex-end;justify-content:flex-start;padding:20px;
-    }
-    .joyBase{
-      position:relative;width:130px;height:130px;border-radius:50%;
-      background:rgba(255,255,255,.12);
-      border:2px solid rgba(255,255,255,.25);
-      transition:background .15s,border-color .15s;
-      backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
-      box-shadow:0 6px 22px rgba(0,0,0,.22);
-    }
-    .joyBase.active{
-      background:rgba(255,255,255,.18);
-      border-color:rgba(255,255,255,.40);
-    }
-    .joyKnob{
-      position:absolute;top:50%;left:50%;
-      width:58px;height:58px;margin:-29px 0 0 -29px;
-      border-radius:50%;background:rgba(255,255,255,.40);
-      box-shadow:0 5px 16px rgba(0,0,0,.28);
-      pointer-events:none;
-    }
-    .handbrakeDock{
-      position:absolute;right:18px;bottom:max(24px,env(safe-area-inset-bottom));
-      pointer-events:auto;
-    }
-    .drive{
-      border:1px solid rgba(139,95,191,.38);
-      color:#fff;
-      background:linear-gradient(165deg,rgba(32,20,54,.78),rgba(13,13,22,.80));
-      backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
-      font-weight:900;font-size:12px;touch-action:none;
-      box-shadow:0 6px 24px rgba(0,0,0,.34);
-      transition:background .12s,transform .08s,border-color .12s;
-    }
-    .drive.handbrake{
-      width:108px;height:58px;border-radius:18px;
-      display:flex;align-items:center;justify-content:center;gap:6px;
-    }
-    .drive.handbrake::before{
-      content:"H";display:grid;place-items:center;
-      width:25px;height:25px;border-radius:50%;
-      border:2px solid rgba(255,255,255,.74);
-      font-size:12px;font-weight:950;
-    }
-    .drive.active{
-      transform:scale(.94);
-      background:linear-gradient(135deg,#8B5FBF,#5B8CFF);
-      border-color:rgba(255,255,255,.48);
-    }
     .placement{
       position:absolute;right:18px;top:calc(max(14px,env(safe-area-inset-top)) + 58px);
       display:flex;align-items:center;gap:8px;pointer-events:auto;flex-wrap:wrap;justify-content:flex-end;
       max-width:min(92vw,430px)
     }
     .smallBtn{border:1px solid rgba(255,255,255,.16);border-radius:16px;color:#fff;background:rgba(5,10,17,.68);padding:11px 14px;font-weight:800;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);touch-action:manipulation}
+    .smallBtn:disabled{opacity:.4}
     .smallBtn.primary{background:#fff;color:#0b1018}
     .scalePanel{
       display:flex;align-items:center;gap:5px;padding:5px;
@@ -169,14 +115,17 @@
     .card h1{font-size:28px;margin:0 0 10px}
     .card p{font-size:14px;line-height:1.85;margin:0 0 18px;color:#d6dce6}
     .start{width:100%;height:58px;border:0;border-radius:18px;background:#fff;color:#091019;font-size:16px;font-weight:900}
+    .loadBox{display:none;margin:4px 0 16px}
+    .loadBox.show{display:block}
+    .loadMeta{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px;font-size:12px;color:#dbe5f3;font-weight:800}
+    .loadPercent{font-variant-numeric:tabular-nums;color:#fff}
+    .loadTrack{height:10px;border-radius:999px;overflow:hidden;background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.08)}
+    .loadFill{width:0%;height:100%;border-radius:inherit;background:linear-gradient(90deg,#72d9ff,#ffffff);transition:width .16s ease}
+    .loadTrack.indeterminate .loadFill{width:32%;animation:loadSweep 1.05s ease-in-out infinite}
+    @keyframes loadSweep{0%{transform:translateX(-115%)}100%{transform:translateX(340%)}}
     .tiny{margin-top:11px!important;font-size:11px!important;color:#a9b2c1!important;text-align:center}
     .error{display:none;margin-top:12px;color:#ffc4c4;font-size:12px;line-height:1.7}
-    @media(max-width:370px){
-      .steerZone{width:164px;height:164px;padding:17px}
-      .joyBase{width:118px;height:118px}
-      .joyKnob{width:52px;height:52px;margin:-26px 0 0 -26px}
-      .drive.handbrake{width:98px;height:54px}
-    }
+
   </style>
 </head>
 <body>
@@ -190,16 +139,16 @@
     </div>
 
     <div class="guide" id="guide">
-      <b>امسح الأرض حولك أولًا</b>
-      حرّك الجوال ببطء فوق عدة نقاط من الأرضية حتى يكتمل المسح، ثم وجّه الجوال لمكان أبعد قليلًا حتى تصبح الحالة «السطح مستقر» وثبّت الحلبة كاملة.
+      <b>امسح الأرض بهدوء</b>
+      حرّك الجوال قليلًا ثم وجّهه للأرض. عند ظهور الحلبة، اختر مكانها واضغط «ثبّت هنا».
     </div>
 
     <div class="toast" id="toast"></div>
-    <div class="mode" id="modeText">حلبة أسفلت AR: سيارة أصغر + دخان هجولة + آثار إطارات</div>
+    <div class="mode" id="modeText">عرض درفت تلقائي — تحرّك حول الحلبة وشاهد</div>
 
     <div class="controls" id="controls">
       <div class="placement" id="placementTools">
-        <button class="smallBtn primary" id="placeBtn">ثبّت الحلبة</button>
+        <button class="smallBtn primary" id="placeBtn" disabled>ثبّت هنا</button>
         <div class="scalePanel" id="scalePanel" aria-label="حجم الحلبة قبل التثبيت">
           <button class="scaleBtn" id="scaleMinusBtn" type="button" aria-label="تصغير الحلبة">−</button>
           <span class="scaleValue" id="scaleValue">100%</span>
@@ -208,44 +157,38 @@
         <button class="smallBtn" id="recenterBtn">معايرة</button>
       </div>
 
-      <div class="steerZone" id="steerZone">
-        <div class="joyBase" id="joyBase">
-          <div class="joyKnob" id="joyKnob"></div>
-        </div>
-      </div>
-
-      <div class="handbrakeDock">
-        <button class="drive handbrake game-hud" id="handbrakeBtn">هاندبريك</button>
-      </div>
     </div>
   </div>
 
   <div id="intro">
     <div class="card">
-      <h1>حلبة هجولة AR</h1>
-      <p>حدد السطح أولًا، ثم كبّر أو صغّر الحلبة بالمعاينة حتى يناسبك حجمها، وبعدها ثبّتها وابدأ القيادة.</p>
+      <h1>عرض هجولة AR</h1>
+      <p>اختر مكان الحلبة وحجمها ثم ثبّتها. تبدأ السيارة عرض الدرفت تلقائيًا، ويمكنك مشاهدتها من أي زاوية.</p>
+      <div class="loadBox" id="loadBox" aria-live="polite">
+        <div class="loadMeta">
+          <span id="loadLabel">جاري تجهيز التجربة…</span>
+          <span class="loadPercent" id="loadPercent">0%</span>
+        </div>
+        <div class="loadTrack" id="loadTrack">
+          <div class="loadFill" id="loadFill"></div>
+        </div>
+      </div>
       <button class="start" id="startBtn" disabled>جاري تجهيز المحرك…</button>
       <div class="error" id="errorBox"></div>
-      <p class="tiny">التحكم مثل هجولة: الجويستك يحدد اتجاه السيارة ويدعس تلقائيًا، والهاندبريك مستقل للتفحيط.</p>
+      <p class="tiny">تجربة مشاهدة بدون تحكم بالسيارة. يتوقف العرض مؤقتًا عند ضعف التتبع.</p>
     </div>
   </div>
 
   <script type="module">
     import * as THREE from 'three';
     import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-    import { updateWorld } from 'crashcat';
 
-    import { Vehicle } from './js/Vehicle.js';
-    import { MobileControls } from './js/Controls.js';
-    import { SmokeTrails } from './js/Particles.js';
-    import { DriftMarks } from './js/DriftMarks.js';
-    import {
-      createVehicleWorld,
-      createArenaPhysics,
-      moveArenaPhysics,
-      createVehicleBody,
-      resetVehicleBody
-    } from './js/Physics.js';
+    import { GroundPlacement } from './js/ar/GroundPlacement.js?v=3';
+    import { Vehicle } from './js/Vehicle.js?v=drift-show-1';
+    import { ArenaAutopilot } from './js/ar/ArenaAutopilot.js?v=1';
+    import { SmokeTrails } from './js/Particles.js?v=drift-show-1';
+    import { DriftMarks } from './js/DriftMarks.js?v=drift-show-1';
+
 
     window.THREE = THREE;
 
@@ -295,6 +238,11 @@
     const canvas = document.getElementById('camerafeed');
     const intro = document.getElementById('intro');
     const startBtn = document.getElementById('startBtn');
+    const loadBox = document.getElementById('loadBox');
+    const loadLabel = document.getElementById('loadLabel');
+    const loadPercent = document.getElementById('loadPercent');
+    const loadTrack = document.getElementById('loadTrack');
+    const loadFill = document.getElementById('loadFill');
     const errorBox = document.getElementById('errorBox');
     const controlsEl = document.getElementById('controls');
     const guide = document.getElementById('guide');
@@ -308,91 +256,47 @@
     const scalePlusBtn = document.getElementById('scalePlusBtn');
     const scaleValue = document.getElementById('scaleValue');
 
-    const steerZone = document.getElementById('steerZone');
-    const joyBase = document.getElementById('joyBase');
-    const joyKnob = document.getElementById('joyKnob');
-    const handbrakeBtn = document.getElementById('handbrakeBtn');
-
-    const controls = new MobileControls({
-      steerZone,
-      joyBase,
-      joyKnob,
-      handbrakeBtn
-    });
-
     let xrReady = false;
     let xrStarted = false;
     let scene, camera, renderer;
     let reticle, shadowPlane;
     let arenaGroup = null;
-    let arenaPhysics = null;
+    let autopilot = null;
+    let carFootprint = .20;
     let vehicle = null;
     let smokeTrails = null;
     let driftMarks = null;
-    let world = null;
-    let body = null;
     let placed = false;
 
     let placementScale = 1.0;
-    const MIN_PLACEMENT_SCALE = 0.60;
+    const MIN_PLACEMENT_SCALE = 0.20;
     const MAX_PLACEMENT_SCALE = 1.40;
     const PLACEMENT_SCALE_STEP = 0.10;
 
-    const vehicleRadius = 0.075;
-    const CAR_LENGTH_METERS = 0.42;
-    const AR_EFFECT_SCALE = 0.09;
+    const CAR_LENGTH_METERS = 0.30;
+    const vehicleRadius = 0.075 * (CAR_LENGTH_METERS / .42);
+    const AR_EFFECT_SCALE = 0.09 * (CAR_LENGTH_METERS / .42);
     const ARENA_RADIUS = 1.55;
-    const ARENA_SEGMENTS = 28;
-    const ARENA_WALL_HEIGHT = 0.17;
-
-    // Placement is a raycast against an assumed floor plane, so nothing stops
-    // the arena from landing almost under the phone if the user is looking
-    // steeply down. MIN_PLACE_DISTANCE forces the final spot to be a bit
-    // further out; MAX_SURFACE_DISTANCE keeps the old far-range cutoff.
-    const MIN_PLACE_DISTANCE = 2.1;
-    const MAX_SURFACE_DISTANCE = 8;
-
-    // Surface-scanning gate: require the user to sweep the phone across a
-    // couple of distinct floor cells before placement unlocks, so the app
-    // has looked around a little instead of trusting the very first point
-    // it sees. Kept deliberately quick — a small wrist movement is enough.
-    const SCAN_CELL_SIZE = 0.32;
-    const SCAN_REQUIRED_CELLS = 2;
+    // GLB raised barriers start at radius >= 1.374 m after normalization.
+    const ARENA_ROAD_RADIUS = 1.30;
 
     const raycaster = new THREE.Raycaster();
     const centerNdc = new THREE.Vector2(0, 0);
     const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
     const hitPoint = new THREE.Vector3();
     const stablePoint = new THREE.Vector3();
-    const prevHit = new THREE.Vector3(999,999,999);
-
-    let reticleStableMs = 0;
+    const placement = new GroundPlacement();
+    let sceneReady = false;
+    let startupFailed = false;
+    let latestWorldPoints = [];
+    let nextGroundSample = 0;
+    let previewInitialized = false;
+    let drivingEnabled = false;
+    let arenaRoadY = 0;
+    const diagnostics = new URLSearchParams(location.search).has('placementDebug') ? [] : null;
+    if (diagnostics) window.arPlacementDiagnostics = diagnostics;
     let surfaceReady = false;
     let lastTick = performance.now();
-
-    const scanCells = new Set();
-    const scanMarkers = [];
-    let scanComplete = false;
-
-    const scanDotGeo = new THREE.RingGeometry(.05,.075,20).rotateX(-Math.PI/2);
-    const scanDotMat = new THREE.MeshBasicMaterial({
-      color:0x5dd5ff,transparent:true,opacity:.75,depthWrite:false,side:THREE.DoubleSide
-    });
-
-    function spawnScanMarker(x,z){
-      const dot = new THREE.Mesh(scanDotGeo,scanDotMat.clone());
-      dot.position.set(x,.006,z);
-      scene.add(dot);
-      scanMarkers.push(dot);
-    }
-
-    function clearScanMarkers(){
-      for(const dot of scanMarkers){
-        scene.remove(dot);
-        dot.material.dispose();
-      }
-      scanMarkers.length = 0;
-    }
 
     function notify(msg){
       toast.textContent = msg;
@@ -450,35 +354,111 @@
       }
     }
 
-    function cameraYaw(){
-      const d = new THREE.Vector3();
-      camera.getWorldDirection(d);
-      d.y = 0;
-      if (d.lengthSq() < 0.0001) return 0;
-      d.normalize();
-      return Math.atan2(d.x, d.z);
+    function setLoadProgress(value,label,{indeterminate=false}={}){
+      const pct = THREE.MathUtils.clamp(Math.round(value),0,100);
+      loadBox.classList.add('show');
+      loadLabel.textContent = label;
+      loadPercent.textContent = indeterminate ? '…' : pct + '%';
+      loadTrack.classList.toggle('indeterminate',indeterminate);
+      if(!indeterminate) loadFill.style.width = pct + '%';
+    }
+
+    function updateFileProgress(event,start,span,label){
+      if(event?.total > 0){
+        const fileRatio = THREE.MathUtils.clamp(event.loaded / event.total,0,1);
+        setLoadProgress(start + fileRatio * span,label);
+      }else{
+        setLoadProgress(start,label,{indeterminate:true});
+      }
+    }
+
+    async function loadArenaModel(){
+      const loader = new GLTFLoader();
+      setLoadProgress(2,'تحميل الحلبة…');
+      const gltf = await new Promise((resolve,reject)=>{
+        loader.load(
+          './assets/arena_custom_ar_full_quality.glb',
+          resolve,
+          (event)=>updateFileProgress(event,2,80,'تحميل الحلبة…'),
+          reject
+        );
+      });
+      setLoadProgress(82,'تم تحميل الحلبة');
+
+      const raw = gltf.scene || gltf.scenes?.[0];
+      if(!raw) throw new Error('Custom arena model not found');
+
+      // Preserve the authored model transform and normalize only through wrappers.
+      const centered = new THREE.Group();
+      centered.name = 'custom-arena-centered';
+      centered.add(raw);
+
+      raw.updateMatrixWorld(true);
+      const box = new THREE.Box3().setFromObject(raw);
+      const center = new THREE.Vector3();
+      const size = new THREE.Vector3();
+      box.getCenter(center);
+      box.getSize(size);
+
+      raw.position.x -= center.x;
+      raw.position.z -= center.z;
+      raw.position.y -= box.min.y;
+
+      centered.updateMatrixWorld(true);
+      const normalizedBox = new THREE.Box3().setFromObject(centered);
+      const normalizedSize = new THREE.Vector3();
+      normalizedBox.getSize(normalizedSize);
+
+      const diameter = Math.max(normalizedSize.x, normalizedSize.z) || 1;
+      const root = new THREE.Group();
+      root.name = 'custom-arena-root';
+      root.add(centered);
+      root.scale.setScalar((ARENA_RADIUS * 2) / diameter);
+
+      root.traverse((obj)=>{
+        if(!obj.isMesh) return;
+        obj.castShadow = true;
+        obj.receiveShadow = true;
+      });
+
+      // Match the collision floor to the authored asphalt at the centre.
+      root.updateMatrixWorld(true);
+      const bounds = new THREE.Box3().setFromObject(root);
+      const roadRay = new THREE.Raycaster(
+        new THREE.Vector3(0,bounds.max.y+.1,0), new THREE.Vector3(0,-1,0)
+      );
+      const roadHit = roadRay.intersectObject(root,true)[0];
+      arenaRoadY = roadHit ? roadHit.point.y : 0;
+      return root;
     }
 
     async function loadCar(){
       const loader = new GLTFLoader();
-      const paths = ['./assets/%20camaro.glb', './assets/camaro.glb'];
+      setLoadProgress(84,'تحميل السيارة…');
+      const gltf = await new Promise((resolve,reject)=>{
+        loader.load(
+          './assets/car_carton_ar.glb',
+          resolve,
+          (event)=>updateFileProgress(event,84,14,'تحميل السيارة…'),
+          reject
+        );
+      });
+      setLoadProgress(98,'جاري تجهيز المشهد…');
 
-      let model = null;
-      let lastError = null;
+      const rawModel = gltf.scene || gltf.scenes?.[0];
+      if (!rawModel) throw new Error('Cartoon car model not found');
 
-      for (const path of paths){
-        try{
-          const gltf = await new Promise((resolve,reject)=>{
-            loader.load(path, resolve, undefined, reject);
-          });
-          model = gltf.scene || gltf.scenes?.[0];
-          if (model) break;
-        }catch(err){
-          lastError = err;
-        }
-      }
+      // The cartoon car is authored facing -Z while Vehicle.js drives
+      // toward +Z. Correct the visual heading on a wrapper so the GLB's
+      // authored node transforms and wheel hierarchy stay untouched.
+      const model = new THREE.Group();
+      model.name = 'car-visual-root';
 
-      if (!model) throw lastError || new Error('Camaro model not found');
+      const orientation = new THREE.Group();
+      orientation.name = 'car-model-orientation';
+      orientation.rotation.y = Math.PI;
+      orientation.add(rawModel);
+      model.add(orientation);
 
       model.traverse((obj)=>{
         if (obj.isMesh){
@@ -506,6 +486,7 @@
       const scaled = new THREE.Box3().setFromObject(model);
       if (scaled.min.y < 0) model.position.y += -scaled.min.y;
 
+      console.info('[AR-Aboden] Loaded cartoon car');
       return model;
     }
 
@@ -559,245 +540,20 @@
       arenaGroup = new THREE.Group();
       arenaGroup.visible = false;
 
-      const textureLoader = new THREE.TextureLoader();
-      textureLoader.setCrossOrigin('anonymous');
-
-      const asphaltMap = textureLoader.load(
-        'https://raw.githubusercontent.com/3wasfnjd/hajwala/master/images/highway-asphalt.jpg'
-      );
-      const asphaltNormal = textureLoader.load(
-        'https://raw.githubusercontent.com/3wasfnjd/hajwala/master/images/highway-asphalt-normal.jpg'
-      );
-      const asphaltRoughness = textureLoader.load(
-        'https://raw.githubusercontent.com/3wasfnjd/hajwala/master/images/highway-asphalt-roughness.jpg'
-      );
-
-      for (const tex of [asphaltMap,asphaltNormal,asphaltRoughness]) {
-        tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-        tex.repeat.set(4,4);
-        tex.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
-      }
-      asphaltMap.colorSpace = THREE.SRGBColorSpace;
-
-      const arenaFloor = new THREE.Mesh(
-        new THREE.CircleGeometry(ARENA_RADIUS,72).rotateX(-Math.PI/2),
-        new THREE.MeshStandardMaterial({
-          map:asphaltMap,
-          normalMap:asphaltNormal,
-          roughnessMap:asphaltRoughness,
-          color:0xffffff,
-          roughness:1,
-          metalness:0,
-          transparent:true,
-          opacity:.97,
-          side:THREE.DoubleSide
-        })
-      );
-      arenaFloor.position.y = .004;
-      arenaFloor.receiveShadow = true;
-      arenaGroup.add(arenaFloor);
-
-      const innerRing = new THREE.Mesh(
-        new THREE.RingGeometry(ARENA_RADIUS*.54,ARENA_RADIUS*.56,72).rotateX(-Math.PI/2),
-        new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:.55,side:THREE.DoubleSide})
-      );
-      innerRing.position.y = .007;
-      arenaGroup.add(innerRing);
-
-      const centerMark = new THREE.Mesh(
-        new THREE.CircleGeometry(.06,32).rotateX(-Math.PI/2),
-        new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:.75,side:THREE.DoubleSide})
-      );
-      centerMark.position.y = .008;
-      arenaGroup.add(centerMark);
-
-      const wallThickness = .07;
-      const wallHeight = ARENA_WALL_HEIGHT;
-      const circumference = Math.PI * 2 * ARENA_RADIUS;
-      const segmentLength = circumference / ARENA_SEGMENTS * 1.10;
-
-      // Some visual barrier segments are replaced with stacked tires,
-      // matching the reference: 2 tires on the lower row, 3 on top.
-      // The continuous arena physics wall remains underneath so the car
-      // still cannot escape through these decorative tire sections.
-      const tireBarrierSlots = new Set([2,6,10,14,18,22,26]);
-
-      const whiteWallMaterial = new THREE.MeshStandardMaterial({
-        color:0xf2f2f2,
-        roughness:.72,
-        metalness:.06
-      });
-      const orangeWallMaterial = new THREE.MeshStandardMaterial({
-        color:0xffb000,
-        roughness:.72,
-        metalness:.06
-      });
-
-      const tireMaterial = new THREE.MeshStandardMaterial({
-        color:0x101113,
-        roughness:.97,
-        metalness:.01
-      });
-      const tireSideMaterial = new THREE.MeshStandardMaterial({
-        color:0x27292c,
-        roughness:.92,
-        metalness:.02
-      });
-
-      const tireGeometry = new THREE.TorusGeometry(.046,.014,8,18);
-      // Default torus faces local Z. Rotate so each tire stands vertically
-      // in the barrier plane (local Y/Z), with its face pointing radial.
-      tireGeometry.rotateY(Math.PI/2);
-
-      const tireAccentGeometry = new THREE.TorusGeometry(.046,.004,6,18);
-      tireAccentGeometry.rotateY(Math.PI/2);
-
-      function createTireBarrierCluster(index){
-        const cluster = new THREE.Group();
-
-        const layout = [
-          // bottom row: 2
-          {z:-.050,y:.046,tilt:.035},
-          {z: .050,y:.046,tilt:-.035},
-          // top row: 3
-          {z:-.092,y:.118,tilt:-.025},
-          {z: 0.000,y:.118,tilt:.020},
-          {z: .092,y:.118,tilt:-.020},
-        ];
-
-        layout.forEach((p,tireIndex)=>{
-          const tire = new THREE.Mesh(tireGeometry,tireMaterial);
-          tire.position.set(0,p.y,p.z);
-          tire.rotation.x=p.tilt;
-          tire.rotation.z=(tireIndex%2===0?.015:-.015);
-          tire.castShadow=true;
-          tire.receiveShadow=true;
-          cluster.add(tire);
-
-          const accent = new THREE.Mesh(tireAccentGeometry,tireSideMaterial);
-          accent.position.copy(tire.position);
-          accent.rotation.copy(tire.rotation);
-          cluster.add(accent);
-        });
-
-        // Slight per-cluster variation keeps the ring from looking copied/pasted.
-        cluster.rotation.x=(index%2===0?.008:-.008);
-        return cluster;
-      }
-
-      for(let i=0;i<ARENA_SEGMENTS;i++){
-        const a=i/ARENA_SEGMENTS*Math.PI*2;
-
-        if(tireBarrierSlots.has(i)){
-          const cluster=createTireBarrierCluster(i);
-          cluster.position.set(
-            Math.cos(a)*ARENA_RADIUS,
-            0,
-            Math.sin(a)*ARENA_RADIUS
-          );
-          // Same tangent orientation as the concrete barrier segment.
-          cluster.rotation.y=-a;
-          arenaGroup.add(cluster);
-          continue;
-        }
-
-        const wall=new THREE.Mesh(
-          new THREE.BoxGeometry(wallThickness,wallHeight,segmentLength),
-          i%2===0 ? whiteWallMaterial : orangeWallMaterial
-        );
-        wall.position.set(
-          Math.cos(a)*ARENA_RADIUS,
-          wallHeight*.5,
-          Math.sin(a)*ARENA_RADIUS
-        );
-        wall.rotation.y=-a;
-        wall.castShadow=true;
-        wall.receiveShadow=true;
-        arenaGroup.add(wall);
-      }
-
-      // Taller/larger flood-light poles, positioned just INSIDE the barrier.
-      // They stay decorative (no collision) so the driving physics remains clean.
-      const poleMaterial = new THREE.MeshStandardMaterial({
-        color:0x23272c,
-        roughness:.58,
-        metalness:.76
-      });
-      const lampMaterial = new THREE.MeshStandardMaterial({
-        color:0xffedbd,
-        emissive:0xffc66f,
-        emissiveIntensity:3.0,
-        roughness:.30,
-        metalness:.06
-      });
-
-      const poleGeometry = new THREE.CylinderGeometry(.010,.015,.50,10);
-      const crossbarGeometry = new THREE.BoxGeometry(.135,.014,.018);
-      const lampGeometry = new THREE.BoxGeometry(.043,.030,.020);
-      const baseGeometry = new THREE.CylinderGeometry(.028,.036,.024,10);
-
-      const lightAngles=[
-        Math.PI*.22,
-        Math.PI*.72,
-        Math.PI*1.22,
-        Math.PI*1.72
-      ];
-
-      lightAngles.forEach((a,index)=>{
-        const pole=new THREE.Group();
-
-        const mast=new THREE.Mesh(poleGeometry,poleMaterial);
-        mast.position.y=.25;
-        mast.castShadow=true;
-        pole.add(mast);
-
-        const base=new THREE.Mesh(baseGeometry,poleMaterial);
-        base.position.y=.012;
-        base.castShadow=true;
-        pole.add(base);
-
-        const bar=new THREE.Mesh(crossbarGeometry,poleMaterial);
-        bar.position.y=.492;
-        bar.castShadow=true;
-        pole.add(bar);
-
-        for(const side of [-1,1]){
-          const lamp=new THREE.Mesh(lampGeometry,lampMaterial);
-          lamp.position.set(side*.043,.486,-.015);
-          lamp.rotation.x=-.28;
-          lamp.castShadow=false;
-          pole.add(lamp);
-        }
-
-        // Inside the barrier line, close enough to read as part of it.
-        const radius=ARENA_RADIUS-.095;
-        pole.position.set(
-          Math.cos(a)*radius,
-          0,
-          Math.sin(a)*radius
-        );
-        pole.rotation.y=-a+Math.PI/2;
-        arenaGroup.add(pole);
-
-        // Warm light aimed as an omnidirectional fill for virtual arena assets.
-        const flood=new THREE.PointLight(0xffcf86,.95,1.45,2);
-        flood.position.set(
-          Math.cos(a)*radius,
-          .455,
-          Math.sin(a)*radius
-        );
-        flood.castShadow=false;
-        arenaGroup.add(flood);
-      });
+      // Show motion remains inside the measured inner road of this GLB.
+      const importedArena = await loadArenaModel();
+      arenaGroup.add(importedArena);
 
       scene.add(arenaGroup);
       updatePlacementScaleVisuals();
 
-      world = createVehicleWorld();
 
       const carModel = await loadCar();
       vehicle = new Vehicle();
       const carRoot = vehicle.init(carModel);
+      const carBounds = new THREE.Box3().setFromObject(carRoot);
+      carFootprint = Math.hypot(Math.max(Math.abs(carBounds.min.x),Math.abs(carBounds.max.x)),
+        Math.max(Math.abs(carBounds.min.z),Math.abs(carBounds.max.z)));
       carRoot.visible = false;
       scene.add(carRoot);
 
@@ -805,14 +561,19 @@
       smokeTrails = new SmokeTrails(scene, AR_EFFECT_SCALE, 0.55);
       driftMarks = new DriftMarks(scene, 'ar-aboden-arena', AR_EFFECT_SCALE, 9);
 
-      camera.position.set(0,1.5,2.0);
-      XR8.XrController.updateCameraProjectionMatrix({
-        origin: camera.position,
-        facing: camera.quaternion
-      });
-
-      setStatus('امسح الأرض', true);
+      // XR8 owns camera intrinsics/pose. Absolute scale estimates physical
+      // height; never overwrite the tracked camera with an assumed height.
+      placement.reset();
+      sceneReady = true;
       lastTick = performance.now();
+      setLoadProgress(100,'جاهز');
+      setStatus('حرّك الجوال لمسح الأرضية', false);
+
+      requestAnimationFrame(()=>{
+        if(startupFailed) return;
+        intro.style.display='none';
+        controlsEl.style.display='block';
+      });
     }
 
     function worldModule(){
@@ -821,132 +582,129 @@
         onStart:async()=>{
           try{
             await setupScene();
+            if(startupFailed){sceneReady=false;return;}
             window.dispatchEvent(new Event('resize'));
           }catch(err){
             console.error(err);
-            notify('فشل إعداد فيزياء السيارة');
+            loadTrack.classList.remove('indeterminate');
+            loadLabel.textContent='تعذر إكمال التحميل';
+            loadPercent.textContent='!';
+            errorBox.style.display='block';
+            errorBox.textContent='تعذر تحميل الحلبة أو السيارة. تحقق من الاتصال ثم أعد تحميل الصفحة.';
+            startBtn.textContent='أعد تحميل الصفحة';
+            startBtn.disabled=true;
           }
         },
-        // Driving the game state from XR8's own onUpdate (instead of a
-        // detached requestAnimationFrame loop) keeps it synced to the same
-        // tick that just refreshed the AR camera pose, so the arena/car no
-        // longer lag a frame behind the camera and appear to shake while
-        // panning.
-        onUpdate:tickWorld,
+        onUpdate:({processCpuResult})=>{
+          if (!sceneReady) return;
+          const now = performance.now();
+          const reality = processCpuResult?.reality;
+          placement.observe({now,status:reality?.trackingStatus,
+            position:reality?.position,rotation:reality?.rotation});
+          latestWorldPoints = reality?.worldPoints || [];
+          tickWorld(now);
+        },
+        onCameraStatusChange:({status})=>{
+          if(status==='failed') startupFailure('تعذر فتح الكاميرا. اسمح بالكاميرا من إعدادات المتصفح، ثم أعد المحاولة.');
+        },
         onException:(error)=>{
           console.error(error);
-          notify('حدث خطأ في التتبع');
+          if(!sceneReady) startupFailure('تعذر تشغيل التتبع. أعد تحميل الصفحة وحاول مجددًا.');
+          else {
+            placement.observe({now:performance.now(),status:'LIMITED'});
+            setStatus('توقف التتبع — أعد توجيه الجوال للأرضية',false);
+          }
         }
       };
     }
 
-    function updatePlacement(dt){
-      if (placed){
-        reticle.visible = false;
-        return;
-      }
+    function startupFailure(message){
+      xrStarted=false;
+      startBtn.disabled=false;
+      startBtn.textContent='إعادة تحميل التجربة';
+      startupFailed=true;
+      sceneReady=false;
+      intro.style.display='flex';
+      controlsEl.style.display='none';
+      errorBox.style.display='block';
+      errorBox.textContent=message;
+    }
 
-      raycaster.setFromCamera(centerNdc,camera);
-      const hit = raycaster.ray.intersectPlane(groundPlane,hitPoint);
-      const hitDistance = hit ? hit.distanceTo(camera.position) : Infinity;
-
-      if (!hit || hitDistance > MAX_SURFACE_DISTANCE){
-        reticle.visible = false;
-        if(arenaGroup) arenaGroup.visible = false;
-        reticleStableMs = 0;
-        surfaceReady = false;
-        status.classList.remove('scanning');
-        setStatus('ابحث عن الأرض', false);
-        return;
-      }
-
-      const delta = prevHit.distanceTo(hit);
-      if (delta < .035) reticleStableMs += dt*1000;
-      else reticleStableMs = 0;
-
-      prevHit.copy(hit);
-
-      if (stablePoint.lengthSq()===0) stablePoint.copy(hit);
-      else stablePoint.lerp(hit,.28);
-
-      // Surface-scanning phase: sweep the phone over a handful of distinct
-      // floor cells before placement unlocks, so the app has actually
-      // explored the surface instead of locking onto the very first point
-      // the camera happens to land on.
-      if(!scanComplete){
-        const gx = Math.round(stablePoint.x/SCAN_CELL_SIZE);
-        const gz = Math.round(stablePoint.z/SCAN_CELL_SIZE);
-        const cellKey = gx+','+gz;
-
-        if(!scanCells.has(cellKey)){
-          scanCells.add(cellKey);
-          spawnScanMarker(gx*SCAN_CELL_SIZE,gz*SCAN_CELL_SIZE);
-          if(navigator.vibrate) navigator.vibrate(8);
+    function updatePlacement(dt,now){
+      if (placed){reticle.visible=false;return;}
+      if (!placement.trackingReady(now)) placement.invalidate('tracking');
+      else if(now>=nextGroundSample){
+        nextGroundSample=now+100;
+        camera.updateMatrixWorld(true);
+        raycaster.setFromCamera(centerNdc,camera);
+        const hit=raycaster.ray.intersectPlane(groundPlane,hitPoint);
+        if(!hit || hit.distanceTo(camera.position)>6 || raycaster.ray.direction.y>-.15){
+          placement.invalidate('aim');
+        }else{
+          const observations=[...latestWorldPoints];
+          // FEATURE_POINT is the documented hit-test filter. Do not assume
+          // native plane anchors or DETECTED_SURFACE support in this engine.
+          try{
+            observations.push(...XR8.XrController.hitTest(.5,.5,['FEATURE_POINT']));
+          }catch(error){
+            // World points provide the same evidence if hit testing is unavailable.
+            if(diagnostics && !window.arHitTestError) window.arHitTestError=String(error);
+          }
+          placement.sample(hit,observations,now);
         }
-
-        reticle.visible = true;
-        reticle.position.set(stablePoint.x,.008,stablePoint.z);
-        reticle.rotation.y += dt*.6;
-        if(arenaGroup) arenaGroup.visible = false;
-
-        surfaceReady = false;
-        status.classList.add('scanning');
-        setStatus('🔍 امسح الأرض حولك… ' + scanCells.size + '/' + SCAN_REQUIRED_CELLS, false);
-
-        if(scanCells.size >= SCAN_REQUIRED_CELLS){
-          scanComplete = true;
-          status.classList.remove('scanning');
-          notify('تم مسح المكان! اختر موضع الحلبة الآن');
-          if(navigator.vibrate) navigator.vibrate([12,20,12]);
-        }
+      }
+      surfaceReady=placement.canLock(now);
+      placeBtn.disabled=!surfaceReady;
+      if(!placement.candidate){
+        reticle.visible=false;
+        arenaGroup.visible=false;
+        previewInitialized=false;
+        const messages={tracking:'حرّك الجوال ببطء حتى يستقر التتبع',aim:'وجّه المؤشر نحو الأرضية أمامك',surface:'اقترب من أرضية واضحة التفاصيل وحرّك الجوال قليلًا'};
+        setStatus(messages[placement.reason]||messages.surface,false);
         return;
       }
-
-      reticle.visible = true;
-      reticle.position.set(stablePoint.x,.008,stablePoint.z);
-      reticle.rotation.y += dt*.12;
-
-      // Full arena preview follows the detected surface before lock-in.
-      arenaGroup.position.set(stablePoint.x,0,stablePoint.z);
+      const p=placement.candidate;
+      if(!previewInitialized){stablePoint.set(p.x,p.y,p.z);previewInitialized=true;}
+      else stablePoint.lerp(hitPoint.set(p.x,p.y,p.z),1-Math.exp(-12*dt));
+      reticle.visible=true;
+      reticle.position.copy(stablePoint);
+      reticle.position.y+=.008;
+      arenaGroup.position.copy(stablePoint);
       arenaGroup.scale.setScalar(placementScale);
-      arenaGroup.visible = true;
+      arenaGroup.visible=true;
+      setStatus(placement.surface==='estimated'
+        ? 'أرضية تقديرية — اختر المكان واضغط ثبّت هنا'
+        : (placement.ready?'الموضع مستقر — اضغط ثبّت هنا':'اختر المكان واضغط ثبّت هنا'),surfaceReady);
+    }
 
-      const farEnough = hitDistance >= MIN_PLACE_DISTANCE;
-      surfaceReady = farEnough && reticleStableMs > 350;
-
-      if(!farEnough){
-        setStatus('ابتعد قليلًا عن هذه النقطة', false);
-      }else{
-        setStatus(
-          surfaceReady ? 'السطح مستقر — اضبط الحجم ثم ثبّت' : 'ثبّت الجوال قليلًا',
-          surfaceReady
-        );
+    function tickWorld(now){
+      if(!sceneReady || !camera || !vehicle) return;
+      const dt=Math.min(.1,Math.max(0,(now-lastTick)/1000));
+      lastTick=now;
+      updatePlacement(dt,now);
+      const canDrive=placed && !document.hidden && placement.trackingReady(now);
+      if(canDrive!==drivingEnabled){
+        drivingEnabled=canDrive;
+        if(placed) setStatus(canDrive?'عرض الدرفت يعمل تلقائيًا':'العرض متوقف — أعد مسح المكان ببطء',canDrive);
       }
+      if(diagnostics){
+        diagnostics.push({time:now,status:placement.status,reason:placement.reason,
+          support:placement.support,surface:placement.surface,steady:placement.ready,
+          ready:surfaceReady,cameraStep:placement.cameraStep,
+          camera:camera.position.toArray(),anchor:placement.anchor,
+          arena:arenaGroup.position.toArray(),placed});
+        if(diagnostics.length>240) diagnostics.shift();
+      }
+      if(!canDrive || !autopilot) return;
+      vehicle.updateAutonomous(autopilot.update(dt),dt);
+      smokeTrails?.update(dt,vehicle);
+      driftMarks?.update(dt,vehicle);
     }
 
-    function tickWorld(){
-      if (!camera || !scene || !vehicle || !world) return;
-
-      const now = performance.now();
-      const dt = Math.min(1/30,(now-lastTick)/1000 || .016);
-      lastTick = now;
-
-      updatePlacement(dt);
-
-      if (!placed || !body) return;
-
-      // The arena stays fixed at its AR anchor.
-      // Only the car moves inside the arena through the physics body.
-      updateWorld(world, null, dt);
-
-      // Screen-relative Hajwala steering: joystick-up always follows the
-      // current phone view direction on the horizontal AR plane.
-      const input = controls.update(cameraYaw() + Math.PI);
-      vehicle.update(dt, input);
-
-      smokeTrails?.update(dt, vehicle);
-      driftMarks?.update(dt, vehicle);
-    }
+    document.addEventListener('visibilitychange',()=>{
+      placement.observe({now:performance.now(),status:'LIMITED'});
+      lastTick=performance.now();
+    });
 
     function placeVehicle(){
       if (!xrStarted || !vehicle) return;
@@ -956,76 +714,51 @@
         return;
       }
 
-      if (!scanComplete){
-        notify('أكمل مسح الأرض حولك أولًا');
-        return;
-      }
-
       if (!surfaceReady){
-        notify('ابتعد قليلًا عن هذه النقطة أو انتظر حتى يستقر المؤشر');
+        notify('وجّه الكاميرا للأرض حتى تظهر الحلبة ويصبح التتبع جاهزًا');
         return;
       }
 
+      const anchor = placement.lock(performance.now(),{manual:true});
+      if(!anchor){notify('أعد تثبيت المؤشر حتى يستقر التتبع');return;}
       const scale = placementScale;
-      const arenaCenter = new THREE.Vector3(
-        reticle.position.x,
-        0,
-        reticle.position.z
-      );
+      const arenaCenter = new THREE.Vector3(anchor.x,anchor.y,anchor.z);
+      const roadY = arenaCenter.y + arenaRoadY * scale;
 
-      // Rebuild the physics world on every lock-in. This lets the user
-      // recalibrate and choose a completely different arena size without
-      // leaving stale invisible colliders from the previous size.
-      world = createVehicleWorld();
-      arenaPhysics = createArenaPhysics(
-        world,
-        arenaCenter.x,
-        arenaCenter.z,
-        {
-          radius:ARENA_RADIUS * scale,
-          segments:ARENA_SEGMENTS,
-          wallThickness:.07 * scale,
-          wallHeight:ARENA_WALL_HEIGHT * scale,
-          floorMargin:.24 * scale
-        }
-      );
-
-      arenaGroup.position.set(arenaCenter.x,0,arenaCenter.z);
+      arenaGroup.position.copy(arenaCenter);
       arenaGroup.scale.setScalar(scale);
       arenaGroup.visible = true;
 
-      shadowPlane.position.set(arenaCenter.x,0,arenaCenter.z);
+      shadowPlane.position.copy(arenaCenter);
       shadowPlane.scale.setScalar(scale);
       shadowPlane.visible = true;
 
       const scaledVehicleRadius = vehicleRadius * scale;
       const spawn = new THREE.Vector3(
         arenaCenter.x,
-        scaledVehicleRadius,
+        roadY + scaledVehicleRadius,
         arenaCenter.z
       );
 
-      body = createVehicleBody(
-        world,
-        [spawn.x,spawn.y,spawn.z],
-        scaledVehicleRadius
-      );
-
       vehicle.container.scale.setScalar(scale);
-      vehicle.attachPhysics(world,body,scaledVehicleRadius);
+      vehicle.sphereRadius = scaledVehicleRadius;
       applyEffectScale(scale);
-
-      const yaw = cameraYaw();
-      vehicle.place(spawn,yaw);
+      smokeTrails?.reset();
+      driftMarks?.reset();
+      autopilot = new ArenaAutopilot({center:arenaCenter,roadY,scale,
+        roadRadius:ARENA_ROAD_RADIUS,carRadius:carFootprint});
+      vehicle.place(spawn,0);
+      vehicle.updateAutonomous(autopilot.update(0),0);
 
       placed = true;
+      drivingEnabled = true;
+      placeBtn.disabled = false;
       reticle.visible = false;
       guide.classList.add('hidden');
       scalePanel.style.display = 'none';
       placeBtn.textContent = 'نقل الحلبة';
-      setStatus('الحلبة مثبتة — ' + Math.round(scale * 100) + '%', true);
-      controls.reset();
-      notify('تم تثبيت الحلبة بالحجم المختار');
+      setStatus('عرض الدرفت يعمل تلقائيًا', true);
+      notify('بدأ عرض الدرفت');
 
       if (navigator.vibrate) navigator.vibrate(30);
     }
@@ -1035,19 +768,18 @@
 
       placed = false;
       surfaceReady = false;
-      reticleStableMs = 0;
-      prevHit.set(999,999,999);
+      placement.reset();
+      latestWorldPoints=[];
+      nextGroundSample=0;
+      previewInitialized=false;
+      drivingEnabled=false;
+      placeBtn.disabled=true;
       stablePoint.set(0,0,0);
 
-      scanCells.clear();
-      scanComplete = false;
-      clearScanMarkers();
-      status.classList.remove('scanning');
 
-      controls.reset();
-
-      body = null;
-      arenaPhysics = null;
+      autopilot = null;
+      smokeTrails?.reset();
+      driftMarks?.reset();
 
       if (vehicle) vehicle.container.visible = false;
       if (arenaGroup) arenaGroup.visible = false;
@@ -1057,8 +789,8 @@
       updatePlacementScaleVisuals();
 
       guide.classList.remove('hidden');
-      placeBtn.textContent = 'ثبّت الحلبة';
-      setStatus('امسح الأرض حولك', false);
+      placeBtn.textContent = 'ثبّت هنا';
+      setStatus('أعد مسح الأرض واضبط الحجم', true);
 
       try{
         XR8.XrController.recenter();
@@ -1087,6 +819,7 @@
     recenterBtn.addEventListener('click',recenter);
 
     startBtn.addEventListener('click',async()=>{
+      if(startupFailed){location.reload();return;}
       if (!xrReady || xrStarted) return;
 
       xrStarted = true;
@@ -1095,8 +828,9 @@
       errorBox.style.display='none';
 
       try{
-        intro.style.display='none';
-        controlsEl.style.display='block';
+        controlsEl.style.display='none';
+        setLoadProgress(0,'تشغيل محرك الواقع المعزز…',{indeterminate:true});
+        startBtn.textContent = 'جاري التحميل…';
         setStatus('تشغيل SLAM…', false);
         XR8.run({canvas});
         syncVisualViewport();
@@ -1123,7 +857,7 @@
           disableWorldTracking:false,
           enableLighting:true,
           enableWorldPoints:true,
-          scale:'responsive'
+          scale:'absolute'
         });
 
         XR8.addCameraPipelineModules([

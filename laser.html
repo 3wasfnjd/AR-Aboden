@@ -1,0 +1,2196 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+  <meta name="theme-color" content="#020409">
+  <title>ABODEN LASER SHOW · AR</title>
+
+  <script
+    src="https://cdn.jsdelivr.net/npm/@8thwall/engine-binary@1/dist/xr.js"
+    async crossorigin="anonymous"
+    data-preload-chunks="slam"
+  ></script>
+
+  <script type="importmap">
+  {
+    "imports":{
+      "three":"https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.module.js",
+      "three/addons/":"https://cdn.jsdelivr.net/npm/three@0.185.1/examples/jsm/"
+    }
+  }
+  </script>
+
+  <style>
+    :root{
+      --app-w:100vw;--app-h:100dvh;color-scheme:dark;
+      --cyan:#6df4ff;--violet:#a98cff;--panel:rgba(3,7,14,.78);
+    }
+    *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+    html{margin:0;width:100%;height:100%;min-height:100%;background:#000;overflow:hidden}
+    body{
+      position:fixed;left:0;top:0;margin:0;
+      width:var(--app-w);height:var(--app-h);min-height:var(--app-h);
+      overflow:hidden;overscroll-behavior:none;background:#000;
+      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Tahoma,Arial,sans-serif;
+      touch-action:none
+    }
+    #camerafeed{
+      position:fixed!important;left:0!important;top:0!important;right:auto!important;bottom:auto!important;
+      margin:0!important;padding:0!important;
+      width:var(--app-w)!important;height:var(--app-h)!important;
+      min-width:var(--app-w)!important;min-height:var(--app-h)!important;
+      max-width:none!important;max-height:none!important;
+      display:block!important;z-index:0!important;transform:none!important;
+      filter:none!important;-webkit-filter:none!important;opacity:1!important
+    }
+    #laserfeed{
+      position:fixed!important;left:0!important;top:0!important;
+      width:var(--app-w)!important;height:var(--app-h)!important;
+      min-width:var(--app-w)!important;min-height:var(--app-h)!important;
+      display:block!important;z-index:5!important;pointer-events:none!important;
+      background:#000;mix-blend-mode:screen;transform:none!important
+    }
+    .ui{
+      position:fixed;left:0;top:0;width:var(--app-w);height:var(--app-h);
+      z-index:20;color:#fff;pointer-events:none
+    }
+    .home-btn{
+      position:fixed;left:14px;top:max(14px,env(safe-area-inset-top));z-index:70;
+      pointer-events:auto;text-decoration:none;color:#fff;
+      background:rgba(2,6,12,.76);border:1px solid rgba(255,255,255,.14);
+      border-radius:999px;padding:9px 13px;font-size:12px;font-weight:900;
+      backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)
+    }
+    .top{
+      position:absolute;left:112px;right:14px;top:max(14px,env(safe-area-inset-top));
+      display:flex;align-items:center;justify-content:space-between;gap:8px
+    }
+    .pill{
+      min-height:38px;display:flex;align-items:center;gap:7px;
+      padding:0 12px;border-radius:999px;background:rgba(2,6,12,.74);
+      border:1px solid rgba(255,255,255,.13);
+      backdrop-filter:blur(13px);-webkit-backdrop-filter:blur(13px);
+      font-size:11px;font-weight:900
+    }
+    .brand{letter-spacing:.08em}
+    .brand b{color:var(--cyan)}
+    .status .dot{
+      width:7px;height:7px;border-radius:50%;background:#f5c451;
+      box-shadow:0 0 12px rgba(245,196,81,.8)
+    }
+    .status.ready .dot{background:#6ff3a6;box-shadow:0 0 12px rgba(111,243,166,.8)}
+    .guide{
+      position:absolute;left:50%;top:82px;transform:translateX(-50%);
+      width:min(90vw,390px);padding:10px 14px;border-radius:16px;text-align:center;
+      background:rgba(2,6,12,.70);border:1px solid rgba(255,255,255,.12);
+      backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+      font-size:11px;line-height:1.55;color:#dbe6ee
+    }
+    .guide b{display:block;color:#fff;font-size:12px;margin-bottom:2px}
+    .guide.hidden{display:none}
+    .reticle{
+      position:absolute;left:50%;top:50%;width:30px;height:30px;
+      transform:translate(-50%,-50%);border-radius:50%;
+      border:1px solid rgba(109,244,255,.9);
+      box-shadow:0 0 22px rgba(109,244,255,.38),inset 0 0 12px rgba(109,244,255,.18);
+      opacity:0;transition:opacity .16s
+    }
+    .reticle.on{opacity:1}
+    .reticle:before,.reticle:after{
+      content:"";position:absolute;left:50%;top:50%;background:rgba(255,255,255,.9)
+    }
+    .reticle:before{width:8px;height:1px;transform:translate(-50%,-50%)}
+    .reticle:after{width:1px;height:8px;transform:translate(-50%,-50%)}
+    .placement{
+      position:absolute;right:15px;top:calc(max(14px,env(safe-area-inset-top)) + 56px);
+      display:flex;gap:8px;pointer-events:auto;flex-wrap:wrap;justify-content:flex-end
+    }
+    .action{
+      border:1px solid rgba(255,255,255,.14);border-radius:15px;
+      background:rgba(2,6,12,.76);color:#fff;padding:11px 14px;
+      font-size:12px;font-weight:900;
+      backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+      touch-action:manipulation
+    }
+    .action.primary{
+      background:linear-gradient(135deg,#eafcff,#c8f7ff);color:#051018;
+      border-color:rgba(255,255,255,.42)
+    }
+    .action:active,.tool:active,.showBtn:active{transform:scale(.96)}
+    .showDock{
+      position:absolute;left:12px;right:12px;bottom:calc(max(18px,env(safe-area-inset-bottom)) + 70px);
+      pointer-events:auto
+    }
+    .showTitle{
+      font-size:10px;color:#c7d5df;margin:0 4px 7px;text-shadow:0 2px 8px #000
+    }
+    .showStrip{
+      direction:ltr;display:flex;gap:7px;overflow-x:auto;padding:2px 1px 5px;
+      scrollbar-width:none
+    }
+    .showStrip::-webkit-scrollbar{display:none}
+    .showBtn{
+      flex:0 0 auto;border:1px solid rgba(255,255,255,.13);border-radius:999px;
+      background:rgba(2,6,12,.78);color:#dce8f1;padding:9px 13px;
+      font-size:11px;font-weight:850;white-space:nowrap;
+      backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)
+    }
+    .showBtn.active{
+      color:#061016;background:linear-gradient(135deg,var(--cyan),#d9fbff);
+      border-color:rgba(255,255,255,.48)
+    }
+    .showBtn:disabled{opacity:.45}
+    .tools{
+      position:absolute;left:12px;right:12px;bottom:max(12px,env(safe-area-inset-bottom));
+      display:grid;grid-template-columns:repeat(5,1fr);gap:7px;pointer-events:auto
+    }
+    .tool{
+      min-height:52px;border:1px solid rgba(255,255,255,.13);border-radius:16px;
+      background:rgba(2,6,12,.80);color:#fff;font-size:12px;font-weight:900;
+      backdrop-filter:blur(11px);-webkit-backdrop-filter:blur(11px);
+      touch-action:manipulation
+    }
+    .tool span{display:block;font-size:9px;color:#aebdca;font-weight:700;margin-top:2px}
+    .toast{
+      position:absolute;left:50%;bottom:168px;transform:translate(-50%,12px);
+      padding:9px 13px;border-radius:999px;background:rgba(2,6,12,.84);
+      border:1px solid rgba(255,255,255,.12);font-size:11px;font-weight:800;
+      opacity:0;transition:.2s;white-space:nowrap;max-width:88vw;overflow:hidden;text-overflow:ellipsis
+    }
+    .toast.show{opacity:1;transform:translate(-50%,0)}
+    #intro{
+      position:fixed;inset:0;z-index:60;display:flex;align-items:flex-end;justify-content:center;
+      padding:22px 18px max(30px,env(safe-area-inset-bottom));color:#fff;
+      background:
+        radial-gradient(circle at 50% 18%,rgba(88,128,255,.22),transparent 34%),
+        radial-gradient(circle at 20% 35%,rgba(64,240,255,.10),transparent 27%),
+        linear-gradient(#050814,#010205)
+    }
+    .card{
+      width:min(100%,540px);padding:25px;border-radius:27px;
+      background:rgba(255,255,255,.055);border:1px solid rgba(255,255,255,.11);
+      backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px)
+    }
+    .eyebrow{color:var(--cyan);font-size:11px;font-weight:950;letter-spacing:.16em;margin-bottom:8px}
+    .card h1{font-size:30px;line-height:1.08;margin:0 0 10px}
+    .card p{margin:0 0 18px;color:#c8d4df;font-size:13px;line-height:1.8}
+    .start{
+      width:100%;height:58px;border:0;border-radius:18px;
+      background:linear-gradient(135deg,#f3feff,#bdf8ff);color:#061017;
+      font-size:16px;font-weight:950
+    }
+    .start:disabled{opacity:.48}
+    .loadBox{display:none;margin:2px 0 16px}
+    .loadBox.show{display:block}
+    .loadMeta{display:flex;justify-content:space-between;gap:10px;margin-bottom:8px;font-size:11px;font-weight:850;color:#d8e6ee}
+    .loadTrack{height:9px;border-radius:999px;background:rgba(255,255,255,.09);overflow:hidden;border:1px solid rgba(255,255,255,.08)}
+    .loadFill{height:100%;width:0%;border-radius:inherit;background:linear-gradient(90deg,#7c86ff,var(--cyan));transition:width .15s ease}
+    .tiny{margin:11px 0 0!important;text-align:center;color:#7f8d99!important;font-size:10px!important;line-height:1.55!important}
+    .error{display:none;margin-top:12px;color:#ffb9bd;font-size:11px;line-height:1.6}
+    @media(max-width:380px){
+      .tools{gap:5px}.tool{font-size:11px;min-height:49px}.showDock{bottom:calc(max(14px,env(safe-area-inset-bottom)) + 66px)}
+    }
+  </style>
+</head>
+<body>
+  <canvas id="camerafeed"></canvas>
+  <canvas id="laserfeed"></canvas>
+  <a class="home-btn" href="./index.html">⌂ الرئيسية</a>
+
+  <div class="ui" id="gameUi">
+    <div class="top">
+      <div class="pill brand"><b>LASER</b> · ABODEN AR</div>
+      <div class="pill status" id="status"><span class="dot"></span><span id="statusText">جاهز</span></div>
+    </div>
+
+    <div class="guide" id="guide">
+      <b>حدد أرضية أمامك</b>
+      حرّك الجوال بهدوء حتى يستقر المؤشر، ثم ثبّت جهاز الليزر.
+    </div>
+
+    <div class="reticle" id="reticle"></div>
+    <div class="toast" id="toast"></div>
+
+    <div class="placement">
+      <button class="action primary" id="placeBtn">ثبّت الليزر</button>
+      <button class="action" id="resetBtn">إعادة التثبيت</button>
+    </div>
+
+    <div class="showDock">
+      <div class="showTitle">العروض الافتراضية</div>
+      <div class="showStrip" id="showStrip"></div>
+    </div>
+
+    <div class="tools">
+      <button class="tool" id="rotateLeftBtn">↺<span>تدوير</span></button>
+      <button class="tool" id="scaleDownBtn">−<span>الحجم</span></button>
+      <button class="tool" id="playBtn">Ⅱ<span>إيقاف</span></button>
+      <button class="tool" id="scaleUpBtn">＋<span>الحجم</span></button>
+      <button class="tool" id="rotateRightBtn">↻<span>تدوير</span></button>
+    </div>
+  </div>
+
+  <div id="intro">
+    <div class="card">
+      <div class="eyebrow">ABODEN AR · LASER LAB</div>
+      <h1>عرض ليزر داخل غرفتك</h1>
+      <p>ثبّت جهاز الليزر على الأرض وشاهد عرض ILDA متحركًا أمامك. النسخة الأولى تستخدم عروضًا افتراضية، وبعدها نضيف عروض عبودين الخاصة.</p>
+      <div class="loadBox" id="loadBox" aria-live="polite">
+        <div class="loadMeta"><span id="loadLabel">جاري تجهيز التجربة…</span><span id="loadPercent">0%</span></div>
+        <div class="loadTrack"><div class="loadFill" id="loadFill"></div></div>
+      </div>
+      <button class="start" id="startBtn" disabled>جاري تجهيز المحرك…</button>
+      <div class="error" id="errorBox"></div>
+      <p class="tiny">Laser engine: three-ilda · Artem Korenevych · MIT<br>Default ILDA demo files are loaded from the upstream project.</p>
+    </div>
+  </div>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import {ILDALoader} from 'https://cdn.jsdelivr.net/gh/artcodev/three-ilda@6044b91d120cc01f73bdaebed4f7e4d03feb0d2f/src/loaders/ILDALoader.js';
+    import {LaserShow} from 'https://cdn.jsdelivr.net/gh/artcodev/three-ilda@6044b91d120cc01f73bdaebed4f7e4d03feb0d2f/src/webgl/LaserShow.js';
+    import {LaserShowPipeline} from 'https://cdn.jsdelivr.net/gh/artcodev/three-ilda@6044b91d120cc01f73bdaebed4f7e4d03feb0d2f/src/webgl/LaserShowPipeline.js';
+
+    window.THREE=THREE;
+
+    const UPSTREAM='https://cdn.jsdelivr.net/gh/artcodev/three-ilda@6044b91d120cc01f73bdaebed4f7e4d03feb0d2f/examples/public/ilda/';
+    const SAUDI_DURATION=36.049;
+    const SAUDI_FPS=15;
+    const SAUDI_POINT_RATE=4800;
+    const SAUDI_POINTS_PER_FRAME=Math.round(SAUDI_POINT_RATE/SAUDI_FPS);
+    const SAUDI_AUDIO_URL='./assets/laser/saudi_anthem.mp3';
+    const SHOWS=[
+      {id:'saudi',name:'السعودية',kind:'vector-v3',audio:true},
+      {id:'sylvester',name:'Sylvester',file:'sylvest.ild'},
+      {id:'dolphin',name:'Dolphin',file:'DOLPHIN.ILD'},
+      {id:'paperair',name:'Paper Air',file:'paperair.ild'},
+      {id:'plasma2',name:'Plasma 2',file:'PLASMA2.ild'}
+    ];
+
+    const canvas=document.getElementById('camerafeed');
+    const laserCanvas=document.getElementById('laserfeed');
+    const intro=document.getElementById('intro');
+    const startBtn=document.getElementById('startBtn');
+    const errorBox=document.getElementById('errorBox');
+    const loadBox=document.getElementById('loadBox');
+    const loadLabel=document.getElementById('loadLabel');
+    const loadPercent=document.getElementById('loadPercent');
+    const loadFill=document.getElementById('loadFill');
+    const status=document.getElementById('status');
+    const statusText=document.getElementById('statusText');
+    const guide=document.getElementById('guide');
+    const reticleEl=document.getElementById('reticle');
+    const toast=document.getElementById('toast');
+    const placeBtn=document.getElementById('placeBtn');
+    const resetBtn=document.getElementById('resetBtn');
+    const showStrip=document.getElementById('showStrip');
+    const rotateLeftBtn=document.getElementById('rotateLeftBtn');
+    const rotateRightBtn=document.getElementById('rotateRightBtn');
+    const scaleDownBtn=document.getElementById('scaleDownBtn');
+    const scaleUpBtn=document.getElementById('scaleUpBtn');
+    const playBtn=document.getElementById('playBtn');
+
+    let xrReady=false;
+    let xrStarted=false;
+    let scene,camera,renderer;
+    let laserScene=null;
+    let laserCamera=null;
+    let laserRenderer=null;
+    let laserPipeline=null;
+    let pipelineReady=false;
+
+    let projectorRig=null;
+    let laserRig=null;
+    let laserShow=null;
+
+    // The Saudi story uses a direct Three.js vector renderer rather than
+    // LaserScanner. This keeps the custom story deterministic while the
+    // upstream ILDA shows continue to use three-ilda unchanged.
+    let saudiWorldRig=null;
+    let saudiDirectGroup=null;
+    let saudiDirectLine=null;
+    let saudiDirectBeam=null;
+    let saudiDirectLastFrame=-1;
+    let saudiDirectScaleX=1;
+    let saudiDirectScaleY=1;
+    let saudiDirectPlaneY=0;
+    let saudiDirectPlaneZ=0;
+    const saudiDirectOrigin=new THREE.Vector3();
+
+    let placed=false;
+    let surfaceReady=false;
+    let stableMs=0;
+    let lastTime=performance.now();
+    let rigScale=1;
+    let currentShowId='saudi';
+    let switchingShow=false;
+
+    const assetCache=new Map();
+    const saudiAudio=new Audio(SAUDI_AUDIO_URL);
+    saudiAudio.preload='auto';
+    saudiAudio.volume=.82;
+    saudiAudio.loop=false;
+    saudiAudio.crossOrigin='anonymous';
+    let saudiAudioPromise=null;
+    let saudiLastFrame=-1;
+    let saudiLastAudioTime=0;
+    let saudiAudioReady=false;
+
+    const raycaster=new THREE.Raycaster();
+    const centerNdc=new THREE.Vector2(0,0);
+    const floorPlane=new THREE.Plane(new THREE.Vector3(0,1,0),0);
+    const hitPoint=new THREE.Vector3();
+    const stablePoint=new THREE.Vector3();
+    const prevHit=new THREE.Vector3(999,999,999);
+    const forward=new THREE.Vector3();
+
+    function syncVisualViewport(){
+      const vv=window.visualViewport;
+      const w=Math.round(vv?.width||window.innerWidth||document.documentElement.clientWidth);
+      const h=Math.round(vv?.height||window.innerHeight||document.documentElement.clientHeight);
+      document.documentElement.style.setProperty('--app-w',w+'px');
+      document.documentElement.style.setProperty('--app-h',h+'px');
+
+      const cameraCanvas=document.getElementById('camerafeed');
+      if(cameraCanvas){
+        cameraCanvas.style.setProperty('left','0px','important');
+        cameraCanvas.style.setProperty('top','0px','important');
+        cameraCanvas.style.setProperty('width',w+'px','important');
+        cameraCanvas.style.setProperty('height',h+'px','important');
+      }
+
+      laserCanvas.style.setProperty('width',w+'px','important');
+      laserCanvas.style.setProperty('height',h+'px','important');
+      if(laserRenderer) laserRenderer.setSize(w,h,false);
+
+      requestAnimationFrame(()=>{
+        if(cameraCanvas){
+          cameraCanvas.style.setProperty('left','0px','important');
+          cameraCanvas.style.setProperty('top','0px','important');
+          cameraCanvas.style.setProperty('width',w+'px','important');
+          cameraCanvas.style.setProperty('height',h+'px','important');
+        }
+        if(renderer?.setSize) renderer.setSize(w,h,false);
+        if(laserRenderer?.setSize) laserRenderer.setSize(w,h,false);
+      });
+    }
+
+    syncVisualViewport();
+    window.addEventListener('resize',syncVisualViewport,{passive:true});
+    window.addEventListener('orientationchange',()=>{
+      setTimeout(syncVisualViewport,80);
+      setTimeout(syncVisualViewport,350);
+    },{passive:true});
+    if(window.visualViewport){
+      window.visualViewport.addEventListener('resize',syncVisualViewport,{passive:true});
+      window.visualViewport.addEventListener('scroll',syncVisualViewport,{passive:true});
+    }
+
+    function notify(msg){
+      toast.textContent=msg;
+      toast.classList.add('show');
+      clearTimeout(window.__laserToast);
+      window.__laserToast=setTimeout(()=>toast.classList.remove('show'),1600);
+    }
+
+    function setStatus(text,ready=false){
+      statusText.textContent=text;
+      status.classList.toggle('ready',ready);
+    }
+
+    function setLoadProgress(value,label){
+      const pct=THREE.MathUtils.clamp(Math.round(value),0,100);
+      loadBox.classList.add('show');
+      loadLabel.textContent=label;
+      loadPercent.textContent=pct+'%';
+      loadFill.style.width=pct+'%';
+    }
+
+    function cameraHorizontalForward(out){
+      camera.getWorldDirection(out);
+      out.y=0;
+      if(out.lengthSq()<.0001) out.set(0,0,-1);
+      return out.normalize();
+    }
+
+    function yawFacingCameraForward(){
+      cameraHorizontalForward(forward);
+      return Math.atan2(-forward.x,-forward.z);
+    }
+
+    function syncLaserCamera(){
+      if(!camera||!laserCamera) return;
+
+      camera.updateMatrixWorld(true);
+      camera.getWorldPosition(laserCamera.position);
+      camera.getWorldQuaternion(laserCamera.quaternion);
+
+      laserCamera.near=camera.near;
+      laserCamera.far=camera.far;
+      laserCamera.projectionMatrix.copy(camera.projectionMatrix);
+      laserCamera.projectionMatrixInverse.copy(camera.projectionMatrixInverse);
+      laserCamera.updateMatrix();
+      laserCamera.updateMatrixWorld(true);
+      laserCamera.matrixWorldInverse.copy(laserCamera.matrixWorld).invert();
+    }
+
+    function applyRigTransform(position,yaw,scale){
+      for(const rig of [projectorRig,laserRig,saudiWorldRig]){
+        if(!rig) continue;
+        rig.position.copy(position);
+        rig.rotation.set(0,yaw,0);
+        rig.scale.setScalar(scale);
+      }
+    }
+
+    function setRigVisible(visible){
+      if(projectorRig) projectorRig.visible=visible;
+      if(laserRig) laserRig.visible=visible;
+      if(saudiWorldRig) saudiWorldRig.visible=visible && currentShowId==='saudi';
+    }
+
+    function createProjector(){
+      const root=new THREE.Group();
+      root.name='ABODEN stage laser projector';
+
+      const darkMat=new THREE.MeshStandardMaterial({
+        color:0x0b1017,roughness:.48,metalness:.72
+      });
+      const bodyMat=new THREE.MeshStandardMaterial({
+        color:0x202a36,roughness:.42,metalness:.58
+      });
+      const trimMat=new THREE.MeshStandardMaterial({
+        color:0x4b596a,roughness:.28,metalness:.86
+      });
+      const blackMat=new THREE.MeshStandardMaterial({
+        color:0x05070a,roughness:.62,metalness:.38
+      });
+      const lensMat=new THREE.MeshStandardMaterial({
+        color:0xcdfdff,
+        emissive:0x42eaff,
+        emissiveIntensity:5.2,
+        roughness:.08,
+        metalness:.12
+      });
+      const cyanMat=new THREE.MeshBasicMaterial({
+        color:0x58f4ff,transparent:true,opacity:.94,
+        depthWrite:false,blending:THREE.AdditiveBlending
+      });
+      const violetMat=new THREE.MeshBasicMaterial({
+        color:0xa46cff,transparent:true,opacity:.90,
+        depthWrite:false,blending:THREE.AdditiveBlending
+      });
+      const softGlowMat=new THREE.MeshBasicMaterial({
+        color:0x56efff,transparent:true,opacity:.20,
+        depthWrite:false,side:THREE.DoubleSide,
+        blending:THREE.AdditiveBlending
+      });
+
+      // Low, wide base. The overhang makes the object read as stage hardware
+      // rather than a simple box when viewed from phone height.
+      const base=new THREE.Mesh(
+        new THREE.BoxGeometry(.64,.075,.44),
+        darkMat
+      );
+      base.position.y=.055;
+      root.add(base);
+
+      const lowerPlate=new THREE.Mesh(
+        new THREE.BoxGeometry(.55,.035,.36),
+        trimMat
+      );
+      lowerPlate.position.y=.106;
+      root.add(lowerPlate);
+
+      // Four rubber feet keep the projector visually separated from the floor.
+      const footGeo=new THREE.CylinderGeometry(.035,.038,.026,14);
+      const footPositions=[
+        [-.245,.013,-.155],[.245,.013,-.155],
+        [-.245,.013,.155],[.245,.013,.155]
+      ];
+      for(const [x,y,z] of footPositions){
+        const foot=new THREE.Mesh(footGeo,blackMat);
+        foot.position.set(x,y,z);
+        root.add(foot);
+      }
+
+      // Main chassis: layered shells create a beveled gaming/stage silhouette
+      // without importing a heavy GLB.
+      const body=new THREE.Mesh(
+        new THREE.BoxGeometry(.49,.235,.335),
+        bodyMat
+      );
+      body.position.set(0,.225,.005);
+      root.add(body);
+
+      const innerShell=new THREE.Mesh(
+        new THREE.BoxGeometry(.43,.195,.365),
+        darkMat
+      );
+      innerShell.position.set(0,.222,.012);
+      root.add(innerShell);
+
+      const topShell=new THREE.Mesh(
+        new THREE.BoxGeometry(.37,.055,.29),
+        trimMat
+      );
+      topShell.position.set(0,.365,.015);
+      root.add(topShell);
+
+      // Front fascia.
+      const fascia=new THREE.Mesh(
+        new THREE.BoxGeometry(.38,.175,.038),
+        blackMat
+      );
+      fascia.position.set(0,.232,-.188);
+      root.add(fascia);
+
+      const fasciaTrim=new THREE.Mesh(
+        new THREE.BoxGeometry(.315,.122,.012),
+        trimMat
+      );
+      fasciaTrim.position.set(0,.232,-.211);
+      root.add(fasciaTrim);
+
+      // Concentric lens assembly. All cylinders share the same Z axis.
+      const outerLensRing=new THREE.Mesh(
+        new THREE.CylinderGeometry(.105,.105,.055,32),
+        darkMat
+      );
+      outerLensRing.rotation.x=Math.PI/2;
+      outerLensRing.position.set(0,.232,-.242);
+      root.add(outerLensRing);
+
+      const metalLensRing=new THREE.Mesh(
+        new THREE.CylinderGeometry(.085,.085,.043,32),
+        trimMat
+      );
+      metalLensRing.rotation.x=Math.PI/2;
+      metalLensRing.position.set(0,.232,-.274);
+      root.add(metalLensRing);
+
+      const lens=new THREE.Mesh(
+        new THREE.CylinderGeometry(.064,.064,.024,32),
+        lensMat
+      );
+      lens.rotation.x=Math.PI/2;
+      lens.position.set(0,.232,-.302);
+      root.add(lens);
+
+      const lensHalo=new THREE.Mesh(
+        new THREE.RingGeometry(.072,.114,40),
+        softGlowMat
+      );
+      lensHalo.position.set(0,.232,-.316);
+      root.add(lensHalo);
+
+      // Exact local-space aperture used by three-ilda. This point is kept
+      // invisible; it is the single source of truth for beam alignment.
+      const laserOrigin=new THREE.Object3D();
+      laserOrigin.name='laserOrigin';
+      laserOrigin.position.set(0,.232,-.319);
+      root.add(laserOrigin);
+
+      // Cooling fins on both sides.
+      const finGeo=new THREE.BoxGeometry(.014,.118,.025);
+      for(let i=0;i<6;i++){
+        const z=-.095+i*.039;
+        const leftFin=new THREE.Mesh(finGeo,blackMat);
+        leftFin.position.set(-.254,.232,z);
+        root.add(leftFin);
+
+        const rightFin=new THREE.Mesh(finGeo,blackMat);
+        rightFin.position.set(.254,.232,z);
+        root.add(rightFin);
+      }
+
+      // Side accent rails.
+      const sideStripGeo=new THREE.BoxGeometry(.009,.105,.225);
+      const stripL=new THREE.Mesh(sideStripGeo,cyanMat);
+      stripL.position.set(-.264,.233,.018);
+      root.add(stripL);
+
+      const stripR=new THREE.Mesh(sideStripGeo,violetMat);
+      stripR.position.set(.264,.233,.018);
+      root.add(stripR);
+
+      // Front lower accent.
+      const frontAccent=new THREE.Mesh(
+        new THREE.BoxGeometry(.245,.012,.010),
+        cyanMat
+      );
+      frontAccent.position.set(0,.143,-.211);
+      root.add(frontAccent);
+
+      // Rear cooling fan and guard.
+      const fanBody=new THREE.Mesh(
+        new THREE.CylinderGeometry(.075,.075,.024,24),
+        blackMat
+      );
+      fanBody.rotation.x=Math.PI/2;
+      fanBody.position.set(0,.232,.196);
+      root.add(fanBody);
+
+      const fanRing=new THREE.Mesh(
+        new THREE.TorusGeometry(.058,.006,7,24),
+        trimMat
+      );
+      fanRing.position.set(0,.232,.211);
+      root.add(fanRing);
+
+      for(let i=0;i<4;i++){
+        const blade=new THREE.Mesh(
+          new THREE.BoxGeometry(.012,.092,.008),
+          bodyMat
+        );
+        blade.position.set(0,.232,.213);
+        blade.rotation.z=i*Math.PI/4;
+        root.add(blade);
+      }
+
+      // Top handle with rigid mounting posts.
+      const handlePostGeo=new THREE.BoxGeometry(.026,.13,.035);
+      const postL=new THREE.Mesh(handlePostGeo,trimMat);
+      postL.position.set(-.145,.424,.025);
+      root.add(postL);
+      const postR=new THREE.Mesh(handlePostGeo,trimMat);
+      postR.position.set(.145,.424,.025);
+      root.add(postR);
+
+      const handle=new THREE.Mesh(
+        new THREE.TorusGeometry(.145,.015,10,32,Math.PI),
+        trimMat
+      );
+      handle.rotation.z=Math.PI;
+      handle.position.set(0,.49,.025);
+      root.add(handle);
+
+      // Small top status panel.
+      const display=new THREE.Mesh(
+        new THREE.BoxGeometry(.13,.012,.058),
+        blackMat
+      );
+      display.position.set(0,.399,-.070);
+      root.add(display);
+
+      const ledGeo=new THREE.CylinderGeometry(.009,.009,.008,12);
+      for(let i=0;i<3;i++){
+        const led=new THREE.Mesh(ledGeo,i===1?violetMat:cyanMat);
+        led.position.set(-.035+i*.035,.407,-.070);
+        root.add(led);
+      }
+
+      // Ground halo makes placement readable without affecting beam alignment.
+      const groundRing=new THREE.Mesh(
+        new THREE.RingGeometry(.22,.29,44).rotateX(-Math.PI/2),
+        softGlowMat
+      );
+      groundRing.position.y=.006;
+      root.add(groundRing);
+
+      root.traverse(obj=>{
+        if(!obj.isMesh) return;
+        obj.castShadow=false;
+        obj.receiveShadow=false;
+      });
+
+      return {root,laserOrigin};
+    }
+
+
+    const SAUDI_GREEN=[.08,1,.30];
+    const SAUDI_WHITE=[.82,1,.90];
+    const SAUDI_GOLD=[1,.66,.18];
+
+    function clamp01(v){return Math.max(0,Math.min(1,v));}
+    function smooth01(v){
+      v=clamp01(v);
+      return v*v*(3-2*v);
+    }
+    function phase(t,a,b){return smooth01((t-a)/(b-a));}
+    function fadeWindow(t,a,b,c,d){
+      return phase(t,a,b)*(1-phase(t,c,d));
+    }
+    function poly(...pts){return pts;}
+    function arc(cx,cy,rx,ry,a0,a1,n=18){
+      const p=[];
+      for(let i=0;i<=n;i++){
+        const a=a0+(a1-a0)*(i/n);
+        p.push([cx+Math.cos(a)*rx,cy+Math.sin(a)*ry]);
+      }
+      return p;
+    }
+    function transformStrokes(strokes,{x=0,y=0,sx=1,sy=sx,rot=0}={}){
+      const cs=Math.cos(rot),sn=Math.sin(rot);
+      return strokes.map(stroke=>stroke.map(([px,py])=>{
+        px*=sx;py*=sy;
+        return [px*cs-py*sn+x,px*sn+py*cs+y];
+      }));
+    }
+    function trimStrokes(strokes,p){
+      p=clamp01(p);
+      const counts=strokes.map(s=>Math.max(0,s.length-1));
+      const total=counts.reduce((a,b)=>a+b,0);
+      let left=total*p;
+      const out=[];
+      for(let i=0;i<strokes.length;i++){
+        const s=strokes[i],segments=counts[i];
+        if(left<=0) break;
+        if(left>=segments){out.push(s);left-=segments;continue;}
+        const take=Math.max(1,Math.floor(left));
+        const f=left-take;
+        const part=s.slice(0,Math.min(s.length,take+1));
+        if(f>0&&take+1<s.length){
+          const a=s[take],b=s[take+1];
+          part.push([a[0]+(b[0]-a[0])*f,a[1]+(b[1]-a[1])*f]);
+        }
+        if(part.length>1) out.push(part);
+        break;
+      }
+      return out;
+    }
+    function densify(stroke,step=.045){
+      if(stroke.length<2) return stroke;
+      const out=[stroke[0]];
+      for(let i=1;i<stroke.length;i++){
+        const a=stroke[i-1],b=stroke[i];
+        const dx=b[0]-a[0],dy=b[1]-a[1];
+        const n=Math.max(1,Math.ceil(Math.hypot(dx,dy)/step));
+        for(let j=1;j<=n;j++) out.push([a[0]+dx*j/n,a[1]+dy*j/n]);
+      }
+      return out;
+    }
+
+    function emblemStrokes(){
+      const s=[];
+      // Crossed swords with curved blades and compact handles.
+      s.push(poly([-.73,-.32],[-.54,-.29],[-.32,-.19],[-.08,-.04],[.19,.13],[.48,.25],[.72,.29]));
+      s.push(poly([.73,-.32],[.54,-.29],[.32,-.19],[.08,-.04],[-.19,.13],[-.48,.25],[-.72,.29]));
+      s.push(poly([-.69,-.37],[-.60,-.29],[-.65,-.22]));
+      s.push(poly([[.69,-.37][0],[.69,-.37][1]],[.60,-.29],[.65,-.22]));
+      // Palm trunk.
+      s.push(poly([-.035,-.05],[-.025,.12],[-.018,.31],[0,.50],[.018,.31],[.025,.12],[.035,-.05]));
+      // Crown and fronds.
+      s.push(poly([0,.48],[-.15,.54],[-.32,.50],[-.48,.38]));
+      s.push(poly([0,.48],[-.10,.60],[-.22,.68],[-.34,.67]));
+      s.push(poly([0,.48],[-.03,.63],[-.04,.76]));
+      s.push(poly([0,.48],[.15,.54],[.32,.50],[.48,.38]));
+      s.push(poly([0,.48],[.10,.60],[.22,.68],[.34,.67]));
+      s.push(poly([0,.48],[.03,.63],[.04,.76]));
+      s.push(poly([-.02,.40],[-.18,.42],[-.30,.35]));
+      s.push(poly([[.02,.40][0],[.02,.40][1]],[.18,.42],[.30,.35]));
+      return s;
+    }
+
+    function diriyahStrokes(){
+      const s=[];
+      s.push(poly([-.95,-.55],[.95,-.55]));
+      // Left Najdi mud-brick block.
+      s.push(poly([-.88,-.55],[-.88,.20],[-.79,.20],[-.79,.29],[-.69,.29],[-.69,.20],[-.58,.20],[-.58,-.55]));
+      s.push(poly([-.82,-.16],[-.82,.05],[-.70,.05],[-.70,-.16]));
+      // Main tower with crenellations.
+      s.push(poly([-.53,-.55],[-.53,.48],[-.43,.48],[-.43,.58],[-.32,.58],[-.32,.48],[-.21,.48],[-.21,.58],[-.10,.58],[-.10,.48],[.02,.48],[.02,-.55]));
+      s.push(arc([-.255,-.55][0],[-.255,-.55][1],.105,.28,0,Math.PI,16).map(([x,y])=>[x,y]));
+      s.push(poly([-.43,.12],[-.34,.12],[-.34,.24],[-.43,.24]));
+      s.push(poly([-.17,.12],[-.08,.12],[-.08,.24],[-.17,.24]));
+      // Right block and stepped roofline.
+      s.push(poly([[.08,-.55][0],[.08,-.55][1]],[.08,.10],[.18,.10],[.18,.20],[.29,.20],[.29,.31],[.41,.31],[.41,.20],[.53,.20],[.53,-.55]));
+      s.push(poly([.60,-.55],[.60,.38],[.71,.38],[.71,.48],[.82,.48],[.82,.38],[.91,.38],[.91,-.55]));
+      s.push(arc(.755,-.55,.09,.25,0,Math.PI,14));
+      // Najdi triangular wall motifs.
+      for(const x of [-.47,-.36,-.25,-.14,.15,.26,.37,.65,.76,.86]){
+        s.push(poly([x-.025,-.01],[x,.045],[x+.025,-.01]));
+      }
+      return s;
+    }
+
+    function camelStrokes(walk=0){
+      const lift=Math.sin(walk*Math.PI*2)*.035;
+      return [
+        poly([-.76,-.10],[-.68,.02],[-.57,.11],[-.45,.16],[-.30,.17],[-.15,.13],[-.04,.20],[.07,.38],[.18,.43],[.28,.30],[.36,.12],[.46,.05],[.56,.12],[.60,.30],[.59,.49],[.64,.62],[.74,.69],[.83,.66],[.88,.59],[.80,.54],[.72,.55],[.68,.46],[.69,.28],[.65,.08],[.55,-.08],[.38,-.15],[.15,-.16],[-.10,-.14],[-.35,-.12],[-.56,-.15],[-.76,-.10]),
+        poly([.61,.42],[.68,.44],[.72,.42]),
+        poly([-.50,-.13],[-.50,-.43+lift],[-.43,-.58+lift],[-.38,-.58+lift]),
+        poly([-.25,-.15],[-.18,-.40-lift],[-.12,-.58-lift],[-.07,-.58-lift]),
+        poly([.27,-.15],[.31,-.39+lift],[.37,-.57+lift],[.43,-.57+lift]),
+        poly([.48,-.10],[.52,-.38-lift],[.56,-.56-lift],[.61,-.56-lift]),
+        poly([-.73,-.08],[-.84,.02],[-.90,.12]),
+        poly([.79,.67],[.82,.74],[.85,.70])
+      ];
+    }
+
+    function horseStrokes(run=0){
+      const k=Math.sin(run*Math.PI*2);
+      return [
+        poly([-.82,-.01],[-.70,.14],[-.50,.24],[-.25,.27],[-.02,.23],[.18,.29],[.34,.43],[.43,.61],[.54,.73],[.68,.70],[.76,.61],[.72,.55],[.62,.54],[.55,.45],[.52,.31],[.42,.15],[.24,.02],[.02,-.07],[-.25,-.08],[-.53,-.06],[-.72,-.10],[-.82,-.01]),
+        poly([.48,.58],[.55,.80],[.60,.66]),
+        poly([.55,.73],[.64,.84],[.65,.69]),
+        poly([.66,.61],[.73,.63],[.76,.60]),
+        poly([-.60,-.06],[-.47,-.28],[-.38,-.49-.05*k],[-.23,-.58-.08*k]),
+        poly([-.34,-.08],[-.27,-.31],[-.12,-.46+.06*k],[.02,-.52+.09*k]),
+        poly([.20,-.02],[.25,-.23],[.39,-.42-.07*k],[.53,-.47-.08*k]),
+        poly([.39,.09],[.47,-.11],[.58,-.28+.07*k],[.70,-.33+.09*k]),
+        poly([-.76,.08],[-.90,.22],[-.95,.10],[-.87,-.05]),
+        poly([.37,.45],[.24,.54],[.10,.50],[-.02,.42])
+      ];
+    }
+
+    function raysStrokes(rot=0){
+      const s=[];
+      for(let i=0;i<12;i++){
+        const a=rot+i*Math.PI*2/12;
+        const r0=.34,r1=i%2?1.00:.88;
+        s.push(poly([Math.cos(a)*r0,Math.sin(a)*r0],[Math.cos(a)*r1,Math.sin(a)*r1]));
+      }
+      return s;
+    }
+
+    const SAUDI_TEXT_PATH_D='m 976.5599,73.2 h 26.82 V 210 h -26.82 z M 891.24004,210 q -0.9,0 -0.9,-0.9 v -19.98 q 0,-0.72 0.9,-0.72 h 22.5 V 73.2 h 26.82 V 210 Z m -59.0401,0 q -15.3,0 -28.26,-13.5 -10.08,13.5 -30.06,13.5 h -70.56 q -0.9,0 -0.9,-0.9 v -19.98 q 0,-0.72 0.9,-0.72 h 22.5 v -53.46 h 26.82 v 53.46 h 15.3 q 9,0 13.14,-4.86 4.14,-5.04 4.14,-16.02 v -32.58 h 26.82 v 34.74 q 0,4.32 -0.54,8.1 4.5,5.94 8.82,8.28 4.32,2.34 11.34,2.34 h 11.16 v -67.5 h 26.82 v 67.5 h 23.4 q 0.9,0 0.9,0.72 v 19.98 q 0,0.9 -0.9,0.9 z m -149.94004,0 q -8.46,0 -17.64,-2.88 -9.18,-2.88 -15.66,-7.2 -16.56,10.08 -33.48,10.08 h -20.88 q -0.9,0 -0.9,-0.9 v -19.98 q 0,-0.72 0.9,-0.72 h 18 q 4.14,0 9,-0.9 4.86,-1.08 7.92,-2.52 -5.4,-4.14 -11.34,-13.14 -5.94,-8.82 -10.44,-19.26 -4.32,-10.62 -5.94,-20.34 10.62,-8.82 24.3,-13.86 13.68,-5.04 26.28,-5.04 25.74,0 45.18,10.8 0,12.96 -3.6,24.66 -3.6,11.7 -10.26,21.06 -6.48,9.18 -15.48,14.94 6.66,3.6 16.2,3.6 h 20.7 q 0.9,0 0.9,0.72 v 19.98 q 0,0.9 -0.9,0.9 z m -32.94,-36.18 q 21.06,-12.6 22.68,-35.64 -7.92,-3.24 -20.34,-3.24 -5.76,0 -12.42,1.98 -6.66,1.98 -10.62,4.86 2.7,9.9 8.1,18.72 5.58,8.64 12.6,13.32 z M 526.37978,253.2 q -12.24,0 -21.24,-1.98 -8.82,-1.8 -17.1,-6.66 l 10.44,-19.62 q 7.38,3.78 13.86,5.22 6.48,1.62 13.5,1.62 10.26,0 15.66,-5.4 5.58,-5.22 5.58,-13.14 V 210 h -17.82 q -19.26,0 -29.7,-10.8 -10.26,-10.98 -10.26,-31.14 0,-15.3 7.38,-25.74 7.56,-10.62 20.52,-16.02 12.96,-5.4 29.34,-5.4 h 27.36 v 67.5 h 22.5 q 0.9,0 0.9,0.72 v 19.98 q 0,0.9 -0.9,0.9 h -22.5 v 3.24 q -0.18,18.18 -12.6,28.98 -12.42,10.98 -34.92,10.98 z m 20.7,-64.8 v -45.9 h -5.76 q -11.52,0 -18,6.48 -6.48,6.48 -6.48,18.36 0,21.06 17.82,21.06 z m -169.73989,0 h 60.12 q -3.78,-16.56 -9,-26.82 -5.4,-10.26 -13.68,-17.64 -8.1,-7.56 -19.98,-12.42 l 10.08,-25.2 q 24.12,9.72 38.7,29.88 14.58,20.16 21.06,52.92 V 210 h -87.3 z M 295.62003,210 q -0.9,0 -0.9,-0.9 v -19.98 q 0,-0.72 0.9,-0.72 h 31.5 v -67.5 h 26.82 V 210 Z m 14.58,45 q -5.58,0 -8.82,-3.6 -3.24,-3.42 -3.24,-9.36 0,-5.94 3.24,-9.54 3.24,-3.42 8.82,-3.42 5.58,0 8.64,3.42 3.24,3.42 3.24,9.54 0,6.12 -3.24,9.54 -3.24,3.42 -8.64,3.42 z m 30.6,0 q -5.58,0 -8.82,-3.6 -3.24,-3.42 -3.24,-9.36 0,-5.94 3.24,-9.54 3.24,-3.42 8.82,-3.42 5.58,0 8.64,3.42 3.24,3.6 3.24,9.54 0,5.94 -3.24,9.36 -3.24,3.6 -8.64,3.6 z M 231.35991,100.74 q -5.58,0 -8.82,-3.42 -3.24,-3.6 -3.24,-9.54 0,-6.12 3.24,-9.54 3.24,-3.42 8.82,-3.42 5.58,0 8.64,3.42 3.24,3.42 3.24,9.54 0,6.12 -3.24,9.54 -3.24,3.42 -8.64,3.42 z m 30.6,0 q -5.58,0 -8.82,-3.42 -3.24,-3.6 -3.24,-9.54 0,-6.12 3.24,-9.54 3.24,-3.42 8.82,-3.42 5.58,0 8.64,3.42 3.24,3.42 3.24,9.54 0,5.94 -3.24,9.54 -3.24,3.42 -8.64,3.42 z m -19.08,109.26 q -25.02,0 -38.88,-11.52 -13.68,-11.7 -13.68,-32.58 0,-14.58 6.84,-24.48 6.84,-10.08 18.72,-15.3 11.88,-5.22 27,-5.22 h 5.04 v -8.82 h 27 v 76.32 h 22.5 q 0.9,0 0.9,0.72 v 19.98 q 0,0.9 -0.9,0.9 z m 5.22,-21.6 v -45.9 h -4.68 q -12.24,0 -18.9,6.12 -6.66,5.94 -6.66,17.46 0,10.62 6.48,16.56 6.48,5.76 18.72,5.76 z';
+
+    function buildSaudiTextStrokes(){
+      const ns='http://www.w3.org/2000/svg';
+      const svg=document.createElementNS(ns,'svg');
+      const path=document.createElementNS(ns,'path');
+      svg.setAttribute('width','1');svg.setAttribute('height','1');
+      svg.style.cssText='position:absolute;width:1px;height:1px;opacity:0;pointer-events:none';
+      path.setAttribute('d',SAUDI_TEXT_PATH_D);
+      svg.appendChild(path);
+      document.body.appendChild(svg);
+
+      const total=path.getTotalLength();
+      const raw=[];
+      const step=7;
+      for(let d=0;d<=total;d+=step){
+        const p=path.getPointAtLength(Math.min(d,total));
+        raw.push([(p.x-596)/455,(165-p.y)/130]);
+      }
+      svg.remove();
+
+      const strokes=[];
+      let current=[];
+      for(const p of raw){
+        if(current.length&&Math.hypot(p[0]-current[current.length-1][0],p[1]-current[current.length-1][1])>.12){
+          if(current.length>1) strokes.push(current);
+          current=[];
+        }
+        current.push(p);
+      }
+      if(current.length>1) strokes.push(current);
+      return transformStrokes(strokes,{sx:.93,sy:.72,y:-.03});
+    }
+
+    function addFrameStroke(points,color,brightness,positions,colors,blank){
+      const d=densify(points);
+      if(d.length<2||brightness<=.005) return;
+      const [r,g,b]=color.map(v=>v*brightness);
+      // Four blank points protect against the scanner blanking offset and hide jumps.
+      const first=d[0];
+      for(let i=0;i<4;i++){
+        positions.push(first[0],first[1],0);
+        colors.push(r,g,b);
+        blank.push(1);
+      }
+      for(const p of d){
+        positions.push(p[0],p[1],0);
+        colors.push(r,g,b);
+        blank.push(0);
+      }
+      const last=d[d.length-1];
+      positions.push(last[0],last[1],0,last[0],last[1],0);
+      colors.push(r,g,b,r,g,b);
+      blank.push(0,0);
+    }
+
+    function makeSaudiFrame(index,t,textStrokes){
+      const layers=[];
+      const emblem=emblemStrokes();
+      const diriyah=diriyahStrokes();
+
+      // 0–5s: crossed swords + palm draw on.
+      if(t<6.2){
+        const reveal=phase(t,.20,2.8);
+        const pulse=.88+.10*Math.sin(t*2.4);
+        layers.push({strokes:trimStrokes(emblem,reveal),color:SAUDI_GREEN,b:fadeWindow(t,0,.25,5.0,6.2)*pulse});
+      }
+
+      // 4.8–12.6s: Diriyah grows into view.
+      if(t>4.5&&t<13.0){
+        const p=phase(t,4.8,6.5);
+        const rise=(1-p)*-.12;
+        layers.push({strokes:trimStrokes(transformStrokes(diriyah,{y:rise}),p),color:SAUDI_GOLD,b:fadeWindow(t,4.5,5.5,11.6,13.0)});
+        if(t>7.0) layers.push({strokes:[poly([-.98,-.58],[.98,-.58])],color:SAUDI_WHITE,b:.34*fadeWindow(t,7,7.4,11.7,12.7)});
+      }
+
+      // 11.7–18.7s: camel crosses the scene.
+      if(t>11.3&&t<19.2){
+        const p=phase(t,11.7,18.0);
+        const x=.62-p*.78;
+        const bob=Math.sin((t-11.7)*3.5)*.025;
+        const camel=transformStrokes(camelStrokes((t-11.7)*.75),{x,y:bob,sx:.82,sy:.82});
+        layers.push({strokes:camel,color:SAUDI_GOLD,b:fadeWindow(t,11.3,12.0,18.0,19.2)});
+        const dune=[arc(-.45,-.53,.62,.12,Math.PI*.08,Math.PI*.92,24),arc(.52,-.56,.58,.10,Math.PI*.10,Math.PI*.90,24)];
+        layers.push({strokes:dune,color:SAUDI_GREEN,b:.28*fadeWindow(t,12,12.6,17.7,18.8)});
+      }
+
+      // 18–26.8s: Arabian horse runs in with a brighter, faster beat.
+      if(t>17.4&&t<27.0){
+        const p=phase(t,18.0,25.6);
+        const x=.48-p*.60;
+        const bob=Math.sin((t-18)*5.2)*.022;
+        const horse=transformStrokes(horseStrokes((t-18)*1.2),{x,y:bob,sx:.88,sy:.88});
+        layers.push({strokes:horse,color:SAUDI_WHITE,b:fadeWindow(t,17.4,18.2,25.9,27.0)});
+        // Motion streaks stay subtle so the animal remains readable.
+        const streaks=[
+          poly([-.95,-.12],[-.57,-.12]),
+          poly([-.88,.05],[-.58,.05]),
+          poly([-.80,.21],[-.61,.21])
+        ];
+        layers.push({strokes:streaks,color:SAUDI_GREEN,b:.38*fadeWindow(t,19,20,25.1,26.4)});
+      }
+
+      // 25.8–31.4s: radial climax and emblem return.
+      if(t>25.4&&t<31.8){
+        layers.push({strokes:raysStrokes((t-25.4)*.18),color:SAUDI_GREEN,b:.42*fadeWindow(t,25.4,26.2,29.3,30.5)});
+        const e=transformStrokes(emblem,{sx:.62,sy:.62,y:.24});
+        layers.push({strokes:trimStrokes(e,phase(t,27.0,29.2)),color:SAUDI_GREEN,b:fadeWindow(t,26.7,27.4,30.6,31.8)});
+      }
+
+      // 30–36s: final Arabic word, with a compact emblem above it.
+      if(t>29.6){
+        const p=phase(t,30.0,33.4);
+        const txt=trimStrokes(transformStrokes(textStrokes,{sx:.95,sy:.95,y:-.20}),p);
+        layers.push({strokes:txt,color:SAUDI_GREEN,b:fadeWindow(t,29.6,30.2,35.65,36.05)});
+        const mini=transformStrokes(emblem,{sx:.31,sy:.31,y:.59});
+        layers.push({strokes:mini,color:SAUDI_WHITE,b:.72*fadeWindow(t,30.4,31.0,35.7,36.05)});
+      }
+
+      // A short blackout gap between story beats sharpens transitions.
+      const positions=[],colors=[],blank=[];
+      for(const layer of layers){
+        if(layer.b<=.005) continue;
+        for(const stroke of layer.strokes) addFrameStroke(stroke,layer.color,layer.b,positions,colors,blank);
+      }
+      if(blank.length<2){
+        positions.push(0,0,0,.001,0,0);
+        colors.push(0,0,0,0,0,0);
+        blank.push(1,1);
+      }
+      return {
+        number:index,name:'SAUDI '+String(index).padStart(4,'0'),projector:0,
+        count:blank.length,
+        position:new Float32Array(positions),
+        color:new Float32Array(colors),
+        blank:new Uint8Array(blank)
+      };
+    }
+
+    function normalizeSaudiFrame(frame,target=SAUDI_POINTS_PER_FRAME){
+      if(frame.count===target) return frame;
+
+      const positions=new Float32Array(target*3);
+      const colors=new Float32Array(target*3);
+      const blank=new Uint8Array(target);
+
+      for(let i=0;i<target;i++){
+        const src=Math.min(frame.count-1,Math.floor(i*frame.count/target));
+        const s=src*3,d=i*3;
+        positions[d]=frame.position[s];
+        positions[d+1]=frame.position[s+1];
+        positions[d+2]=0;
+        colors[d]=frame.color[s];
+        colors[d+1]=frame.color[s+1];
+        colors[d+2]=frame.color[s+2];
+        blank[i]=frame.blank[src];
+      }
+
+      return {...frame,count:target,position:positions,color:colors,blank};
+    }
+
+    function buildSaudiAsset(){
+      const textStrokes=buildSaudiTextStrokes();
+      const frameCount=Math.ceil(SAUDI_DURATION*SAUDI_FPS)+1;
+      const frames=[];
+      let totalPoints=0,blanked=0;
+      for(let i=0;i<frameCount;i++){
+        const t=Math.min(SAUDI_DURATION,i/SAUDI_FPS);
+        const frame=normalizeSaudiFrame(makeSaudiFrame(i,t,textStrokes));
+        frames.push(frame);
+        totalPoints+=frame.count;
+        for(const v of frame.blank) blanked+=v;
+      }
+      const tracks=new Map([[0,frames]]);
+      return {frames,tracks,totalPoints,blanked,paletteFallbacks:0,eof:true,bytes:0,custom:true,duration:SAUDI_DURATION,fps:SAUDI_FPS};
+    }
+
+    function createSaudiDirectRenderer(origin,{width,height,planeY,planeZ}){
+      saudiDirectScaleX=width/2;
+      saudiDirectScaleY=height/2;
+      saudiDirectPlaneY=planeY;
+      saudiDirectPlaneZ=planeZ;
+      saudiDirectOrigin.copy(origin);
+
+      const maxSegments=Math.max(1,SAUDI_POINTS_PER_FRAME-1);
+
+      const lineGeometry=new THREE.BufferGeometry();
+      const linePosition=new THREE.BufferAttribute(
+        new Float32Array(maxSegments*2*3),3
+      ).setUsage(THREE.DynamicDrawUsage);
+      const lineColor=new THREE.BufferAttribute(
+        new Float32Array(maxSegments*2*3),3
+      ).setUsage(THREE.DynamicDrawUsage);
+      lineGeometry.setAttribute('position',linePosition);
+      lineGeometry.setAttribute('color',lineColor);
+      lineGeometry.setDrawRange(0,0);
+
+      const lineMaterial=new THREE.LineBasicMaterial({
+        vertexColors:true,
+        transparent:true,
+        opacity:1,
+        depthTest:false,
+        depthWrite:false,
+        blending:THREE.AdditiveBlending,
+        toneMapped:false
+      });
+      lineMaterial.fog=false;
+
+      saudiDirectLine=new THREE.LineSegments(lineGeometry,lineMaterial);
+      saudiDirectLine.name='Saudi direct laser projection';
+      saudiDirectLine.frustumCulled=false;
+      saudiDirectLine.renderOrder=20;
+
+      const beamGeometry=new THREE.BufferGeometry();
+      const beamPosition=new THREE.BufferAttribute(
+        new Float32Array(maxSegments*3*3),3
+      ).setUsage(THREE.DynamicDrawUsage);
+      const beamColor=new THREE.BufferAttribute(
+        new Float32Array(maxSegments*3*3),3
+      ).setUsage(THREE.DynamicDrawUsage);
+      beamGeometry.setAttribute('position',beamPosition);
+      beamGeometry.setAttribute('color',beamColor);
+      beamGeometry.setDrawRange(0,0);
+
+      const beamMaterial=new THREE.MeshBasicMaterial({
+        vertexColors:true,
+        transparent:true,
+        opacity:.16,
+        depthTest:false,
+        depthWrite:false,
+        blending:THREE.AdditiveBlending,
+        side:THREE.DoubleSide,
+        toneMapped:false
+      });
+      beamMaterial.fog=false;
+
+      saudiDirectBeam=new THREE.Mesh(beamGeometry,beamMaterial);
+      saudiDirectBeam.name='Saudi direct projector beams';
+      saudiDirectBeam.frustumCulled=false;
+      saudiDirectBeam.renderOrder=10;
+
+      saudiDirectGroup=new THREE.Group();
+      saudiDirectGroup.name='Saudi direct laser story';
+      saudiDirectGroup.visible=false;
+      saudiDirectGroup.add(saudiDirectBeam,saudiDirectLine);
+
+      // Small permanent aperture glow for the Saudi mode. If this is visible,
+      // the XR8 world rig is correctly attached even before the story lines.
+      const apertureGlow=new THREE.Mesh(
+        new THREE.SphereGeometry(.032,12,8),
+        new THREE.MeshBasicMaterial({
+          color:0x66ff99,
+          transparent:true,
+          opacity:.95,
+          depthTest:false,
+          depthWrite:false,
+          blending:THREE.AdditiveBlending,
+          toneMapped:false
+        })
+      );
+      apertureGlow.position.copy(saudiDirectOrigin);
+      apertureGlow.renderOrder=30;
+      saudiDirectGroup.add(apertureGlow);
+
+      saudiWorldRig.add(saudiDirectGroup);
+    }
+
+    function updateSaudiDirectFrame(frameIndex,force=false){
+      if(!saudiDirectGroup||!saudiDirectLine||!saudiDirectBeam) return;
+      if(!force&&frameIndex===saudiDirectLastFrame) return;
+
+      const asset=assetCache.get('saudi');
+      const frame=asset?.frames?.[frameIndex];
+      if(!frame) return;
+
+      const lp=saudiDirectLine.geometry.attributes.position;
+      const lc=saudiDirectLine.geometry.attributes.color;
+      const bp=saudiDirectBeam.geometry.attributes.position;
+      const bc=saudiDirectBeam.geometry.attributes.color;
+      const lpa=lp.array,lca=lc.array,bpa=bp.array,bca=bc.array;
+
+      let lineFloats=0;
+      let beamFloats=0;
+
+      const ox=saudiDirectOrigin.x;
+      const oy=saudiDirectOrigin.y;
+      const oz=saudiDirectOrigin.z;
+
+      for(let i=1;i<frame.count;i++){
+        if(frame.blank[i-1]||frame.blank[i]) continue;
+
+        const ap=(i-1)*3,bpIndex=i*3;
+        const ar=frame.color[ap],ag=frame.color[ap+1],ab=frame.color[ap+2];
+        const br=frame.color[bpIndex],bg=frame.color[bpIndex+1],bb=frame.color[bpIndex+2];
+        if(Math.max(ar,ag,ab,br,bg,bb)<.004) continue;
+
+        const ax=frame.position[ap]*saudiDirectScaleX;
+        const ay=frame.position[ap+1]*saudiDirectScaleY+saudiDirectPlaneY;
+        const az=saudiDirectPlaneZ;
+        const bx=frame.position[bpIndex]*saudiDirectScaleX;
+        const by=frame.position[bpIndex+1]*saudiDirectScaleY+saudiDirectPlaneY;
+        const bz=saudiDirectPlaneZ;
+
+        // Projection lines are intentionally HDR (>1) so UnrealBloomPass has
+        // a strong source even on mobile/WebGL implementations.
+        lpa[lineFloats]=ax; lpa[lineFloats+1]=ay; lpa[lineFloats+2]=az;
+        lpa[lineFloats+3]=bx; lpa[lineFloats+4]=by; lpa[lineFloats+5]=bz;
+
+        lca[lineFloats]=ar*2.2; lca[lineFloats+1]=ag*2.2; lca[lineFloats+2]=ab*2.2;
+        lca[lineFloats+3]=br*2.2; lca[lineFloats+4]=bg*2.2; lca[lineFloats+5]=bb*2.2;
+        lineFloats+=6;
+
+        // One translucent triangle per projected segment makes the light
+        // visibly originate at the physical lens, without LaserScanner.
+        const cr=(ar+br)*.5*1.10;
+        const cg=(ag+bg)*.5*1.10;
+        const cb=(ab+bb)*.5*1.10;
+
+        bpa[beamFloats]=ox; bpa[beamFloats+1]=oy; bpa[beamFloats+2]=oz;
+        bpa[beamFloats+3]=ax; bpa[beamFloats+4]=ay; bpa[beamFloats+5]=az;
+        bpa[beamFloats+6]=bx; bpa[beamFloats+7]=by; bpa[beamFloats+8]=bz;
+
+        for(let j=0;j<9;j+=3){
+          bca[beamFloats+j]=cr;
+          bca[beamFloats+j+1]=cg;
+          bca[beamFloats+j+2]=cb;
+        }
+        beamFloats+=9;
+      }
+
+      saudiDirectLine.geometry.setDrawRange(0,lineFloats/3);
+      saudiDirectBeam.geometry.setDrawRange(0,beamFloats/3);
+
+      lp.clearUpdateRanges(); lc.clearUpdateRanges();
+      bp.clearUpdateRanges(); bc.clearUpdateRanges();
+      if(lineFloats){
+        lp.addUpdateRange(0,lineFloats); lc.addUpdateRange(0,lineFloats);
+        lp.needsUpdate=true; lc.needsUpdate=true;
+      }
+      if(beamFloats){
+        bp.addUpdateRange(0,beamFloats); bc.addUpdateRange(0,beamFloats);
+        bp.needsUpdate=true; bc.needsUpdate=true;
+      }
+
+      saudiDirectLastFrame=frameIndex;
+    }
+
+    function setSaudiRendererActive(active){
+      if(saudiDirectGroup) saudiDirectGroup.visible=active;
+      if(saudiWorldRig) saudiWorldRig.visible=active && (placed||!guide.classList.contains('hidden'));
+      if(laserShow) laserShow.visible=!active;
+    }
+
+
+    function encodeSaudiIlda(sourceAsset){
+      const frames=sourceAsset.frames;
+      const headerSize=32;
+      let byteLength=headerSize; // EOF header
+      for(const frame of frames) byteLength+=headerSize+frame.count*8;
+
+      const buffer=new ArrayBuffer(byteLength);
+      const view=new DataView(buffer);
+      const bytes=new Uint8Array(buffer);
+      let offset=0;
+
+      function ascii(at,text,length){
+        for(let i=0;i<length;i++) bytes[at+i]=i<text.length?text.charCodeAt(i)&0x7f:0;
+      }
+
+      function writeHeader(format,name,count,number,total){
+        bytes[offset]=0x49; bytes[offset+1]=0x4c; bytes[offset+2]=0x44; bytes[offset+3]=0x41;
+        bytes[offset+4]=0; bytes[offset+5]=0; bytes[offset+6]=0; bytes[offset+7]=format;
+        ascii(offset+8,name.slice(0,8),8);
+        ascii(offset+16,'ABODEN',8);
+        view.setUint16(offset+24,count,false);
+        view.setUint16(offset+26,number&0xffff,false);
+        view.setUint16(offset+28,total&0xffff,false);
+        bytes[offset+30]=0;
+        bytes[offset+31]=0;
+        offset+=headerSize;
+      }
+
+      const total=frames.length;
+      for(let fi=0;fi<frames.length;fi++){
+        const frame=frames[fi];
+        writeHeader(5,'SAUDI'+String(fi).padStart(3,'0'),frame.count,fi,total);
+
+        for(let i=0;i<frame.count;i++){
+          const p=i*3;
+          const x=Math.max(-1,Math.min(1,frame.position[p]));
+          const y=Math.max(-1,Math.min(1,frame.position[p+1]));
+          view.setInt16(offset,Math.round(x*32767),false);
+          view.setInt16(offset+2,Math.round(y*32767),false);
+
+          let status=frame.blank[i]?0x40:0;
+          if(i===frame.count-1) status|=0x80;
+          bytes[offset+4]=status;
+
+          // ILDA true-colour format 5 stores B,G,R.
+          bytes[offset+5]=Math.round(Math.max(0,Math.min(1,frame.color[p+2]))*255);
+          bytes[offset+6]=Math.round(Math.max(0,Math.min(1,frame.color[p+1]))*255);
+          bytes[offset+7]=Math.round(Math.max(0,Math.min(1,frame.color[p]))*255);
+          offset+=8;
+        }
+      }
+
+      // Explicit ILDA EOF record.
+      writeHeader(0,'EOF',0,0,0);
+      return buffer;
+    }
+
+
+    let saudiVectorV3Promise=null;
+
+    async function loadSaudiVectorV3Data(){
+      if(saudiVectorV3Promise) return saudiVectorV3Promise;
+
+      saudiVectorV3Promise=(async()=>{
+        const urls=Array.from(
+          {length:6},
+          (_,i)=>'./assets/laser/saudi_story_v3_'+String(i).padStart(2,'0')+'.b64'
+        );
+        const parts=await Promise.all(urls.map(async url=>{
+          const response=await fetch(url,{cache:'force-cache'});
+          if(!response.ok) throw new Error('Saudi V3 vector chunk HTTP '+response.status);
+          return (await response.text()).trim();
+        }));
+
+        const b64=parts.join('');
+        if(b64.length!==12208){
+          throw new Error('Saudi V3 vector data incomplete: '+b64.length);
+        }
+        const binary=atob(b64);
+        const compressed=new Uint8Array(binary.length);
+        for(let i=0;i<binary.length;i++) compressed[i]=binary.charCodeAt(i);
+
+        if(typeof DecompressionStream!=='function'){
+          throw new Error('This browser does not support DecompressionStream');
+        }
+
+        const stream=new Blob([compressed]).stream().pipeThrough(new DecompressionStream('gzip'));
+        const jsonText=await new Response(stream).text();
+        const data=JSON.parse(jsonText);
+
+        if(data?.version!==3||!data?.paths) throw new Error('Invalid Saudi V3 vector data');
+        return data;
+      })();
+
+      return saudiVectorV3Promise;
+    }
+
+    function v3Smoothstep(v){
+      v=Math.max(0,Math.min(1,v));
+      return v*v*(3-2*v);
+    }
+
+    function v3PathLength(path){
+      let total=0;
+      for(let i=1;i<path.length;i++){
+        const dx=path[i][0]-path[i-1][0];
+        const dy=path[i][1]-path[i-1][1];
+        total+=Math.hypot(dx,dy);
+      }
+      return total;
+    }
+
+    function v3TransformPaths(paths,sx,sy,tx,ty){
+      return paths.map(path=>path.map(([x,y])=>[x*sx+tx,y*sy+ty]));
+    }
+
+    function v3RevealPaths(paths,fraction){
+      if(fraction>=.999) return paths.map(path=>path.slice());
+      fraction=Math.max(0,Math.min(1,fraction));
+
+      const lengths=paths.map(v3PathLength);
+      const total=lengths.reduce((a,b)=>a+b,0)||1;
+      const target=total*fraction;
+      const result=[];
+      let consumed=0;
+
+      for(let i=0;i<paths.length;i++){
+        const path=paths[i];
+        const len=lengths[i];
+        if(target<=consumed) break;
+
+        if(target>=consumed+len){
+          result.push(path.slice());
+          consumed+=len;
+          continue;
+        }
+
+        const local=(target-consumed)/Math.max(len,1e-9);
+        const count=Math.max(2,Math.round(path.length*local));
+        result.push(path.slice(0,count));
+        break;
+      }
+
+      return result;
+    }
+
+    function v3ResamplePath(path,count){
+      if(count<=1) return [path[0]];
+      if(path.length<2) return Array.from({length:count},()=>path[0]);
+
+      const segmentLengths=[];
+      let total=0;
+      for(let i=1;i<path.length;i++){
+        const len=Math.hypot(
+          path[i][0]-path[i-1][0],
+          path[i][1]-path[i-1][1]
+        );
+        segmentLengths.push(len);
+        total+=len;
+      }
+      if(total<=1e-9) return Array.from({length:count},()=>path[0]);
+
+      const cumulative=[0];
+      for(const len of segmentLengths) cumulative.push(cumulative[cumulative.length-1]+len);
+
+      const out=[];
+      let seg=0;
+      for(let i=0;i<count;i++){
+        const target=total*(i/Math.max(1,count-1));
+        while(seg+1<cumulative.length&&cumulative[seg+1]<target) seg++;
+
+        if(seg>=path.length-1){
+          out.push(path[path.length-1]);
+          continue;
+        }
+
+        const span=Math.max(cumulative[seg+1]-cumulative[seg],1e-9);
+        const u=(target-cumulative[seg])/span;
+        const a=path[seg],b=path[seg+1];
+        out.push([
+          a[0]+(b[0]-a[0])*u,
+          a[1]+(b[1]-a[1])*u
+        ]);
+      }
+      return out;
+    }
+
+    function v3AllocateVisiblePoints(items,totalVisible){
+      const lengths=items.map(item=>item.length);
+      const total=lengths.reduce((a,b)=>a+b,0)||1;
+      const allocations=lengths.map(len=>Math.max(4,Math.round(totalVisible*len/total)));
+
+      let sum=allocations.reduce((a,b)=>a+b,0);
+      while(sum>totalVisible){
+        let best=-1,bestValue=-Infinity;
+        for(let i=0;i<allocations.length;i++){
+          if(allocations[i]>4&&allocations[i]>bestValue){
+            best=i;bestValue=allocations[i];
+          }
+        }
+        if(best<0) break;
+        allocations[best]--;
+        sum--;
+      }
+
+      while(sum<totalVisible){
+        let best=0,bestRatio=-Infinity;
+        for(let i=0;i<allocations.length;i++){
+          const ratio=lengths[i]/allocations[i];
+          if(ratio>bestRatio){best=i;bestRatio=ratio;}
+        }
+        allocations[best]++;
+        sum++;
+      }
+
+      return allocations;
+    }
+
+    function v3MakeFrame(index,groups){
+      const target=SAUDI_POINTS_PER_FRAME;
+      const items=[];
+
+      for(const group of groups){
+        const [r,g,b]=group.color.map(v=>v/255);
+        for(const path of group.paths){
+          if(!path||path.length<2) continue;
+          const length=v3PathLength(path);
+          if(length<=.002) continue;
+          items.push({path,color:[r,g,b],length});
+        }
+      }
+
+      if(!items.length){
+        return {
+          number:index,name:'SAUDI3 '+String(index).padStart(4,'0'),projector:0,count:target,
+          position:new Float32Array(target*3),
+          color:new Float32Array(target*3),
+          blank:new Uint8Array(target).fill(1)
+        };
+      }
+
+      // Four blanked dwell points at the beginning of every disconnected vector
+      // prevent LaserShow from drawing a visible line while jumping between shapes.
+      const blankCount=Math.min(Math.floor(target/4),items.length*4);
+      const visibleCount=Math.max(20,target-blankCount);
+      const allocations=v3AllocateVisiblePoints(items,visibleCount);
+
+      const points=[];
+      for(let i=0;i<items.length;i++){
+        const item=items[i];
+        const sampled=v3ResamplePath(item.path,allocations[i]);
+        for(let j=0;j<4;j++){
+          points.push({
+            x:sampled[0][0],y:sampled[0][1],
+            color:item.color,blank:1
+          });
+        }
+        for(const [x,y] of sampled){
+          points.push({x,y,color:item.color,blank:0});
+        }
+      }
+
+      // Keep every frame at the configured fixed point count. Trim only tail dwell or pad on
+      // the final point; vector order and blank transitions stay intact.
+      if(points.length>target) points.length=target;
+      while(points.length<target){
+        const last=points[points.length-1]||{x:0,y:0,color:[0,0,0],blank:1};
+        points.push({...last});
+      }
+
+      const position=new Float32Array(target*3);
+      const color=new Float32Array(target*3);
+      const blank=new Uint8Array(target);
+
+      for(let i=0;i<target;i++){
+        const p=points[i],k=i*3;
+        position[k]=p.x;position[k+1]=p.y;position[k+2]=0;
+        color[k]=p.color[0];color[k+1]=p.color[1];color[k+2]=p.color[2];
+        blank[i]=p.blank;
+      }
+
+      return {
+        number:index,name:'SAUDI3 '+String(index).padStart(4,'0'),projector:0,
+        count:target,position,color,blank
+      };
+    }
+
+    async function buildSaudiV3Asset(){
+      const data=await loadSaudiVectorV3Data();
+      const fps=data.fps||SAUDI_FPS;
+      const paths=data.paths;
+      const colors=data.colors;
+      const frames=[];
+      let frameIndex=0;
+
+      const finalSaudi=v3TransformPaths(paths.saudi,.92,.92,0,-.25);
+      const final96=v3TransformPaths(paths.n96,.34,.34,0,.60);
+
+      for(const [sceneName,seconds] of data.scenes){
+        const count=Math.round(seconds*fps);
+
+        for(let i=0;i<count;i++){
+          const local=i/fps;
+          const reveal=v3Smoothstep(Math.min(1,local/Math.max(.001,seconds*.30)));
+
+          if(sceneName==='final'){
+            const word=v3RevealPaths(finalSaudi,reveal);
+            const reveal96=v3Smoothstep(
+              Math.max(0,Math.min(1,(local-seconds*.18)/(seconds*.20)))
+            );
+            const num=v3RevealPaths(final96,reveal96);
+
+            frames.push(v3MakeFrame(frameIndex++,[
+              {paths:word,color:colors.saudi},
+              {paths:num,color:colors.n96}
+            ]));
+          }else{
+            frames.push(v3MakeFrame(frameIndex++,[
+              {
+                paths:v3RevealPaths(paths[sceneName],reveal),
+                color:colors[sceneName]
+              }
+            ]));
+          }
+        }
+      }
+
+      const tracks=new Map([[0,frames]]);
+      return {
+        frames,tracks,
+        totalPoints:frames.length*SAUDI_POINTS_PER_FRAME,
+        blanked:0,paletteFallbacks:0,eof:true,bytes:0,
+        custom:true,duration:data.duration||36,fps
+      };
+    }
+
+    async function ensureSaudiAudio(){
+      if(saudiAudioReady) return saudiAudio;
+      if(saudiAudioPromise) return saudiAudioPromise;
+
+      saudiAudioPromise=new Promise((resolve,reject)=>{
+        const done=()=>{
+          cleanup();
+          saudiAudioReady=true;
+          resolve(saudiAudio);
+        };
+        const fail=()=>{
+          cleanup();
+          saudiAudioPromise=null;
+          reject(new Error('Saudi anthem audio failed to load'));
+        };
+        const cleanup=()=>{
+          saudiAudio.removeEventListener('canplaythrough',done);
+          saudiAudio.removeEventListener('loadeddata',done);
+          saudiAudio.removeEventListener('error',fail);
+        };
+
+        if(saudiAudio.readyState>=2){
+          saudiAudioReady=true;
+          resolve(saudiAudio);
+          return;
+        }
+
+        saudiAudio.addEventListener('canplaythrough',done,{once:true});
+        saudiAudio.addEventListener('loadeddata',done,{once:true});
+        saudiAudio.addEventListener('error',fail,{once:true});
+        saudiAudio.load();
+      });
+
+      return saudiAudioPromise;
+    }
+
+    async function startSaudiPlayback(restart=false){
+      if(currentShowId!=='saudi'||!laserShow) return;
+
+      try{
+        await ensureSaudiAudio();
+
+        if(restart){
+          saudiAudio.currentTime=0;
+          saudiLastAudioTime=0;
+          saudiLastFrame=0;
+          laserShow.playing=false;
+          laserShow.seekFrame(0);
+        }
+
+        setSaudiRendererActive(false);
+        laserShow.visible=true;
+
+        await saudiAudio.play();
+
+        laserShow.playing=true;
+        saudiLastAudioTime=saudiAudio.currentTime;
+        playBtn.innerHTML='Ⅱ<span>إيقاف</span>';
+        setStatus('السعودية · ILDA + موسيقى',true);
+      }catch(err){
+        console.warn('[ABODEN LASER] Audio playback',err);
+        laserShow.playing=false;
+        playBtn.innerHTML='▶<span>تشغيل</span>';
+        notify('اضغط تشغيل لبدء الموسيقى');
+      }
+    }
+
+    function stopSaudiPlayback(reset=false){
+      saudiAudio.pause();
+      if(laserShow&&currentShowId==='saudi') laserShow.playing=false;
+
+      if(reset&&saudiAudioReady){
+        try{saudiAudio.currentTime=0;}catch{}
+        saudiLastAudioTime=0;
+        saudiLastFrame=0;
+        if(laserShow) laserShow.seekFrame(0);
+      }
+    }
+
+    function syncSaudiTimeline(force=false){
+      if(currentShowId!=='saudi'||!laserShow) return;
+
+      const time=Math.min(
+        SAUDI_DURATION-.001,
+        Math.max(0,saudiAudioReady?saudiAudio.currentTime:0)
+      );
+      const frame=Math.min(laserShow.frameCount-1,Math.floor(time*SAUDI_FPS));
+
+      if(force){
+        laserShow.playing=false;
+        laserShow.seekFrame(frame);
+        laserShow.playing=!saudiAudio.paused&&!saudiAudio.ended;
+        saudiLastFrame=frame;
+        saudiLastAudioTime=time;
+        return;
+      }
+
+      if(saudiAudio.paused||saudiAudio.ended){
+        laserShow.playing=false;
+        laserShow.update(0);
+        return;
+      }
+
+      const delta=time-saudiLastAudioTime;
+      if(delta>=0&&delta<=.30){
+        laserShow.playing=true;
+        if(delta>0) laserShow.update(delta);
+      }else{
+        laserShow.playing=false;
+        laserShow.seekFrame(frame);
+        laserShow.playing=true;
+      }
+
+      saudiLastAudioTime=time;
+      saudiLastFrame=frame;
+    }
+
+    saudiAudio.addEventListener('ended',()=>{
+      if(currentShowId!=='saudi') return;
+      syncSaudiTimeline(true);
+      if(laserShow) laserShow.playing=false;
+      playBtn.innerHTML='▶<span>إعادة</span>';
+      setStatus('السعودية · انتهى العرض',true);
+    });
+
+    async function loadAsset(showId,{initial=false}={}){
+      if(assetCache.has(showId)) return assetCache.get(showId);
+      const item=SHOWS.find(s=>s.id===showId);
+      if(!item) throw new Error('Unknown laser show');
+
+      if(item.kind==='vector-v3'){
+        if(initial) setLoadProgress(28,'تحميل مسارات الأوتلاين النظيفة…');
+
+        const sourceAsset=await buildSaudiV3Asset();
+        const loader=new ILDALoader();
+        const asset=loader.parse(encodeSaudiIlda(sourceAsset));
+
+        asset.custom=true;
+        asset.duration=36;
+        asset.fps=SAUDI_FPS;
+        assetCache.set(showId,asset);
+
+        ensureSaudiAudio().catch(err=>console.warn('[ABODEN LASER] audio preload',err));
+
+        if(initial) setLoadProgress(76,'تم تجهيز عرض السعودية V3…');
+        return asset;
+      }
+
+      if(item.kind==='custom'){
+        if(initial) setLoadProgress(36,'بناء ملف ILDA للسعودية…');
+
+        const sourceAsset=buildSaudiAsset();
+        const loader=new ILDALoader();
+        const asset=loader.parse(encodeSaudiIlda(sourceAsset));
+
+        asset.custom=true;
+        asset.duration=SAUDI_DURATION;
+        asset.fps=SAUDI_FPS;
+        assetCache.set(showId,asset);
+
+        ensureSaudiAudio().catch(err=>console.warn('[ABODEN LASER] audio preload',err));
+
+        if(initial) setLoadProgress(76,'تم تجهيز ILDA والموسيقى…');
+        return asset;
+      }
+
+      const loader=new ILDALoader();
+      const showUrl=item.local
+        ? './assets/laser/'+item.file
+        : UPSTREAM+item.file;
+      const asset=await new Promise((resolve,reject)=>{
+        loader.load(
+          showUrl,
+          resolve,
+          (event)=>{
+            if(initial && event?.total>0){
+              const ratio=event.loaded/event.total;
+              setLoadProgress(20+ratio*65,item.local?'تحميل عرض السعودية الجديد…':'تحميل عرض الليزر…');
+            }else if(!initial && event?.total>0){
+              const pct=Math.round((event.loaded/event.total)*100);
+              setStatus('تحميل '+item.name+' · '+pct+'%',false);
+            }
+          },
+          reject
+        );
+      });
+
+      assetCache.set(showId,asset);
+      return asset;
+    }
+
+    function buildShowButtons(){
+      showStrip.innerHTML='';
+      for(const item of SHOWS){
+        const btn=document.createElement('button');
+        btn.className='showBtn'+(item.id===currentShowId?' active':'');
+        btn.textContent=item.name;
+        btn.dataset.showId=item.id;
+        btn.addEventListener('click',()=>switchShow(item.id));
+        showStrip.appendChild(btn);
+      }
+    }
+
+    function refreshShowButtons(){
+      for(const btn of showStrip.querySelectorAll('.showBtn')){
+        btn.classList.toggle('active',btn.dataset.showId===currentShowId);
+        btn.disabled=switchingShow;
+      }
+    }
+
+    async function switchShow(id){
+      if(switchingShow||id===currentShowId||!laserShow) return;
+      switchingShow=true;
+      refreshShowButtons();
+
+      const item=SHOWS.find(s=>s.id===id);
+      setStatus('تحميل '+item.name+'…',false);
+
+      try{
+        if(currentShowId==='saudi') stopSaudiPlayback(true);
+
+        const asset=await loadAsset(id);
+        currentShowId=id;
+        saudiLastFrame=-1;
+        saudiDirectLastFrame=-1;
+
+        if(id==='saudi'){
+          setSaudiRendererActive(false);
+          laserShow.setData(asset);
+          laserShow.visible=true;
+          laserShow.playing=false;
+          laserShow.pointRate=SAUDI_POINT_RATE;
+          laserShow.blankingOffset=0;
+          laserShow.lightDecay=.88;
+          laserShow.intensity=1.18;
+          laserShow.beamIntensity=.46;
+          laserShow.seekFrame(0);
+
+          if(placed) await startSaudiPlayback(true);
+          else playBtn.innerHTML='▶<span>بعد التثبيت</span>';
+        }else{
+          setSaudiRendererActive(false);
+          laserShow.setData(asset);
+          laserShow.visible=true;
+          laserShow.playing=true;
+          laserShow.pointRate=8000;
+          laserShow.blankingOffset=-3;
+          laserShow.lightDecay=.90;
+          laserShow.intensity=1;
+          laserShow.beamIntensity=.36;
+          playBtn.innerHTML='Ⅱ<span>إيقاف</span>';
+        }
+
+        refreshShowButtons();
+        setStatus(item.name+(pipelineReady?' · Bloom':'') ,true);
+        notify(id==='saudi'?'تم تجهيز قصة السعودية':'تم تشغيل '+item.name);
+      }catch(err){
+        console.error(err);
+        setStatus('تعذر تحميل العرض',false);
+        notify('تعذر تحميل العرض');
+      }finally{
+        switchingShow=false;
+        refreshShowButtons();
+      }
+    }
+
+    async function setupScene(){
+      const xrScene=XR8.Threejs.xrScene();
+      scene=xrScene.scene;
+      camera=xrScene.camera;
+      renderer=xrScene.renderer;
+
+      syncVisualViewport();
+      setTimeout(syncVisualViewport,60);
+      setTimeout(syncVisualViewport,300);
+
+      // XR8 continues to own the real camera feed and the physical-looking
+      // projector model. Laser light is rendered by a second transparent
+      // WebGL layer using three-ilda's original post-processing pipeline.
+      renderer.shadowMap.enabled=false;
+      scene.add(new THREE.HemisphereLight(0xffffff,0x4b5a70,1.25));
+
+      const key=new THREE.DirectionalLight(0xffffff,.85);
+      key.position.set(2,4,2);
+      key.castShadow=false;
+      scene.add(key);
+
+      setLoadProgress(8,'تجهيز كاميرا الليزر…');
+
+      laserRenderer=new THREE.WebGLRenderer({
+        canvas:laserCanvas,
+        alpha:false,
+        antialias:false,
+        powerPreference:'high-performance'
+      });
+      laserRenderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
+      laserRenderer.outputColorSpace=THREE.LinearSRGBColorSpace;
+      laserRenderer.toneMapping=THREE.NoToneMapping;
+      laserRenderer.setClearColor(0x000000,1);
+      laserRenderer.autoClear=true;
+
+      laserScene=new THREE.Scene();
+      laserScene.background=new THREE.Color(0x000000);
+
+      laserCamera=new THREE.PerspectiveCamera(50,1,.01,1000);
+      syncLaserCamera();
+      syncVisualViewport();
+
+      projectorRig=new THREE.Group();
+      projectorRig.name='ABODEN physical laser projector';
+      projectorRig.visible=false;
+
+      const projectorBuild=createProjector();
+      projectorRig.add(projectorBuild.root);
+      scene.add(projectorRig);
+
+      laserRig=new THREE.Group();
+      laserRig.name='ABODEN laser light rig';
+      laserRig.visible=false;
+
+      saudiWorldRig=new THREE.Group();
+      saudiWorldRig.name='ABODEN Saudi world laser rig';
+      saudiWorldRig.visible=false;
+      scene.add(saudiWorldRig);
+
+      setLoadProgress(20,'تحميل عرض الليزر…');
+      const asset=await loadAsset(currentShowId,{initial:true});
+
+      // Keep the projected image farther from the physical projector so
+      // the beam cone reads like a real stage laser instead of a near-field fan.
+      const LASER_PROJECTION_DISTANCE=14.40;
+      const LASER_PROJECTION_HEIGHT=3.00;
+
+      // Large stage-style projection: wider, taller and slightly elevated.
+      laserShow=new LaserShow(asset,{capacity:2048,width:13.20,height:8.40});
+      laserShow.position.set(0,LASER_PROJECTION_HEIGHT,-LASER_PROJECTION_DISTANCE);
+
+      // Projector and laser light live in separate scenes but share the same
+      // rig transform. Convert the physical aperture from rig-local space into
+      // LaserShow-local space so the beam always exits the visible lens.
+      laserShow.projector.position
+        .copy(projectorBuild.laserOrigin.position)
+        .sub(laserShow.position);
+      laserShow.beamMode='Front';
+
+      // Start from three-ilda's own visual defaults. The pipeline supplies
+      // bloom, beam blur and atmospheric haze instead of overdriving raw lines.
+      laserShow.beamIntensity=.36;
+      laserShow.intensity=1;
+      laserShow.lightDecay=.90;
+      laserShow.pointRate=8000;
+
+      laserRig.add(laserShow);
+
+      createSaudiDirectRenderer(
+        projectorBuild.laserOrigin.position,
+        {
+          width:3.35,
+          height:2.12,
+          planeY:LASER_PROJECTION_HEIGHT,
+          planeZ:-LASER_PROJECTION_DISTANCE
+        }
+      );
+
+      if(currentShowId==='saudi'){
+        setSaudiRendererActive(false);
+        laserShow.visible=true;
+        laserShow.playing=false;
+        laserShow.pointRate=SAUDI_POINT_RATE;
+        laserShow.blankingOffset=0;
+        laserShow.lightDecay=.88;
+        laserShow.intensity=1.18;
+        laserShow.beamIntensity=.46;
+        laserShow.seekFrame(0);
+        saudiLastFrame=0;
+        saudiLastAudioTime=0;
+        playBtn.innerHTML='▶<span>بعد التثبيت</span>';
+      }else{
+        setSaudiRendererActive(false);
+      }
+
+      laserScene.add(laserRig);
+
+      setLoadProgress(88,'ضبط حدة الليزر والتوهج…');
+
+      try{
+        laserPipeline=new LaserShowPipeline(
+          laserRenderer,
+          laserScene,
+          laserCamera,
+          {strength:3.6,radius:.16,threshold:.14,samples:2}
+        );
+        laserPipeline.add(laserShow);
+        pipelineReady=true;
+      }catch(err){
+        // The raw WebGL laser remains available if a device cannot allocate
+        // the half-float post-processing targets.
+        console.warn('[ABODEN LASER] Pipeline fallback',err);
+        laserPipeline=null;
+        pipelineReady=false;
+      }
+
+      buildShowButtons();
+
+      setLoadProgress(100,pipelineReady?'جاهز · مؤثرات الليزر الكاملة':'جاهز · الوضع الأساسي');
+      setStatus('امسح الأرض',true);
+      requestAnimationFrame(loop);
+
+      requestAnimationFrame(()=>{
+        intro.style.display='none';
+        if(!pipelineReady) notify('تم تشغيل وضع ليزر متوافق بدون المؤثرات الثقيلة');
+      });
+    }
+
+    function worldModule(){
+      return {
+        name:'aboden-laser-world',
+        onStart:async()=>{
+          try{
+            await setupScene();
+            window.dispatchEvent(new Event('resize'));
+          }catch(err){
+            console.error(err);
+            loadLabel.textContent='تعذر تشغيل تجربة الليزر';
+            loadPercent.textContent='!';
+            errorBox.style.display='block';
+            errorBox.textContent='تعذر تحميل محرك الليزر أو العرض الافتراضي. تحقق من الاتصال ثم أعد تحميل الصفحة.';
+            startBtn.textContent='أعد تحميل الصفحة';
+            startBtn.disabled=true;
+          }
+        },
+        onException:(error)=>{
+          console.error(error);
+          notify('حدث خطأ في التتبع');
+        }
+      };
+    }
+
+    function updatePlacement(dt){
+      if(placed){
+        reticleEl.classList.remove('on');
+        return;
+      }
+
+      raycaster.setFromCamera(centerNdc,camera);
+      const hit=raycaster.ray.intersectPlane(floorPlane,hitPoint);
+
+      if(!hit||hit.distanceTo(camera.position)>7){
+        reticleEl.classList.remove('on');
+        stableMs=0;
+        surfaceReady=false;
+        setRigVisible(false);
+        setStatus('ابحث عن الأرض',false);
+        return;
+      }
+
+      const delta=prevHit.distanceTo(hit);
+      if(delta<.018) stableMs+=dt*1000;
+      else stableMs=0;
+      prevHit.copy(hit);
+
+      if(stablePoint.lengthSq()===0) stablePoint.copy(hit);
+      else stablePoint.lerp(hit,.16);
+
+      reticleEl.classList.add('on');
+
+      if(laserRig&&projectorRig){
+        applyRigTransform(stablePoint,yawFacingCameraForward(),rigScale);
+        setRigVisible(true);
+      }
+
+      surfaceReady=stableMs>650;
+      setStatus(surfaceReady?'السطح مستقر — ثبّت الليزر':'ثبّت الجوال قليلًا',surfaceReady);
+    }
+
+    function placeLaser(){
+      if(placed){
+        resetPlacement();
+        return;
+      }
+      if(!surfaceReady||!laserRig){
+        notify('انتظر حتى يستقر السطح');
+        return;
+      }
+
+      applyRigTransform(stablePoint,yawFacingCameraForward(),rigScale);
+      setRigVisible(true);
+      placed=true;
+
+      guide.classList.add('hidden');
+      placeBtn.textContent='إعادة التثبيت';
+      setStatus(SHOWS.find(s=>s.id===currentShowId)?.name||'العرض يعمل',true);
+      notify('تم تثبيت جهاز الليزر');
+
+      if(currentShowId==='saudi'){
+        setSaudiRendererActive(false);
+        startSaudiPlayback(true);
+      }
+    }
+
+    function resetPlacement(){
+      if(currentShowId==='saudi') stopSaudiPlayback(false);
+      placed=false;
+      surfaceReady=false;
+      stableMs=0;
+      stablePoint.set(0,0,0);
+      prevHit.set(999,999,999);
+      setRigVisible(false);
+      guide.classList.remove('hidden');
+      placeBtn.textContent='ثبّت الليزر';
+      setStatus('أعد مسح الأرض',false);
+      try{XR8.XrController.recenter();}catch(err){console.warn(err);}
+    }
+
+    function adjustScale(delta){
+      rigScale=THREE.MathUtils.clamp(Math.round((rigScale+delta)*100)/100,.55,1.55);
+      if(laserRig&&projectorRig){
+        laserRig.scale.setScalar(rigScale);
+        projectorRig.scale.setScalar(rigScale);
+        if(saudiWorldRig) saudiWorldRig.scale.setScalar(rigScale);
+      }
+      notify('حجم العرض '+Math.round(rigScale*100)+'%');
+    }
+
+    function rotateRig(delta){
+      if(!laserRig||!laserRig.visible){
+        notify('ثبّت جهاز الليزر أولًا');
+        return;
+      }
+      laserRig.rotation.y+=delta;
+      if(projectorRig) projectorRig.rotation.y=laserRig.rotation.y;
+      if(saudiWorldRig) saudiWorldRig.rotation.y=laserRig.rotation.y;
+    }
+
+    async function togglePlay(){
+      if(!laserShow) return;
+
+      if(currentShowId==='saudi'){
+        if(!placed){
+          notify('ثبّت جهاز الليزر أولًا');
+          return;
+        }
+        if(saudiAudio.ended||saudiAudio.currentTime>=SAUDI_DURATION-.1){
+          await startSaudiPlayback(true);
+        }else if(saudiAudio.paused){
+          await startSaudiPlayback(false);
+        }else{
+          saudiAudio.pause();
+          laserShow.playing=false;
+          syncSaudiTimeline(true);
+          playBtn.innerHTML='▶<span>تشغيل</span>';
+          notify('إيقاف العرض');
+        }
+        return;
+      }
+
+      laserShow.playing=!laserShow.playing;
+      playBtn.innerHTML=laserShow.playing?'Ⅱ<span>إيقاف</span>':'▶<span>تشغيل</span>';
+      notify(laserShow.playing?'تشغيل العرض':'إيقاف العرض');
+    }
+
+    placeBtn.addEventListener('click',placeLaser);
+    resetBtn.addEventListener('click',resetPlacement);
+    scaleDownBtn.addEventListener('click',()=>adjustScale(-.10));
+    scaleUpBtn.addEventListener('click',()=>adjustScale(.10));
+    rotateLeftBtn.addEventListener('click',()=>rotateRig(-Math.PI/18));
+    rotateRightBtn.addEventListener('click',()=>rotateRig(Math.PI/18));
+    playBtn.addEventListener('click',togglePlay);
+
+    function loop(now){
+      requestAnimationFrame(loop);
+      if(!camera||!scene) return;
+
+      const dt=Math.min(.05,Math.max(0,(now-lastTime)/1000||.016));
+      lastTime=now;
+
+      updatePlacement(dt);
+      if(currentShowId==='saudi'){
+        syncSaudiTimeline(false);
+      }else if(laserShow&&laserShow.visible){
+        laserShow.update(dt);
+      }
+
+      if(laserRenderer&&laserScene&&laserCamera){
+        syncLaserCamera();
+        if(laserPipeline) laserPipeline.render();
+        else{
+          laserRenderer.setRenderTarget(null);
+          laserRenderer.clear();
+          laserRenderer.render(laserScene,laserCamera);
+        }
+      }
+    }
+
+    startBtn.addEventListener('click',()=>{
+      if(!xrReady||xrStarted) return;
+      ensureSaudiAudio().catch(err=>console.warn('[ABODEN LASER] audio preload',err));
+      xrStarted=true;
+      startBtn.disabled=true;
+      startBtn.textContent='جاري التحميل…';
+      errorBox.style.display='none';
+      setLoadProgress(0,'تشغيل محرك الواقع المعزز…');
+
+      try{
+        XR8.run({canvas});
+        syncVisualViewport();
+        setTimeout(syncVisualViewport,120);
+        setTimeout(syncVisualViewport,500);
+        setTimeout(syncVisualViewport,1200);
+      }catch(err){
+        console.error(err);
+        xrStarted=false;
+        errorBox.style.display='block';
+        errorBox.textContent='تعذر تشغيل World Tracking. حدّث الصفحة وحاول مرة أخرى.';
+        startBtn.disabled=false;
+        startBtn.textContent='حاول مرة أخرى';
+      }
+    });
+
+    function initializeXR(){
+      if(xrReady||!window.XR8||!window.THREE) return;
+
+      try{
+        XR8.XrController.configure({
+          disableWorldTracking:false,
+          enableLighting:true,
+          enableWorldPoints:true,
+          scale:'responsive'
+        });
+
+        XR8.addCameraPipelineModules([
+          XR8.GlTextureRenderer.pipelineModule(),
+          XR8.Threejs.pipelineModule(),
+          XR8.XrController.pipelineModule(),
+          worldModule()
+        ]);
+
+        xrReady=true;
+        startBtn.disabled=false;
+        startBtn.textContent='ابدأ تجربة الليزر';
+      }catch(err){
+        console.error(err);
+        errorBox.style.display='block';
+        errorBox.textContent='لم يكتمل تحميل محرك AR. حدّث الصفحة وحاول مرة أخرى.';
+      }
+    }
+
+    if(window.XR8) initializeXR();
+    else window.addEventListener('xrloaded',initializeXR,{once:true});
+
+    setTimeout(()=>{
+      if(!xrReady){
+        errorBox.style.display='block';
+        errorBox.textContent='محرك AR يستغرق وقتًا أطول من المتوقع. تحقق من الاتصال ثم أعد تحميل الصفحة.';
+      }
+    },12000);
+  </script>
+</body>
+</html>
