@@ -7,10 +7,9 @@ Author profile: https://sketchfab.com/vervoortward
 License recorded in the supplied GLB: Creative Commons Attribution 4.0 (CC BY 4.0)
 License: https://creativecommons.org/licenses/by/4.0/
 
-The supplied GLB is stored unchanged as carnival.glb.
-Runtime adaptations: scaled/reoriented for AR; alpha handling adjusted; three
-original duck targets hidden. duck-target.glb is an extracted derivative of one
-duck, with transforms baked and its bottom pivot normalized to a height of 0.4.
-It retains the original texture and attribution, and is used on a new target rack.
-The rack, stationary targets, UI and gameplay are new. Model animation is used.
+The original carnival booth model is no longer loaded at runtime; the stage is
+now a procedural counter/rack. duck-target.glb is a derivative of one duck from
+that model, with transforms baked and its bottom pivot normalized to a height
+of 0.4. It retains the original texture and attribution, and is used on the
+target rack. The rack, stationary targets, UI and gameplay are new.
 Audio cues are short synthesized effects, not recorded air-rifle sounds.
