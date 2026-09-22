@@ -120,6 +120,11 @@ async function attachSoldierModel(root){
   root.userData.actions=actions;
   root.userData.actionName=null;
   root.userData.fallbackVisual.visible=false;
+  if(root.userData.dead){
+    root.rotation.x=0;
+    root.rotation.z=0;
+    root.position.y=root.userData.groundY;
+  }
   setSoldierAction(root,root.userData.dead?'Death':'Idle',0);
   mixer.update(0);
 
