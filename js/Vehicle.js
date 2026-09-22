@@ -8,7 +8,7 @@ const temp = new THREE.Vector3();
 const targetQuat = new THREE.Quaternion();
 
 const LINEAR_DAMP = 0.1;
-const MAX_SPEED = 0.82;
+const MAX_SPEED = 1.18;
 const REVERSE_SPEED_SCALE = 0.6;
 
 function lerpAngle(a, b, t) {
@@ -58,6 +58,17 @@ export class Vehicle {
     this.inputZ = 0;
     this.handbrake = false;
     this.driftIntensity = 0;
+
+    this.headlightL = null;
+    this.headlightR = null;
+    this.headlightBeamL = null;
+    this.headlightBeamR = null;
+    this.taillightL = null;
+    this.taillightR = null;
+    this.brakeGlow = null;
+    this._brakeGlowT = 0;
+    this._taillightBaseColor = new THREE.Color(0x5a0000);
+    this._taillightBrakeColor = new THREE.Color(0xff2a1a);
   }
 
   init(model) {
@@ -94,15 +105,15 @@ export class Vehicle {
       if ((name.includes('back') || name.includes('rear')) && name.includes('right')) this.wheelBR = pivot;
     }
 
+    vehicleModel.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(vehicleModel);
+    const size = new THREE.Vector3();
+    box.getSize(size);
+
     // Some imported GLB cars don't use predictable wheel node names.
     // DriftMarks/SmokeTrails need rear-wheel world positions, so create
     // invisible fallback anchors from the car's own bounding box.
     if (!this.wheelBL || !this.wheelBR) {
-      vehicleModel.updateMatrixWorld(true);
-      const box = new THREE.Box3().setFromObject(vehicleModel);
-      const size = new THREE.Vector3();
-      box.getSize(size);
-
       const y = box.min.y + Math.max(0.012, size.y * 0.12);
       const rearZ = box.min.z + size.z * 0.23;
       const halfTrack = size.x * 0.31;
@@ -122,7 +133,58 @@ export class Vehicle {
       }
     }
 
+    this._addLights(box, size);
+
     return this.container;
+  }
+
+  // The Camaro GLB has no separate headlight/taillight nodes worth trusting
+  // across different car models, so real light sources + small glowing
+  // lamp meshes are placed from the car's own bounding box instead —
+  // front-facing white headlights (with a forward beam) and rear red
+  // taillights that flare brighter under the handbrake.
+  _addLights(box, size) {
+    const lampY = box.min.y + size.y * 0.42;
+    const lampHalfTrack = size.x * 0.34;
+    const frontZ = box.max.z - size.z * 0.04;
+    const rearZ = box.min.z + size.z * 0.04;
+    const lampRadius = Math.max(0.008, size.x * 0.045);
+    const lampGeo = new THREE.SphereGeometry(lampRadius, 10, 8);
+
+    this.headlightL = new THREE.Mesh(lampGeo, new THREE.MeshBasicMaterial({ color: 0xfff2c8 }));
+    this.headlightL.position.set(-lampHalfTrack, lampY, frontZ);
+    this.container.add(this.headlightL);
+
+    this.headlightR = new THREE.Mesh(lampGeo, new THREE.MeshBasicMaterial({ color: 0xfff2c8 }));
+    this.headlightR.position.set(lampHalfTrack, lampY, frontZ);
+    this.container.add(this.headlightR);
+
+    this.taillightL = new THREE.Mesh(lampGeo, new THREE.MeshBasicMaterial({ color: this._taillightBaseColor.clone() }));
+    this.taillightL.position.set(-lampHalfTrack, lampY, rearZ);
+    this.container.add(this.taillightL);
+
+    this.taillightR = new THREE.Mesh(lampGeo, new THREE.MeshBasicMaterial({ color: this._taillightBaseColor.clone() }));
+    this.taillightR.position.set(lampHalfTrack, lampY, rearZ);
+    this.container.add(this.taillightR);
+
+    const beamTargetY = lampY - size.y * 0.3;
+
+    this.headlightBeamL = new THREE.SpotLight(0xfff2c8, 2.2, 2.4, Math.PI / 7, 0.55, 1.4);
+    this.headlightBeamL.castShadow = false;
+    this.headlightBeamL.position.copy(this.headlightL.position);
+    this.headlightBeamL.target.position.set(-lampHalfTrack * 0.6, beamTargetY, frontZ + 1.4);
+    this.container.add(this.headlightBeamL, this.headlightBeamL.target);
+
+    this.headlightBeamR = new THREE.SpotLight(0xfff2c8, 2.2, 2.4, Math.PI / 7, 0.55, 1.4);
+    this.headlightBeamR.castShadow = false;
+    this.headlightBeamR.position.copy(this.headlightR.position);
+    this.headlightBeamR.target.position.set(lampHalfTrack * 0.6, beamTargetY, frontZ + 1.4);
+    this.container.add(this.headlightBeamR, this.headlightBeamR.target);
+
+    // Soft ambient glow behind the car; brightens sharply under braking.
+    this.brakeGlow = new THREE.PointLight(0xff2a1a, 0.15, 0.6, 2);
+    this.brakeGlow.position.set(0, lampY, rearZ - 0.02);
+    this.container.add(this.brakeGlow);
   }
 
   attachPhysics(world, body, radius) {
@@ -170,7 +232,7 @@ export class Vehicle {
       this.linearSpeed = THREE.MathUtils.lerp(
         this.linearSpeed,
         MAX_SPEED,
-        Math.min(1, dt * 1.5)
+        Math.min(1, dt * 2.2)
       );
     } else {
       let direction = Math.sign(this.linearSpeed);
@@ -198,7 +260,7 @@ export class Vehicle {
         this.linearSpeed = THREE.MathUtils.lerp(
           this.linearSpeed,
           targetSpeed * MAX_SPEED,
-          Math.min(1, dt * 1.5)
+          Math.min(1, dt * 2.2)
         );
       }
     }
@@ -315,6 +377,16 @@ export class Vehicle {
         -this.inputX / 1.5,
         Math.min(1, dt * 10)
       );
+    }
+
+    if (this.taillightL || this.taillightR || this.brakeGlow) {
+      const brakeTarget = this.handbrake ? 1 : 0;
+      this._brakeGlowT = THREE.MathUtils.lerp(this._brakeGlowT, brakeTarget, Math.min(1, dt * 10));
+
+      const tailColor = this._taillightBaseColor.clone().lerp(this._taillightBrakeColor, this._brakeGlowT);
+      if (this.taillightL) this.taillightL.material.color.copy(tailColor);
+      if (this.taillightR) this.taillightR.material.color.copy(tailColor);
+      if (this.brakeGlow) this.brakeGlow.intensity = THREE.MathUtils.lerp(0.15, 1.6, this._brakeGlowT);
     }
   }
 }
