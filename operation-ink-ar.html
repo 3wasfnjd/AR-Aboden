@@ -317,6 +317,8 @@
         damageFlash.classList.add('hit');
         setTimeout(()=>damageFlash.classList.remove('hit'),100);
         if(navigator.vibrate) navigator.vibrate(25);
+      }else if(e.type==='weapon-change'){
+        notify('السلاح: '+(WEAPONS[e.weapon]?.label||e.weapon));
       }else if(e.type==='enemy-dead'){
         notify('تم إسقاط الهدف');
       }else if(e.type==='wave-start'){
