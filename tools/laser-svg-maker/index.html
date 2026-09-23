@@ -709,6 +709,20 @@
     };
   }
 
+  function splitPathsForFrameLimit(paths,cfg,target){
+    if(!paths.length) return [];
+    const minCost=2+(cfg.blankDwell>0?1:0);
+    const maxPaths=Math.max(1,Math.floor(target/minCost));
+    const groups=[];
+    for(let i=0;i<paths.length;i+=maxPaths) groups.push(paths.slice(i,i+maxPaths));
+    return groups;
+  }
+
+  function compositeFrames(paths,cfg,target){
+    if(!paths.length) return [Array.from({length:target},()=>({x:0,y:0,blank:1}))];
+    return splitPathsForFrameLimit(paths,cfg,target).map(group=>compositeFrame(group,cfg,target));
+  }
+
   function compositeFrame(paths,cfg,target){
     if(!paths.length) return Array.from({length:target},()=>({x:0,y:0,blank:1}));
     const minVisible=paths.length*2;
@@ -765,31 +779,30 @@
     return frames;
   }
 
-  function buildIldaData(){
-    if(!currentPaths.length) throw new Error("ولّد المسار أولًا");
-    const cfg=ildConfig();
-    let paths=normalizeForIlda(currentPaths);
+  function framesForPaths(sourcePaths,cfg){
+    let paths=normalizeForIlda(sourcePaths);
     if(!cfg.preserveOrder) paths=reorderNearest(paths);
-
-    const minimumPerPath=2+(cfg.blankDwell>0?1:0);
-    const minTarget=Math.min(65535,Math.max(cfg.ppf,paths.length*minimumPerPath));
-    const target=minTarget;
+    const target=Math.min(MAX_FRAME_POINTS,Math.max(200,cfg.ppf));
     let frames=[];
     if(cfg.mode==="static"){
-      frames=[compositeFrame(paths,cfg,target)];
+      frames.push(...compositeFrames(paths,cfg,target));
     }else if(cfg.mode==="draw"){
       frames=drawStreamFrames(paths,cfg,target);
-      const final=frames[frames.length-1];
-      for(let i=0;i<cfg.holdFrames;i++) frames.push(final.map(p=>({...p})));
+      const finalGroups=compositeFrames(paths,cfg,target);
+      for(let i=0;i<cfg.holdFrames;i++) for(const fr of finalGroups) frames.push(fr.map(p=>({...p})));
     }else{
       for(let i=0;i<cfg.drawFrames;i++){
-        frames.push(compositeFrame(revealPaths(paths,(i+1)/cfg.drawFrames),cfg,target));
+        frames.push(...compositeFrames(revealPaths(paths,(i+1)/cfg.drawFrames),cfg,target));
       }
-      const final=compositeFrame(paths,cfg,target);
-      for(let i=0;i<cfg.holdFrames;i++) frames.push(final.map(p=>({...p})));
+      const finalGroups=compositeFrames(paths,cfg,target);
+      for(let i=0;i<cfg.holdFrames;i++) for(const fr of finalGroups) frames.push(fr.map(p=>({...p})));
     }
+    if(frames.some(frame=>frame.length>MAX_FRAME_POINTS)) throw new Error("تجاوز حد 2048 نقطة في Frame");
+    return {frames,target};
+  }
 
-    const rgb=hexRgb(cfg.color);
+  function encodeSingleIlda(frames,cfg,color){
+    const rgb=hexRgb(color);
     const HEADER=32;
     const paletteBytes=cfg.format===0?HEADER+6:0;
     const recSize=8;
@@ -809,6 +822,7 @@
       bytes[off++]=rgb[0];bytes[off++]=rgb[1];bytes[off++]=rgb[2];
     }
     frames.forEach((frame,fi)=>{
+      if(frame.length>MAX_FRAME_POINTS) throw new Error("Frame يتجاوز 2048 نقطة");
       header(cfg.format,"AB"+String(fi).padStart(6,"0"),frame.length,fi,frames.length);
       frame.forEach((p,i)=>{
         view.setInt16(off,Math.round(Math.max(-1,Math.min(1,p.x))*32767),false);
@@ -825,15 +839,126 @@
       });
     });
     header(0,"EOF",0,0,0);
-    const duration=frames.reduce((s,f)=>s+f.length/cfg.rate,0);
-    return {bytes,frames,cfg,target,duration,color:cfg.color};
+    return bytes;
+  }
+
+  function buildIldaData(){
+    if(!currentPaths.length) throw new Error("ولّد المسار أولًا");
+    const cfg=ildConfig();
+    const built=framesForPaths(currentPaths,cfg);
+    const bytes=encodeSingleIlda(built.frames,cfg,cfg.color);
+    const duration=built.frames.reduce((s,f)=>s+f.length/cfg.rate,0);
+    return {bytes,frames:built.frames,cfg,target:built.target,duration,color:cfg.color};
+  }
+
+  function sceneLabel(){
+    if(currentMode==="text") return $("textInput").value.trim()||"نص";
+    if(currentMode==="image") return imageSourceName.replace(/\.[^.]+$/,"")||"صورة";
+    return currentMode==="spiral"?"حلزون":"دائرة";
+  }
+
+  function addCurrentToShow(){
+    if(!currentPaths.length) return;
+    showItems.push({
+      label:sceneLabel(),
+      type:currentMode,
+      color:activeColor(),
+      paths:currentPaths.map(p=>p.map(q=>[q[0],q[1]])),
+      cfg:{...ildConfig()}
+    });
+    renderSceneList();
+    setStatus("تمت إضافة العنصر إلى ملف العرض",true);
+  }
+
+  function renderSceneList(){
+    const list=$("sceneList");
+    if(!showItems.length){
+      list.innerHTML='<div class="sceneEmpty">لم تتم إضافة عناصر بعد</div>';
+      clearScenesBtn.disabled=true;previewShowBtn.disabled=true;downloadShowBtn.disabled=true;
+      return;
+    }
+    list.innerHTML=showItems.map((item,i)=>{
+      const label=String(item.label).replaceAll("<","&lt;");
+      const type=item.type==="image"?"صورة":item.type==="text"?"نص":item.type;
+      return '<div class="sceneItem" data-scene="'+i+'">'+
+        '<span class="sceneColor" style="background:'+item.color+';color:'+item.color+'"></span>'+
+        '<div class="sceneMeta"><b>'+(i+1)+'. '+label+'</b><small>'+type+' · '+item.cfg.mode+' · '+item.paths.length+' مسار</small></div>'+
+        '<div class="sceneBtns"><button data-act="up" title="أعلى">↑</button><button data-act="down" title="أسفل">↓</button><button data-act="remove" title="حذف">×</button></div>'+
+      '</div>';
+    }).join("");
+    clearScenesBtn.disabled=false;previewShowBtn.disabled=false;downloadShowBtn.disabled=false;
+  }
+
+  function encodeCombinedFormat5(records,rate){
+    const HEADER=32,recSize=8;
+    const totalBytes=records.reduce((s,r)=>s+HEADER+r.points.length*recSize,0)+HEADER;
+    const bytes=new Uint8Array(totalBytes),view=new DataView(bytes.buffer);let off=0;
+    const ascii=(at,text,len)=>{for(let i=0;i<len;i++)bytes[at+i]=i<text.length?text.charCodeAt(i)&0x7f:0};
+    function header(format,name,count,no,total){
+      bytes[off]=73;bytes[off+1]=76;bytes[off+2]=68;bytes[off+3]=65;
+      bytes[off+4]=bytes[off+5]=bytes[off+6]=0;bytes[off+7]=format;
+      ascii(off+8,name.slice(0,8),8);ascii(off+16,"ABODEN",8);
+      view.setUint16(off+24,count,false);view.setUint16(off+26,no&0xffff,false);view.setUint16(off+28,total&0xffff,false);
+      bytes[off+30]=0;bytes[off+31]=0;off+=HEADER;
+    }
+    records.forEach((record,fi)=>{
+      const frame=record.points,rgb=hexRgb(record.color);
+      if(frame.length>MAX_FRAME_POINTS) throw new Error("Frame يتجاوز 2048 نقطة");
+      header(5,"SHOW"+String(fi).padStart(4,"0"),frame.length,fi,records.length);
+      frame.forEach((p,i)=>{
+        view.setInt16(off,Math.round(Math.max(-1,Math.min(1,p.x))*32767),false);
+        view.setInt16(off+2,Math.round(Math.max(-1,Math.min(1,p.y))*32767),false);
+        let status=p.blank?0x40:0;if(i===frame.length-1)status|=0x80;
+        bytes[off+4]=status;bytes[off+5]=rgb[2];bytes[off+6]=rgb[1];bytes[off+7]=rgb[0];
+        off+=8;
+      });
+    });
+    header(0,"EOF",0,0,0);
+    const duration=records.reduce((s,r)=>s+r.points.length/rate,0);
+    return {bytes,duration};
+  }
+
+  function buildShowData(){
+    if(!showItems.length) throw new Error("أضف عنصرًا واحدًا على الأقل للعرض");
+    const rate=ildConfig().rate,records=[];
+    for(const item of showItems){
+      const cfg={...item.cfg,ppf:Math.min(MAX_FRAME_POINTS,item.cfg.ppf),rate};
+      const built=framesForPaths(item.paths,cfg);
+      for(const points of built.frames) records.push({points,color:item.color});
+    }
+    const encoded=encodeCombinedFormat5(records,rate);
+    return {bytes:encoded.bytes,frames:records.map(r=>r.points),frameRecords:records,cfg:{rate},target:Math.max(...records.map(r=>r.points.length)),duration:encoded.duration,color:records[0].color,itemCount:showItems.length};
+  }
+
+  function downloadCombinedShow(){
+    try{
+      const data=buildShowData();
+      const blob=new Blob([data.bytes],{type:"application/octet-stream"}),url=URL.createObjectURL(blob),a=document.createElement("a");
+      a.href=url;a.download="aboden-laser-show.ild";document.body.appendChild(a);a.click();a.remove();
+      setTimeout(()=>URL.revokeObjectURL(url),1200);
+      setStatus("تم تجهيز ملف ILD واحد · "+data.itemCount+" عنصر · "+data.frames.length+" Frame",true);
+    }catch(err){console.error(err);setStatus("فشل تصدير العرض: "+(err?.message||err),false)}
+  }
+
+  function previewCombinedShow(){
+    if(previewPlaying){stopPreview();return}
+    try{
+      const data=buildShowData();
+      currentIlda=data;
+      previewPlaying=true;previewFrame=0;previewNextAt=0;
+      laserPreview.classList.add("show");host.classList.add("preview-dim");
+      previewShowBtn.textContent="■ إيقاف المعاينة";
+      previewRAF=requestAnimationFrame(previewLoop);
+    }catch(err){setStatus("تعذر معاينة العرض: "+(err?.message||err),false)}
   }
 
   function refreshIldaStats(data){
     currentIlda=data;
     const kb=(data.bytes.length/1024).toFixed(1);
-    const cap=data.target>2048?" ⚠": "";
-    $("ildaMetric").textContent=`${data.frames.length} إطار · ${data.target} نقطة${cap} · ${data.duration.toFixed(1)}ث · ${kb}KB`;
+    const maxFrame=Math.max(...data.frames.map(f=>f.length));
+    $("ildaMetric").textContent=`${data.frames.length} إطار · أقصى ${maxFrame}/2048 · ${data.duration.toFixed(1)}ث · ${kb}KB`;
+    $("ildaMetric").classList.toggle("limitOk",maxFrame<=MAX_FRAME_POINTS);
+    $("ildaMetric").classList.toggle("limitWarn",maxFrame>MAX_FRAME_POINTS);
     downloadIldBtn.disabled=false;
     previewLaserBtn.disabled=false;
   }
@@ -862,13 +987,15 @@
     previewPlaying=false;cancelAnimationFrame(previewRAF);previewRAF=0;
     laserPreview.classList.remove("show");host.classList.remove("preview-dim");
     previewLaserBtn.textContent="▶ ليزر";
+    if(previewShowBtn) previewShowBtn.textContent="▶ معاينة العرض";
   }
 
   function previewLoop(now){
     if(!previewPlaying||!currentIlda) return;
     if(now>=previewNextAt){
       const frame=currentIlda.frames[previewFrame];
-      renderLaserFrame(frame,currentIlda.color);
+      const frameColor=currentIlda.frameRecords?.[previewFrame]?.color||currentIlda.color;
+      renderLaserFrame(frame,frameColor);
       previewNextAt=now+(frame.length/currentIlda.cfg.rate)*1000;
       previewFrame=(previewFrame+1)%currentIlda.frames.length;
     }
@@ -935,6 +1062,7 @@
       downloadBtn.disabled=false;
       downloadIldBtn.disabled=false;
       previewLaserBtn.disabled=false;
+      addSceneBtn.disabled=false;
       stopPreview();
       try{refreshIldaStats(buildIldaData())}catch{}
       setStatus("المولد جاهز — SVG و ILD",true);
@@ -974,6 +1102,7 @@
         downloadBtn.disabled=true;
         downloadIldBtn.disabled=true;
         previewLaserBtn.disabled=true;
+        addSceneBtn.disabled=true;
         setStatus("جاهز لاستقبال صورة Outline",true);
       }
     });
@@ -1055,6 +1184,19 @@
       stopPreview();
       try{refreshIldaStats(buildIldaData());setStatus("تم تحديث إعدادات ILD",true)}catch(err){setStatus("إعداد ILD غير صالح: "+(err?.message||err),false)}
     });
+  });
+
+  addSceneBtn.addEventListener("click",addCurrentToShow);
+  clearScenesBtn.addEventListener("click",()=>{showItems=[];renderSceneList();setStatus("تم مسح قائمة العرض",true)});
+  downloadShowBtn.addEventListener("click",downloadCombinedShow);
+  previewShowBtn.addEventListener("click",previewCombinedShow);
+  $("sceneList").addEventListener("click",e=>{
+    const btn=e.target.closest("button[data-act]");if(!btn)return;
+    const row=btn.closest("[data-scene]"),i=Number(row.dataset.scene),act=btn.dataset.act;
+    if(act==="remove") showItems.splice(i,1);
+    else if(act==="up"&&i>0) [showItems[i-1],showItems[i]]=[showItems[i],showItems[i-1]];
+    else if(act==="down"&&i<showItems.length-1) [showItems[i+1],showItems[i]]=[showItems[i],showItems[i+1]];
+    renderSceneList();
   });
 
   generateBtn.disabled=false;
