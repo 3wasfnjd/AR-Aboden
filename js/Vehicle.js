@@ -8,7 +8,7 @@ const temp = new THREE.Vector3();
 const targetQuat = new THREE.Quaternion();
 
 const LINEAR_DAMP = 0.1;
-const MAX_SPEED = 1.18;
+const MAX_SPEED = 1.5;
 const REVERSE_SPEED_SCALE = 0.6;
 
 function lerpAngle(a, b, t) {
@@ -37,6 +37,7 @@ export class Vehicle {
     this.spherePos = new THREE.Vector3();
     this.sphereVel = new THREE.Vector3();
     this.sphereRadius = 0.13;
+    this.maxSpeedMultiplier = 1;
     this.spawnPos = new THREE.Vector3();
     this.spawnAngle = 0;
     this.rigidBody = null;
@@ -250,8 +251,8 @@ export class Vehicle {
 
       this.linearSpeed = THREE.MathUtils.lerp(
         this.linearSpeed,
-        MAX_SPEED,
-        Math.min(1, dt * 2.2)
+        MAX_SPEED * this.maxSpeedMultiplier,
+        Math.min(1, dt * 1.5)
       );
     } else {
       let direction = Math.sign(this.linearSpeed);
@@ -272,14 +273,14 @@ export class Vehicle {
       } else if (targetSpeed < 0) {
         this.linearSpeed = THREE.MathUtils.lerp(
           this.linearSpeed,
-          targetSpeed * MAX_SPEED * REVERSE_SPEED_SCALE,
+          targetSpeed * MAX_SPEED * this.maxSpeedMultiplier * REVERSE_SPEED_SCALE,
           Math.min(1, dt * 2)
         );
       } else {
         this.linearSpeed = THREE.MathUtils.lerp(
           this.linearSpeed,
-          targetSpeed * MAX_SPEED,
-          Math.min(1, dt * 2.2)
+          targetSpeed * MAX_SPEED * this.maxSpeedMultiplier,
+          Math.min(1, dt * 1.5)
         );
       }
     }
@@ -353,7 +354,9 @@ export class Vehicle {
 
     this._animateVisuals(dt);
 
-    const normalizedSpeed = Math.abs(this.linearSpeed / MAX_SPEED);
+    const normalizedSpeed = Math.abs(
+      this.linearSpeed / Math.max(MAX_SPEED * this.maxSpeedMultiplier, 0.0001)
+    );
     this.driftIntensity =
       Math.abs(this.inputX) * normalizedSpeed * 0.6 +
       (this.handbrake ? 0.7 : 0);
@@ -361,14 +364,17 @@ export class Vehicle {
 
   _animateVisuals(dt) {
     if (this.bodyNode) {
+      const speedNorm = this.linearSpeed / Math.max(this.maxSpeedMultiplier, 0.0001);
+      const accelNorm = this.acceleration / Math.max(this.maxSpeedMultiplier, 0.0001);
+
       this.bodyNode.rotation.x = lerpAngle(
         this.bodyNode.rotation.x,
-        -(this.linearSpeed - this.acceleration) / 6,
+        -(speedNorm - accelNorm) / 6,
         Math.min(1, dt * 10)
       );
       this.bodyNode.rotation.z = lerpAngle(
         this.bodyNode.rotation.z,
-        -(this.inputX / 5) * this.linearSpeed,
+        -(this.inputX / 5) * speedNorm,
         Math.min(1, dt * 5)
       );
       this.bodyNode.position.y = THREE.MathUtils.lerp(
