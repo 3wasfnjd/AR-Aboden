@@ -557,7 +557,7 @@
         sprite,type,velocity:velocity.clone(),life,maxLife:life,
         startSize:size,growth,baseOpacity:opacity,drag,buoyancy,gravity
       });
-      if(fxParticles.length>180){
+      if(fxParticles.length>120){
         const old=fxParticles.shift();
         scene.remove(old.sprite);
         old.sprite.material.dispose();
@@ -705,7 +705,7 @@
         });
       }
 
-      for(let i=0;i<4;i++){
+      for(let i=0;i<3;i++){
         const v=new THREE.Vector3(
           THREE.MathUtils.randFloatSpread(1),
           THREE.MathUtils.randFloat(.05,.9),
@@ -1290,8 +1290,8 @@
         r.trailTimer+=dt;
         const homingTrail=r.type==='homing';
         const interval=homingTrail
-          ? (r.age<.18?.060:.095)
-          : (r.age<.20?.055:.085);
+          ? (r.age<.18?.080:.125)
+          : (r.age<.20?.075:.115);
 
         while(r.trailTimer>=interval){
           r.trailTimer-=interval;
@@ -1321,11 +1321,11 @@
             rear,
             v,
             homingTrail
-              ? THREE.MathUtils.randFloat(.020,.030)
-              : THREE.MathUtils.randFloat(.022,.032),
+              ? THREE.MathUtils.randFloat(.018,.026)
+              : THREE.MathUtils.randFloat(.019,.028),
             homingTrail
-              ? THREE.MathUtils.randFloat(.65,1.00)
-              : THREE.MathUtils.randFloat(.32,.52),
+              ? THREE.MathUtils.randFloat(.48,.75)
+              : THREE.MathUtils.randFloat(.24,.40),
             homingTrail ? Math.random()<.35 : Math.random()<.18
           );
         }
