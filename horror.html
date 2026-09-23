@@ -352,7 +352,9 @@
         // While scanning the floor, keep points in the camera's broad forward cone
         // and below the camera. This rejects most ceiling / behind-camera points.
         const alignment=(dx*camForward.x+dy*camForward.y+dz*camForward.z)/d;
-        if(alignment<.20||p.y>camPos.y-.08)continue;
+        // A real floor should be meaningfully below a hand-held phone.
+        // Reject nearby horizontal surfaces such as tables, beds and sofas.
+        if(alignment<.20||p.y>camPos.y-.42||p.y<camPos.y-3.0)continue;
 
         const key=Math.round(p.y/FLOOR_BIN_SIZE);
         let bucket=bins.get(key);
@@ -369,14 +371,23 @@
         return false;
       }
 
-      let bestKey=null;
-      let bestCount=0;
-      for(const [key,bucket] of bins){
-        if(bucket.length>bestCount){
-          bestKey=key;
-          bestCount=bucket.length;
-        }
-      }
+      let maxCount=0;
+      for(const bucket of bins.values())maxCount=Math.max(maxCount,bucket.length);
+
+      // Prefer the lowest trustworthy horizontal cluster, not simply the
+      // largest cluster. This prevents a dense table/sofa surface from being
+      // mistaken for the floor while the user scans downward.
+      const denseThreshold=Math.max(
+        FLOOR_MIN_POINTS,
+        Math.ceil(maxCount*.38)
+      );
+      const denseKeys=[...bins.entries()]
+        .filter(([,bucket])=>bucket.length>=denseThreshold)
+        .map(([key])=>key)
+        .sort((a,b)=>a-b);
+
+      const bestKey=denseKeys.length?denseKeys[0]:null;
+      const bestCount=bestKey===null?maxCount:bins.get(bestKey).length;
 
       if(bestKey===null||bestCount<FLOOR_MIN_POINTS){
         floorPointCount=bestCount;
@@ -404,6 +415,38 @@
       floorJitter=median(deviations)??Infinity;
 
       return floorSamples.length>=10 && floorJitter<.035;
+    }
+
+    function makeLocomotionInPlace(clip){
+      // The AR actor itself handles forward movement. Imported Mixamo-style
+      // clips often contain translation on Hips/Root/Pelvis, which makes the
+      // mesh drift or float above our calibrated floor. Freeze only those
+      // locomotion translation tracks at their first keyed position while
+      // retaining all bone rotations and limb animation.
+      const fixed=clip.clone();
+
+      for(const track of fixed.tracks){
+        if(!/\.position$/i.test(track.name))continue;
+
+        const targetName=track.name.slice(0,-'.position'.length);
+        if(!/(hips|root|pelvis|armature)/i.test(targetName))continue;
+
+        const values=track.values;
+        if(!values||values.length<3)continue;
+
+        const x0=values[0];
+        const y0=values[1];
+        const z0=values[2];
+
+        for(let i=0;i+2<values.length;i+=3){
+          values[i]=x0;
+          values[i+1]=y0;
+          values[i+2]=z0;
+        }
+      }
+
+      fixed.resetDuration();
+      return fixed;
     }
 
     async function loadGLB(path){
@@ -531,9 +574,10 @@
 
       if(zombieGltf.animations?.length){
         mixer=new THREE.AnimationMixer(zombie);
-        const clip=zombieGltf.animations.find(a=>/^walk$/i.test(a.name))
+        const sourceClip=zombieGltf.animations.find(a=>/^walk$/i.test(a.name))
           || zombieGltf.animations.find(a=>/walk/i.test(a.name))
           || zombieGltf.animations[0];
+        const clip=makeLocomotionInPlace(sourceClip);
 
         action=mixer.clipAction(clip);
         action.setLoop(THREE.LoopRepeat,Infinity);
@@ -614,6 +658,10 @@
         }
 
         if(a.mixer) a.mixer.update(dt);
+
+        // Floor anchor always wins over imported animation/root transforms.
+        // The animated skeleton stays inside this wrapper while the wrapper's
+        // world Y remains exactly on the calibrated ground plane.
         a.root.position.y=a.baseY;
       }
     }
