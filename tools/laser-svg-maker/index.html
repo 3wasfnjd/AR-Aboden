@@ -44,6 +44,16 @@
     .imageThumb{display:none;width:100%;max-height:160px;object-fit:contain;margin-top:9px;border-radius:14px;border:1px solid var(--line);background:#000}
     .imageThumb.show{display:block}
     .imageHint{margin-top:10px;padding:10px 11px;border-radius:13px;background:rgba(98,255,154,.06);border:1px solid rgba(98,255,154,.14);color:#aed6bc;font-size:10px;line-height:1.65}
+    .colorRow{display:grid;grid-template-columns:1fr 56px;gap:8px}.colorWell{width:56px;height:44px;padding:4px;border:1px solid var(--line);border-radius:13px;background:#050909}
+    .ildBox{margin-top:15px;padding:13px;border:1px solid rgba(102,232,255,.15);border-radius:17px;background:rgba(102,232,255,.035)}
+    .ildBox h3{margin:0 0 3px;font-size:12px}.ildBox p{margin:0 0 10px;color:var(--muted);font-size:9px;line-height:1.55}
+    .ildGrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.ildGrid .field{margin-top:8px}
+    .checkRow{display:flex;align-items:center;gap:8px;margin-top:10px;color:#cbd8d2;font-size:10px}.checkRow input{width:17px;height:17px;accent-color:var(--green)}
+    .actions.three{grid-template-columns:1fr 1fr 1fr}.btn.ild{border-color:rgba(102,232,255,.24);background:rgba(102,232,255,.08);color:#dff9ff}
+    .miniBtn{border:1px solid var(--line);background:#08100e;color:#dbe7e1;border-radius:999px;padding:7px 10px;font-size:9px;font-weight:850}
+    #laserPreview{position:absolute;inset:0;width:100%;height:100%;display:none;background:#000;z-index:4}#laserPreview.show{display:block}
+    #svgHost.preview-dim{opacity:.08}
+    .previewTools{display:flex;align-items:center;gap:7px}
     @media(max-width:820px){.layout{grid-template-columns:1fr}.preview{min-height:520px}.stage-wrap{min-height:400px}.stage{min-height:390px}}
   </style>
 </head>
@@ -56,7 +66,7 @@
 
   <section class="hero">
     <h1>مولّد مسارات SVG لعرض الليزر</h1>
-    <p>أداة مؤقتة داخل المستودع مبنية على فكرة المسارات أحادية الخط المستفادة من SandSkrit، وتعمل الآن مباشرة بـ JavaScript لتصدير SVG نظيف للاستخدام لاحقًا في خط التحويل إلى ILDA. لا تغيّر تجربة الليزر الحالية ولا تظهر في الصفحة الرئيسية.</p>
+    <p>أداة داخلية لتتبع صور الـOutline، معاينة مسارات الليزر، وتصدير SVG أو ILD مباشرة من المتصفح. لا تغيّر تجربة الليزر الحالية ولا تظهر في الصفحة الرئيسية.</p>
     <div class="status" id="engineStatus"><span class="dot"></span><span id="engineText">جاري تجهيز مولّد المسارات…</span></div>
   </section>
 
@@ -149,13 +159,19 @@
       </div>
 
       <div class="field">
-        <label><span>لون المعاينة/الـ SVG</span></label>
-        <select id="colorInput">
-          <option value="#00ff66">أخضر ليزر</option>
-          <option value="#ffffff">أبيض</option>
-          <option value="#00d9ff">سماوي</option>
-          <option value="#ff334d">أحمر</option>
-        </select>
+        <label><span>لون الليزر</span><span class="value" id="colorHexVal">#00FF66</span></label>
+        <div class="colorRow">
+          <select id="colorInput">
+            <option value="#00ff66">أخضر ليزر</option>
+            <option value="#ffa82e">ذهبي</option>
+            <option value="#ffffff">أبيض</option>
+            <option value="#00d9ff">سماوي</option>
+            <option value="#ff334d">أحمر</option>
+            <option value="#2f6bff">أزرق</option>
+            <option value="custom">لون مخصص</option>
+          </select>
+          <input class="colorWell" id="colorPicker" type="color" value="#00ff66" aria-label="لون مخصص">
+        </div>
       </div>
 
       <div class="field">
@@ -163,32 +179,90 @@
         <input id="simplifyInput" type="range" min="0" max="1.5" step="0.05" value="0.15">
       </div>
 
+      <div class="ildBox">
+        <h3>تحويل مباشر إلى ILD</h3>
+        <p>اختر طريقة الرسم وإعدادات الماسح. المعاينة تحاكي ترتيب النقاط والـblanking، والتصدير يتم محليًا على الجهاز.</p>
+
+        <div class="ildGrid">
+          <div class="field">
+            <label><span>نوع الحركة</span></label>
+            <select id="ildaMode">
+              <option value="cumulative" selected>رسم تراكمي · يثبت المسارات</option>
+              <option value="draw">رسم متتابع</option>
+              <option value="static">صورة ثابتة</option>
+            </select>
+          </div>
+          <div class="field">
+            <label><span>صيغة ILDA</span></label>
+            <select id="ildaFormat">
+              <option value="0" selected>Format 0 · Palette</option>
+              <option value="5">Format 5 · True Color</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="field">
+          <label><span>نقاط الإطار</span><span class="value" id="ppfVal">1000</span></label>
+          <input id="ppfInput" type="range" min="200" max="3000" step="50" value="1000">
+        </div>
+        <div class="field">
+          <label><span>Point Rate</span><span class="value" id="rateVal">8000</span></label>
+          <input id="rateInput" type="range" min="2000" max="30000" step="500" value="8000">
+        </div>
+
+        <div class="ildGrid">
+          <div class="field">
+            <label><span>إطارات الرسم</span><span class="value" id="drawFramesVal">48</span></label>
+            <input id="drawFramesInput" type="range" min="4" max="120" step="1" value="48">
+          </div>
+          <div class="field">
+            <label><span>تثبيت النهاية</span><span class="value" id="holdFramesVal">12</span></label>
+            <input id="holdFramesInput" type="range" min="0" max="60" step="1" value="12">
+          </div>
+          <div class="field">
+            <label><span>Blank dwell</span><span class="value" id="blankDwellVal">4</span></label>
+            <input id="blankDwellInput" type="range" min="0" max="12" step="1" value="4">
+          </div>
+          <div class="field">
+            <label><span>Corner dwell</span><span class="value" id="cornerDwellVal">1</span></label>
+            <input id="cornerDwellInput" type="range" min="0" max="5" step="1" value="1">
+          </div>
+        </div>
+
+        <label class="checkRow"><input id="preserveOrderInput" type="checkbox" checked><span>الحفاظ على ترتيب المسارات الأصلي</span></label>
+      </div>
+
       <div class="note">النصوص تعمل كمسارات vector، ووضع الصورة مخصص لصور الـOutline الواضحة مثل السيفين والنخلة والجمل والحصان والدرعية. كل المعالجة تتم محليًا داخل الجهاز.</div>
 
-      <div class="actions">
+      <div class="actions three">
         <button class="btn primary" id="generateBtn" disabled>توليد المسار</button>
-        <button class="btn secondary" id="downloadBtn" disabled>تصدير SVG</button>
+        <button class="btn secondary" id="downloadBtn" disabled>SVG</button>
+        <button class="btn ild" id="downloadIldBtn" disabled>ILD</button>
       </div>
     </div>
 
     <div class="panel preview">
       <div class="preview-head">
-        <h2>المعاينة</h2>
+        <div class="previewTools">
+          <h2>المعاينة</h2>
+          <button class="miniBtn" id="previewLaserBtn" disabled>▶ ليزر</button>
+        </div>
         <div class="metrics">
           <span class="metric" id="pointMetric">0 نقطة</span>
           <span class="metric" id="sizeMetric">—</span>
-          <span class="metric">Continuous Path</span>
+          <span class="metric" id="ildaMetric">ILD —</span>
         </div>
       </div>
       <div class="stage-wrap">
-        <div class="stage">
+        <div class="stage" id="previewStage">
           <div id="svgHost"><div class="empty">بعد تجهيز المحرك اضغط «توليد المسار».<br>لن يتم تعديل ملفات ILD الحالية.</div></div>
+          <canvas id="laserPreview"></canvas>
         </div>
       </div>
     </div>
   </section>
 
-  <div class="footer">Laser SVG Maker · native JavaScript · single-line path workflow inspired by SandSkrit (MIT)</div>
+  <div class="footer">Laser SVG / ILD Studio · native JavaScript · local processing · SandSkrit-inspired path workflow</div>
 </main>
 
 <script>
@@ -199,13 +273,22 @@
   const controls = $("controls");
   const generateBtn = $("generateBtn");
   const downloadBtn = $("downloadBtn");
+  const downloadIldBtn = $("downloadIldBtn");
+  const previewLaserBtn = $("previewLaserBtn");
+  const laserPreview = $("laserPreview");
   const host = $("svgHost");
 
   let currentMode = "text";
   let currentSvg = "";
   let currentName = "laser-path.svg";
+  let currentPaths = [];
+  let currentIlda = null;
   let imageSource = null;
   let imageSourceName = "outline";
+  let previewPlaying = false;
+  let previewRAF = 0;
+  let previewFrame = 0;
+  let previewNextAt = 0;
 
   const setStatus = (message, ready=false) => {
     statusText.textContent = message;
@@ -484,6 +567,307 @@
     };
   }
 
+
+  function activeColor(){
+    const preset=$("colorInput").value;
+    return (preset==="custom"?$("colorPicker").value:preset).toLowerCase();
+  }
+
+  function hexRgb(hex){
+    const v=hex.replace("#","");
+    return [parseInt(v.slice(0,2),16),parseInt(v.slice(2,4),16),parseInt(v.slice(4,6),16)];
+  }
+
+  function pathLength(path){
+    let total=0;
+    for(let i=1;i<path.length;i++) total+=Math.hypot(path[i][0]-path[i-1][0],path[i][1]-path[i-1][1]);
+    return total;
+  }
+
+  function normalizeForIlda(paths){
+    const valid=paths.filter(p=>p.length>1).map(p=>p.map(q=>[q[0],q[1]]));
+    if(!valid.length) throw new Error("لا توجد مسارات للتصدير");
+    const all=valid.flat(),xs=all.map(p=>p[0]),ys=all.map(p=>p[1]);
+    const minX=Math.min(...xs),maxX=Math.max(...xs),minY=Math.min(...ys),maxY=Math.max(...ys);
+    const cx=(minX+maxX)/2,cy=(minY+maxY)/2;
+    const scale=1.8/Math.max(maxX-minX||1,maxY-minY||1);
+    return valid.map(path=>path.map(([x,y])=>[(x-cx)*scale,-(y-cy)*scale]));
+  }
+
+  function reorderNearest(paths){
+    if(paths.length<2) return paths.map(p=>p.slice());
+    const pool=paths.map(p=>p.slice()),ordered=[pool.shift()];
+    const d=(a,b)=>Math.hypot(a[0]-b[0],a[1]-b[1]);
+    while(pool.length){
+      const end=ordered[ordered.length-1][ordered[ordered.length-1].length-1];
+      let best=0,reverse=false,bestD=Infinity;
+      for(let i=0;i<pool.length;i++){
+        const a=d(end,pool[i][0]),b=d(end,pool[i][pool[i].length-1]);
+        if(a<bestD){best=i;reverse=false;bestD=a}
+        if(b<bestD){best=i;reverse=true;bestD=b}
+      }
+      let next=pool.splice(best,1)[0];
+      if(reverse) next=next.slice().reverse();
+      ordered.push(next);
+    }
+    return ordered;
+  }
+
+  function resamplePath(path,count){
+    if(count<=1) return [path[0]];
+    const cumulative=[0];let total=0;
+    for(let i=1;i<path.length;i++){total+=Math.hypot(path[i][0]-path[i-1][0],path[i][1]-path[i-1][1]);cumulative.push(total)}
+    if(total<1e-9) return Array.from({length:count},()=>path[0]);
+    const out=[];let seg=0;
+    for(let i=0;i<count;i++){
+      const target=total*(i/Math.max(1,count-1));
+      while(seg+1<cumulative.length&&cumulative[seg+1]<target) seg++;
+      if(seg>=path.length-1){out.push(path[path.length-1]);continue}
+      const span=Math.max(cumulative[seg+1]-cumulative[seg],1e-9);
+      const u=(target-cumulative[seg])/span,a=path[seg],b=path[seg+1];
+      out.push([a[0]+(b[0]-a[0])*u,a[1]+(b[1]-a[1])*u]);
+    }
+    return out;
+  }
+
+  function allocatePoints(paths,totalVisible,minEach=2){
+    const lengths=paths.map(pathLength),sum=lengths.reduce((a,b)=>a+b,0)||1;
+    const out=lengths.map(len=>Math.max(minEach,Math.round(totalVisible*len/sum)));
+    let n=out.reduce((a,b)=>a+b,0);
+    while(n>totalVisible){
+      let best=-1,bv=-Infinity;
+      for(let i=0;i<out.length;i++) if(out[i]>minEach&&out[i]>bv){best=i;bv=out[i]}
+      if(best<0) break;
+      out[best]--;n--;
+    }
+    while(n<totalVisible){
+      let best=0,ratio=-Infinity;
+      for(let i=0;i<out.length;i++){const r=lengths[i]/out[i];if(r>ratio){ratio=r;best=i}}
+      out[best]++;n++;
+    }
+    return out;
+  }
+
+  function revealPaths(paths,fraction){
+    if(fraction>=.999999) return paths.map(p=>p.slice());
+    const lengths=paths.map(pathLength),total=lengths.reduce((a,b)=>a+b,0)||1,target=total*Math.max(0,fraction);
+    const result=[];let consumed=0;
+    for(let pi=0;pi<paths.length;pi++){
+      const path=paths[pi],len=lengths[pi];
+      if(target>=consumed+len){result.push(path.slice());consumed+=len;continue}
+      if(target<=consumed) break;
+      const wanted=target-consumed,cum=[0];let acc=0;
+      for(let i=1;i<path.length;i++){acc+=Math.hypot(path[i][0]-path[i-1][0],path[i][1]-path[i-1][1]);cum.push(acc)}
+      const p=[path[0]];
+      for(let i=1;i<path.length;i++){
+        if(cum[i]<=wanted){p.push(path[i]);continue}
+        const span=Math.max(cum[i]-cum[i-1],1e-9),u=(wanted-cum[i-1])/span,a=path[i-1],b=path[i];
+        p.push([a[0]+(b[0]-a[0])*u,a[1]+(b[1]-a[1])*u]);
+        break;
+      }
+      if(p.length>1) result.push(p);
+      break;
+    }
+    return result;
+  }
+
+  function ildConfig(){
+    return {
+      mode:$("ildaMode").value,
+      format:Number($("ildaFormat").value),
+      ppf:Number($("ppfInput").value),
+      rate:Number($("rateInput").value),
+      drawFrames:Number($("drawFramesInput").value),
+      holdFrames:Number($("holdFramesInput").value),
+      blankDwell:Number($("blankDwellInput").value),
+      cornerDwell:Number($("cornerDwellInput").value),
+      preserveOrder:$("preserveOrderInput").checked,
+      color:activeColor()
+    };
+  }
+
+  function compositeFrame(paths,cfg,target){
+    if(!paths.length) return Array.from({length:target},()=>({x:0,y:0,blank:1}));
+    const minVisible=paths.length*2;
+    const maxBlank=Math.max(0,target-minVisible);
+    const effectiveBlank=Math.min(cfg.blankDwell,Math.floor(maxBlank/paths.length));
+    const blankCount=effectiveBlank*paths.length;
+    const visibleCount=Math.max(minVisible,target-blankCount);
+    const allocations=allocatePoints(paths,visibleCount,2);
+    const pts=[];
+    for(let i=0;i<paths.length;i++){
+      const sampled=resamplePath(paths[i],allocations[i]);
+      for(let j=0;j<effectiveBlank;j++) pts.push({x:sampled[0][0],y:sampled[0][1],blank:1});
+      for(let j=0;j<sampled.length;j++){
+        const q=sampled[j];pts.push({x:q[0],y:q[1],blank:0});
+        if(cfg.cornerDwell&&j>0&&j<sampled.length-1){
+          for(let k=0;k<cfg.cornerDwell;k++) pts.push({x:q[0],y:q[1],blank:0});
+        }
+      }
+    }
+    if(pts.length>target) pts.length=target;
+    while(pts.length<target){const last=pts[pts.length-1]||{x:0,y:0,blank:1};pts.push({...last,blank:1})}
+    return pts;
+  }
+
+  function drawStreamFrames(paths,cfg,target){
+    const blankOverhead=paths.length*Math.max(1,cfg.blankDwell);
+    const totalBudget=Math.max(target*cfg.drawFrames,paths.length*3+blankOverhead);
+    const visibleBudget=Math.max(paths.length*2,totalBudget-blankOverhead);
+    const alloc=allocatePoints(paths,visibleBudget,2),stream=[];
+    let prev=null;
+    for(let i=0;i<paths.length;i++){
+      const sampled=resamplePath(paths[i],alloc[i]),start=sampled[0];
+      if(prev){
+        const jump=Math.hypot(start[0]-prev[0],start[1]-prev[1]);
+        const travel=Math.max(1,Math.min(10,Math.ceil(jump/.12)));
+        for(let j=0;j<cfg.blankDwell;j++) stream.push({x:prev[0],y:prev[1],blank:1});
+        for(let j=1;j<=travel;j++){const t=j/travel;stream.push({x:prev[0]+(start[0]-prev[0])*t,y:prev[1]+(start[1]-prev[1])*t,blank:1})}
+      }
+      for(let j=0;j<cfg.blankDwell;j++) stream.push({x:start[0],y:start[1],blank:1});
+      for(const q of sampled) stream.push({x:q[0],y:q[1],blank:0});
+      prev=sampled[sampled.length-1];
+    }
+    const frames=[];
+    for(let i=0;i<stream.length;i+=target){
+      const fr=stream.slice(i,i+target),last=fr[fr.length-1]||{x:0,y:0,blank:1};
+      while(fr.length<target) fr.push({...last,blank:1});
+      frames.push(fr);
+    }
+    return frames;
+  }
+
+  function buildIldaData(){
+    if(!currentPaths.length) throw new Error("ولّد المسار أولًا");
+    const cfg=ildConfig();
+    let paths=normalizeForIlda(currentPaths);
+    if(!cfg.preserveOrder) paths=reorderNearest(paths);
+
+    const minTarget=Math.min(65535,Math.max(cfg.ppf,paths.length*2));
+    const target=minTarget;
+    let frames=[];
+    if(cfg.mode==="static"){
+      frames=[compositeFrame(paths,cfg,target)];
+    }else if(cfg.mode==="draw"){
+      frames=drawStreamFrames(paths,cfg,target);
+      const final=frames[frames.length-1];
+      for(let i=0;i<cfg.holdFrames;i++) frames.push(final.map(p=>({...p})));
+    }else{
+      for(let i=0;i<cfg.drawFrames;i++){
+        frames.push(compositeFrame(revealPaths(paths,(i+1)/cfg.drawFrames),cfg,target));
+      }
+      const final=compositeFrame(paths,cfg,target);
+      for(let i=0;i<cfg.holdFrames;i++) frames.push(final.map(p=>({...p})));
+    }
+
+    const rgb=hexRgb(cfg.color);
+    const HEADER=32;
+    const paletteBytes=cfg.format===0?HEADER+6:0;
+    const recSize=8;
+    const totalBytes=paletteBytes+frames.reduce((s,f)=>s+HEADER+f.length*recSize,0)+HEADER;
+    const bytes=new Uint8Array(totalBytes),view=new DataView(bytes.buffer);let off=0;
+    const ascii=(at,text,len)=>{for(let i=0;i<len;i++)bytes[at+i]=i<text.length?text.charCodeAt(i)&0x7f:0};
+    function header(format,name,count,no,total){
+      bytes[off]=73;bytes[off+1]=76;bytes[off+2]=68;bytes[off+3]=65;
+      bytes[off+4]=bytes[off+5]=bytes[off+6]=0;bytes[off+7]=format;
+      ascii(off+8,name.slice(0,8),8);ascii(off+16,"ABODEN",8);
+      view.setUint16(off+24,count,false);view.setUint16(off+26,no&0xffff,false);view.setUint16(off+28,total&0xffff,false);
+      bytes[off+30]=0;bytes[off+31]=0;off+=HEADER;
+    }
+    if(cfg.format===0){
+      header(2,"ABPAL",2,0,0);
+      bytes[off++]=0;bytes[off++]=0;bytes[off++]=0;
+      bytes[off++]=rgb[0];bytes[off++]=rgb[1];bytes[off++]=rgb[2];
+    }
+    frames.forEach((frame,fi)=>{
+      header(cfg.format,"AB"+String(fi).padStart(6,"0"),frame.length,fi,frames.length);
+      frame.forEach((p,i)=>{
+        view.setInt16(off,Math.round(Math.max(-1,Math.min(1,p.x))*32767),false);
+        view.setInt16(off+2,Math.round(Math.max(-1,Math.min(1,p.y))*32767),false);
+        if(cfg.format===0){
+          view.setInt16(off+4,0,false);
+          let status=p.blank?0x40:0;if(i===frame.length-1)status|=0x80;
+          bytes[off+6]=status;bytes[off+7]=p.blank?0:1;
+        }else{
+          let status=p.blank?0x40:0;if(i===frame.length-1)status|=0x80;
+          bytes[off+4]=status;bytes[off+5]=rgb[2];bytes[off+6]=rgb[1];bytes[off+7]=rgb[0];
+        }
+        off+=8;
+      });
+    });
+    header(0,"EOF",0,0,0);
+    const duration=frames.reduce((s,f)=>s+f.length/cfg.rate,0);
+    return {bytes,frames,cfg,target,duration,color:cfg.color};
+  }
+
+  function refreshIldaStats(data){
+    currentIlda=data;
+    const kb=(data.bytes.length/1024).toFixed(1);
+    $("ildaMetric").textContent=`${data.frames.length} إطار · ${data.target} نقطة · ${data.duration.toFixed(1)}ث · ${kb}KB`;
+    downloadIldBtn.disabled=false;
+    previewLaserBtn.disabled=false;
+  }
+
+  function ensurePreviewSize(){
+    const rect=$("previewStage").getBoundingClientRect(),dpr=Math.min(devicePixelRatio||1,2);
+    laserPreview.width=Math.max(1,Math.round(rect.width*dpr));laserPreview.height=Math.max(1,Math.round(rect.height*dpr));
+    return {w:laserPreview.width,h:laserPreview.height,dpr};
+  }
+
+  function renderLaserFrame(frame,color){
+    const {w,h}=ensurePreviewSize(),ctx=laserPreview.getContext("2d");
+    ctx.clearRect(0,0,w,h);ctx.fillStyle="#000";ctx.fillRect(0,0,w,h);
+    const rgb=color;ctx.lineWidth=Math.max(1.2,Math.min(w,h)*.003);ctx.strokeStyle=rgb;ctx.shadowColor=rgb;ctx.shadowBlur=Math.min(w,h)*.025;ctx.lineCap="round";ctx.lineJoin="round";
+    const sx=w*.46,sy=h*.46,cx=w/2,cy=h/2;
+    let drawing=false;ctx.beginPath();
+    for(let i=0;i<frame.length;i++){
+      const p=frame[i],x=cx+p.x*sx,y=cy-p.y*sy;
+      if(p.blank){if(drawing){ctx.stroke();ctx.beginPath();drawing=false}continue}
+      if(!drawing){ctx.moveTo(x,y);drawing=true}else ctx.lineTo(x,y);
+    }
+    if(drawing)ctx.stroke();
+  }
+
+  function stopPreview(){
+    previewPlaying=false;cancelAnimationFrame(previewRAF);previewRAF=0;
+    laserPreview.classList.remove("show");host.classList.remove("preview-dim");
+    previewLaserBtn.textContent="▶ ليزر";
+  }
+
+  function previewLoop(now){
+    if(!previewPlaying||!currentIlda) return;
+    if(now>=previewNextAt){
+      const frame=currentIlda.frames[previewFrame];
+      renderLaserFrame(frame,currentIlda.color);
+      previewNextAt=now+(frame.length/currentIlda.cfg.rate)*1000;
+      previewFrame=(previewFrame+1)%currentIlda.frames.length;
+    }
+    previewRAF=requestAnimationFrame(previewLoop);
+  }
+
+  function togglePreview(){
+    if(previewPlaying){stopPreview();return}
+    try{
+      const data=buildIldaData();refreshIldaStats(data);
+      previewPlaying=true;previewFrame=0;previewNextAt=0;
+      laserPreview.classList.add("show");host.classList.add("preview-dim");
+      previewLaserBtn.textContent="■ إيقاف";
+      previewRAF=requestAnimationFrame(previewLoop);
+    }catch(err){setStatus("تعذر تشغيل المعاينة: "+(err?.message||err),false)}
+  }
+
+  function downloadIld(){
+    try{
+      const data=buildIldaData();refreshIldaStats(data);
+      const base=currentName.replace(/\.svg$/i,"")||"laser";
+      const blob=new Blob([data.bytes],{type:"application/octet-stream"});
+      const url=URL.createObjectURL(blob),a=document.createElement("a");
+      a.href=url;a.download=base+".ild";document.body.appendChild(a);a.click();a.remove();
+      setTimeout(()=>URL.revokeObjectURL(url),1200);
+      setStatus("تم تجهيز ملف ILD للتنزيل",true);
+    }catch(err){console.error(err);setStatus("فشل تصدير ILD: "+(err?.message||err),false)}
+  }
+
   async function generate(){
     generateBtn.disabled=true;
     downloadBtn.disabled=true;
@@ -496,7 +880,7 @@
         radius:Number($("radiusInput").value),
         turns:Number($("turnsInput").value),
         simplify:Number($("simplifyInput").value),
-        color:$("colorInput").value
+        color:activeColor()
       };
 
       let paths;
@@ -507,6 +891,7 @@
 
       const simplified=currentMode==="image" ? paths : paths.map(p=>rdp(p,cfg.simplify));
       const built=buildSvg(simplified,cfg.color);
+      currentPaths=simplified.map(p=>p.map(q=>[q[0],q[1]]));
       currentSvg=built.svg;
       currentName=currentMode==="text"
         ? (cfg.text.trim().replace(/[^a-z0-9_-]+/gi,"-")||"text")+".svg"
@@ -518,7 +903,11 @@
       $("pointMetric").textContent=`${built.points} نقطة · ${built.strokes} مسار`;
       $("sizeMetric").textContent=`${built.width.toFixed(1)} × ${built.height.toFixed(1)}`;
       downloadBtn.disabled=false;
-      setStatus("المولد جاهز — يعمل مباشرة على الجهاز",true);
+      downloadIldBtn.disabled=false;
+      previewLaserBtn.disabled=false;
+      stopPreview();
+      try{refreshIldaStats(buildIldaData())}catch{}
+      setStatus("المولد جاهز — SVG و ILD",true);
     }catch(err){
       console.error(err);
       host.innerHTML=`<div class="empty" style="color:#ff9fa8">فشل توليد المسار.<br>${String(err?.message||err).replaceAll("<","&lt;")}</div>`;
@@ -553,6 +942,8 @@
       else{
         host.innerHTML='<div class="empty">ارفع صورة Outline ثم اضغط «تتبع الصورة».</div>';
         downloadBtn.disabled=true;
+        downloadIldBtn.disabled=true;
+        previewLaserBtn.disabled=true;
         setStatus("جاهز لاستقبال صورة Outline",true);
       }
     });
@@ -575,7 +966,13 @@
     ["simplifyInput","simplifyVal",v=>Number(v).toFixed(2)],
     ["thresholdInput","thresholdVal",v=>v],
     ["imageSmoothInput","imageSmoothVal",v=>Number(v).toFixed(1)],
-    ["minPathInput","minPathVal",v=>v]
+    ["minPathInput","minPathVal",v=>v],
+    ["ppfInput","ppfVal",v=>v],
+    ["rateInput","rateVal",v=>v],
+    ["drawFramesInput","drawFramesVal",v=>v],
+    ["holdFramesInput","holdFramesVal",v=>v],
+    ["blankDwellInput","blankDwellVal",v=>v],
+    ["cornerDwellInput","cornerDwellVal",v=>v]
   ];
   bindings.forEach(([inputId,valueId,fmt])=>{
     $(inputId).addEventListener("input",()=>{$(valueId).textContent=fmt($(inputId).value)});
@@ -604,8 +1001,31 @@
   $("textInput").addEventListener("input",()=>{$("charCount").textContent=$("textInput").value.length});
   generateBtn.addEventListener("click",generate);
   downloadBtn.addEventListener("click",downloadSvg);
-  $("colorInput").addEventListener("change",generate);
+  downloadIldBtn.addEventListener("click",downloadIld);
+  previewLaserBtn.addEventListener("click",togglePreview);
+
+  $("colorInput").addEventListener("change",()=>{
+    if($("colorInput").value!=="custom") $("colorPicker").value=$("colorInput").value;
+    $("colorHexVal").textContent=activeColor().toUpperCase();
+    generate();
+  });
+  $("colorPicker").addEventListener("input",()=>{
+    $("colorInput").value="custom";
+    $("colorHexVal").textContent=activeColor().toUpperCase();
+    if(currentPaths.length){
+      const built=buildSvg(currentPaths,activeColor());currentSvg=built.svg;host.innerHTML=currentSvg;
+      stopPreview();try{refreshIldaStats(buildIldaData())}catch{}
+    }
+  });
   $("simplifyInput").addEventListener("change",generate);
+
+  ["ildaMode","ildaFormat","ppfInput","rateInput","drawFramesInput","holdFramesInput","blankDwellInput","cornerDwellInput","preserveOrderInput"].forEach(id=>{
+    $(id).addEventListener("change",()=>{
+      if(!currentPaths.length)return;
+      stopPreview();
+      try{refreshIldaStats(buildIldaData());setStatus("تم تحديث إعدادات ILD",true)}catch(err){setStatus("إعداد ILD غير صالح: "+(err?.message||err),false)}
+    });
+  });
 
   generateBtn.disabled=false;
   setStatus("المولد جاهز — بدون Python أو Pyodide",true);
