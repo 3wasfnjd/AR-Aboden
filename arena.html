@@ -304,6 +304,19 @@
     let surfaceReady = false;
     let lastTick = performance.now();
 
+    // Markerless XR8 can introduce small frame-to-frame camera pose jitter.
+    // Smooth only the rendered virtual camera after placement, with a strict
+    // maximum lag so deliberate phone movement still feels immediate.
+    const smoothedCameraPos = new THREE.Vector3();
+    const rawCameraPos = new THREE.Vector3();
+    const smoothedCameraQuat = new THREE.Quaternion();
+    const rawCameraQuat = new THREE.Quaternion();
+    let cameraStabilizerReady = false;
+    const CAMERA_POS_TAU = .10;
+    const CAMERA_ROT_TAU = .085;
+    const CAMERA_MAX_POS_LAG = .028;
+    const CAMERA_MAX_ROT_LAG = THREE.MathUtils.degToRad(1.25);
+
     function notify(msg){
       toast.textContent = msg;
       toast.classList.add('show');
@@ -350,6 +363,56 @@
       previewInitialized=false;
       surfaceReady=false;
       placeBtn.disabled=true;
+    }
+
+    function resetCameraStabilizer(){
+      cameraStabilizerReady=false;
+    }
+
+    function stabilizeCameraPose(dt){
+      if(!placed||!camera||trackingStatus!=='NORMAL'){
+        cameraStabilizerReady=false;
+        return;
+      }
+
+      camera.getWorldPosition(rawCameraPos);
+      camera.getWorldQuaternion(rawCameraQuat);
+
+      if(!cameraStabilizerReady){
+        smoothedCameraPos.copy(rawCameraPos);
+        smoothedCameraQuat.copy(rawCameraQuat);
+        cameraStabilizerReady=true;
+        return;
+      }
+
+      const posAlpha=1-Math.exp(-dt/CAMERA_POS_TAU);
+      const rotAlpha=1-Math.exp(-dt/CAMERA_ROT_TAU);
+
+      smoothedCameraPos.lerp(rawCameraPos,posAlpha);
+      smoothedCameraQuat.slerp(rawCameraQuat,rotAlpha);
+
+      // Never let smoothing create obvious "swimming" when the user really
+      // moves the phone. Keep only a small micro-jitter compensation window.
+      const posLag=smoothedCameraPos.distanceTo(rawCameraPos);
+      if(posLag>CAMERA_MAX_POS_LAG){
+        smoothedCameraPos.lerp(
+          rawCameraPos,
+          1-CAMERA_MAX_POS_LAG/Math.max(posLag,1e-6)
+        );
+      }
+
+      const dot=Math.min(1,Math.abs(smoothedCameraQuat.dot(rawCameraQuat)));
+      const rotLag=2*Math.acos(dot);
+      if(rotLag>CAMERA_MAX_ROT_LAG){
+        const keep=CAMERA_MAX_ROT_LAG/Math.max(rotLag,1e-6);
+        smoothedCameraQuat.slerp(rawCameraQuat,1-keep);
+      }
+
+      // XR8 has already written the tracked pose for this frame. Override
+      // only Three.js' render camera pose; the SLAM engine remains untouched.
+      camera.position.copy(smoothedCameraPos);
+      camera.quaternion.copy(smoothedCameraQuat);
+      camera.updateMatrixWorld(true);
     }
 
     function setStatus(text, ready=false){
@@ -608,8 +671,8 @@
       smokeTrails = new SmokeTrails(scene, AR_EFFECT_SCALE, 0.55);
       driftMarks = new DriftMarks(scene, 'ar-aboden-arena', AR_EFFECT_SCALE, 9);
 
-      // XR8 owns camera intrinsics/pose. Absolute scale estimates physical
-      // height; never overwrite the tracked camera with an assumed height.
+      // XR8 owns camera intrinsics and SLAM. Placement uses its responsive
+      // world ground; render-only smoothing is enabled only after placement.
       resetTrackingState();
       resetPlacementStability();
       sceneReady = true;
@@ -762,6 +825,12 @@
       const dt=Math.min(.1,Math.max(0,(now-lastTick)/1000));
       lastTick=now;
       updatePlacement(dt,now);
+
+      // Apply after XR8 updates its pose and after placement raycasting, so
+      // preview/placement still uses the raw tracked camera while the locked
+      // experience gets a steadier render pose.
+      stabilizeCameraPose(dt);
+
       const canDrive=placed && !document.hidden && trackingReady(now);
       if(canDrive!==drivingEnabled){
         drivingEnabled=canDrive;
@@ -831,6 +900,7 @@
       vehicle.updateAutonomous(autopilot.update(0),0);
 
       placed = true;
+      resetCameraStabilizer();
       drivingEnabled = true;
       placeBtn.disabled = false;
       reticle.visible = false;
@@ -850,6 +920,7 @@
       surfaceReady = false;
       resetTrackingState();
       resetPlacementStability();
+      resetCameraStabilizer();
       nextGroundSample=0;
       drivingEnabled=false;
 
