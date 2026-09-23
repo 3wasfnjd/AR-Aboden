@@ -12,7 +12,9 @@ The AR-Aboden integration is a fresh XR8/mobile implementation rather than a cop
 
 The AR enemy presentation uses the **Character Soldier** from Quaternius' Toon Shooter Game Kit, released under CC0 1.0. The runtime currently loads the web-optimized `soldier_t.glb` derivative published by the open-source Tiny Strike project. Tiny Strike documents that this GLB is derived from the Quaternius CC0 asset and processed for web use.
 
-The integration keeps its own invisible hit proxies for head/torso/arms/legs, normalizes the rendered GLB to a 1.78 m target height, aligns its lowest bound with the detected AR floor, and locks each enemy root to the captured floor Y while AI movement changes only X/Z.
+The integration keeps its own invisible hit proxies for head/torso/arms/legs, scales the rendered GLB to a 1.20 m target height (25% smaller than the previous 1.60 m setting), and scales the hit proxies and fallback muzzle with it. It aligns the standing pose's lowest bound with the detected AR floor and locks each enemy root to the captured floor Y while AI movement changes only X/Z.
+
+Enemy roots and the GLB both face +Z. Every live AI state turns toward the current tracked phone position independently of its movement direction. The GLB muzzle is attached to the selected weapon's barrel tip so traces follow its animated hand and scale. Combat, movement, and wave/reload timers pause when tracking is lost; the user must touch again to resume automatic fire after tracking returns.
 
 Animation clips used when present: `Idle`, `Walk`, `Idle_Shoot`, `Walk_Shoot`, and `Death`. The primitive soldier remains as a fallback if the external GLB cannot be loaded.
 

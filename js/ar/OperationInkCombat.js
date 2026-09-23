@@ -26,7 +26,7 @@ const HIT_MULTIPLIER = {head:2.2, torso:1, arm:.6, leg:.7};
 
 const SOLDIER_MODEL_URL = 'https://raw.githubusercontent.com/guyz/tinystrike/main/assets/models/soldier_t.glb';
 const SOLDIER_SOURCE_HEIGHT = 2.1358;
-const SOLDIER_TARGET_HEIGHT = 1.60;
+const SOLDIER_TARGET_HEIGHT = 1.20;
 const SOLDIER_MODEL_SCALE = SOLDIER_TARGET_HEIGHT / SOLDIER_SOURCE_HEIGHT;
 const SOLDIER_HIT_PROXY_HEIGHT = 1.895;
 const SOLDIER_HIT_PROXY_SCALE = SOLDIER_TARGET_HEIGHT / SOLDIER_HIT_PROXY_HEIGHT;
@@ -79,6 +79,43 @@ function setSoldierAction(root,name,fade=.14){
   u.actionName=name;
 }
 
+function attachSoldierMuzzle(root,model){
+  const gun=model.getObjectByName(SOLDIER_GUN_FOR_WEAPON[root.userData.weapon]);
+  if(!gun) return;
+
+  // Locate the barrel tip in the model's +Z facing direction, then keep it in
+  // the gun's local space so the muzzle follows the animated hand and scale.
+  model.updateWorldMatrix(true,true);
+  const worldToModel=new THREE.Matrix4().copy(model.matrixWorld).invert();
+  const meshes=[];
+  gun.traverse(obj=>{
+    const positions=obj.geometry?.attributes.position;
+    if(positions) meshes.push({positions,toModel:new THREE.Matrix4().multiplyMatrices(worldToModel,obj.matrixWorld)});
+  });
+  const point=new THREE.Vector3(),tip=new THREE.Vector3();
+  let front=-Infinity,back=Infinity,count=0;
+  for(const {positions,toModel} of meshes){
+    for(let i=0;i<positions.count;i++){
+      point.fromBufferAttribute(positions,i).applyMatrix4(toModel);
+      front=Math.max(front,point.z);back=Math.min(back,point.z);
+    }
+  }
+  const band=(front-back)*.015;
+  for(const {positions,toModel} of meshes){
+    for(let i=0;i<positions.count;i++){
+      point.fromBufferAttribute(positions,i).applyMatrix4(toModel);
+      if(point.z>=front-band){tip.add(point);count++;}
+    }
+  }
+  if(!count) return;
+  const muzzle=new THREE.Object3D();
+  muzzle.name='soldier-muzzle';
+  const modelToGun=new THREE.Matrix4().multiplyMatrices(worldToModel,gun.matrixWorld).invert();
+  muzzle.position.copy(tip.divideScalar(count).applyMatrix4(modelToGun));
+  gun.add(muzzle);
+  root.userData.parts.muzzle=muzzle;
+}
+
 async function attachSoldierModel(root){
   const asset=await loadSoldierAsset();
   if(!asset || !root?.parent) return false;
@@ -86,7 +123,7 @@ async function attachSoldierModel(root){
   const model=cloneSkeleton(asset.scene);
   const visual=new THREE.Group();
   visual.name='quaternius-soldier-visual';
-  visual.rotation.y=Math.PI;
+  // The GLB already faces +Z, matching facePhone's atan2(dx,dz).
   visual.scale.setScalar(SOLDIER_MODEL_SCALE);
   visual.add(model);
   root.add(visual);
@@ -102,14 +139,6 @@ async function attachSoldierModel(root){
     }
   });
 
-  root.updateMatrixWorld(true);
-  const box=new THREE.Box3().setFromObject(visual);
-  const rootWorld=new THREE.Vector3();
-  root.getWorldPosition(rootWorld);
-  if(Number.isFinite(box.min.y)){
-    visual.position.y += rootWorld.y - box.min.y;
-  }
-
   const mixer=new THREE.AnimationMixer(model);
   const actions={};
   for(const clip of asset.clips){
@@ -122,13 +151,23 @@ async function attachSoldierModel(root){
   root.userData.actions=actions;
   root.userData.actionName=null;
   root.userData.fallbackVisual.visible=false;
+  // Calibrate the feet and muzzle in the standing pose, including when the
+  // model finishes loading after this enemy was killed.
   if(root.userData.dead){
     root.rotation.x=0;
     root.rotation.z=0;
     root.position.y=root.userData.groundY;
   }
-  setSoldierAction(root,root.userData.dead?'Death':'Idle',0);
+  setSoldierAction(root,'Idle',0);
   mixer.update(0);
+  root.updateMatrixWorld(true);
+  const box=new THREE.Box3().setFromObject(visual,true);
+  const rootWorld=new THREE.Vector3();
+  root.getWorldPosition(rootWorld);
+  if(Number.isFinite(box.min.y)) visual.position.y += rootWorld.y - box.min.y;
+  root.updateMatrixWorld(true);
+  attachSoldierMuzzle(root,model);
+  if(root.userData.dead) setSoldierAction(root,'Death',0);
 
   console.info('[Operation Ink AR] Soldier model ready', {
     animations:Object.keys(actions),
@@ -136,9 +175,6 @@ async function attachSoldierModel(root){
   });
   return true;
 }
-const UP = new THREE.Vector3(0,1,0);
-const FORWARD = new THREE.Vector3(0,0,1);
-
 function clamp(v,a,b){ return Math.max(a,Math.min(b,v)); }
 function flatDistance(a,b){ return Math.hypot(a.x-b.x,a.z-b.z); }
 
@@ -242,13 +278,13 @@ export function createSoldier(index, weapon='ak'){
   markHit(lArm.mesh,root,'arm'); markHit(rArm.mesh,root,'arm');
 
   const gun = makeWeaponMesh(weapon,dark);
-  gun.position.set(.10,1.27,-.26);
+  gun.position.set(.10,1.27,.26);
   gun.rotation.y=Math.PI;
   fallbackVisual.add(gun);
 
   const muzzle = new THREE.Object3D();
-  muzzle.position.set(.10,1.30,-(weapon==='pistol'?.48:weapon==='sniper'?.78:.61));
-  root.add(muzzle);
+  muzzle.position.set(.10,1.30,weapon==='pistol'?.48:weapon==='sniper'?.78:.61);
+  fallbackVisual.add(muzzle);
 
   root.userData.parts={lLeg:lLeg.pivot,rLeg:rLeg.pivot,lArm:lArm.pivot,rArm:rArm.pivot,gun,muzzle,head};
   fallbackVisual.scale.setScalar(SOLDIER_HIT_PROXY_SCALE);
@@ -342,7 +378,10 @@ export class OperationInkCombat {
     this.camera.remove(this.playerWeaponRoot);
   }
 
-  setTracking(active){ this.tracking=!!active; }
+  setTracking(active){
+    this.tracking=!!active;
+    if(!this.tracking) this.triggerUp();
+  }
 
   setWeapon(name,silent=false){
     if(!WEAPONS[name]) return false;
@@ -509,7 +548,7 @@ export class OperationInkCombat {
         this.anchor.y,
         this.anchor.z+Math.cos(angle)*radius
       );
-      soldier.rotation.y=angle+Math.PI;
+      this.facePhone(soldier,player);
       soldier.userData.homeAngle=angle;
       soldier.userData.homeRadius=radius;
       soldier.userData.groundY=this.anchor.y;
@@ -565,14 +604,13 @@ export class OperationInkCombat {
     u.fireCooldown=rule.gap*(.88+Math.random()*.45);
   }
 
-  moveToward(enemy,target,speed,dt,{faceMovement=true}={}){
+  moveToward(enemy,target,speed,dt){
     const dx=target.x-enemy.position.x, dz=target.z-enemy.position.z;
     const d=Math.hypot(dx,dz);
     if(d<.03) return 0;
     const step=Math.min(d,speed*dt);
     enemy.position.x+=dx/d*step;
     enemy.position.z+=dz/d*step;
-    if(faceMovement) enemy.rotation.y=Math.atan2(dx,dz);
     enemy.userData.stride+=step*8.5;
     return step;
   }
@@ -636,9 +674,7 @@ export class OperationInkCombat {
     const dist=flatDistance(enemy.position,player);
     let moving=0;
 
-    if(!this.tracking){
-      this.setEnemyState(enemy,'search');
-    }else if(this.alert && u.state==='patrol'){
+    if(this.alert && u.state==='patrol'){
       this.setEnemyState(enemy,'suspicious');
     }
 
@@ -648,7 +684,6 @@ export class OperationInkCombat {
       moving=this.moveToward(enemy,u.target,.42,dt);
       if(dist<4.9) this.setEnemyState(enemy,'suspicious');
     }else if(u.state==='suspicious'){
-      this.facePhone(enemy,player);
       if(u.stateTime>=u.alertDelay) this.setEnemyState(enemy,'combat');
     }else if(u.state==='combat'){
       u.lastKnown.copy(player);
@@ -663,15 +698,19 @@ export class OperationInkCombat {
       }
       // Combat movement is independent from aiming: strafe/reposition while
       // the torso remains pointed at the tracked phone camera.
-      moving=this.moveToward(enemy,u.target,.95,dt,{faceMovement:false});
-      this.facePhone(enemy,player);
-      if(dist<7.2 && u.fireCooldown<=0) this.enemyShoot(enemy,player);
+      moving=this.moveToward(enemy,u.target,.95,dt);
       if(dist>8.3) this.setEnemyState(enemy,'search');
     }else if(u.state==='search'){
       moving=this.moveToward(enemy,u.lastKnown,.58,dt);
       if(this.tracking && flatDistance(enemy.position,u.lastKnown)<.5) this.setEnemyState(enemy,this.alert?'combat':'patrol');
     }
+    // Keep every live state facing the current phone position, including
+    // patrol/search and strafing. Movement must never overwrite aim yaw.
+    this.facePhone(enemy,player);
     this.animateEnemy(enemy,dt,moving);
+    if(u.state==='combat' && flatDistance(enemy.position,player)<7.2 && u.fireCooldown<=0){
+      this.enemyShoot(enemy,player);
+    }
   }
 
   spawnTracer(a,b,color,life){
@@ -705,6 +744,10 @@ export class OperationInkCombat {
 
   update(dt){
     dt=Math.min(.05,Math.max(0,dt||0));
+    this.updateFx(dt);
+    // A stale camera pose is not a valid target. Pause AI, wave/reload timers
+    // and firing until XR tracking recovers; existing effects can fade out.
+    if(!this.running || !this.tracking) return;
     this.fireCooldown=Math.max(0,this.fireCooldown-dt);
     if(this.reloadTimer>0){
       this.reloadTimer-=dt;
@@ -713,10 +756,6 @@ export class OperationInkCombat {
     const rule=WEAPONS[this.weapon];
     if(this.triggerHeld && rule.automatic && this.fireCooldown<=0) this.fireOnce();
 
-    this.updateFx(dt);
-    if(!this.running){
-      if(this.playerHealth<=0) return;
-    }
     if(this.nextWaveTimer>0){
       this.nextWaveTimer-=dt;
       if(this.nextWaveTimer<=0 && this.running) this.spawnWave();
