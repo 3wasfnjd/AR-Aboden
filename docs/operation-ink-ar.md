@@ -42,6 +42,14 @@ The combat view keeps only Home, the placement/status text, crosshair and a comp
 
 The page locks Safari to scale 1, disables selection/callouts and text resizing, and cancels Safari gesture, multi-touch pinch, double-tap and selection events. Interactive controls retain `touch-action: manipulation` while the game surface continues using pointer events for firing.
 
+## Fast estimated placement
+
+This experiment does not wait for the shared high-confidence surface sampler. After about 280 ms of normal tracking, it uses the centre ray's estimated ground intersection when available; otherwise it places the anchor 2.8 m ahead on XR8's default `y=0` floor. The preview appears briefly and combat starts automatically about 100 ms later. Tracking loss still pauses combat.
+
+## Programmatic weapon icons
+
+The five weapon selectors are created at runtime and rendered as distinct Canvas 2D silhouettes for pistol, AK, SMG, shotgun and sniper. No image assets or text labels are displayed. The underlying compact buttons retain Arabic `aria-label` and `aria-pressed` attributes for touch and accessibility.
+
 ## Upstream MIT notice
 
 MIT License

@@ -78,10 +78,12 @@
       backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);pointer-events:auto
     }
     .weapon{
-      width:50px;height:38px;border-radius:11px;border:1px solid rgba(255,255,255,.08);
-      background:rgba(255,255,255,.035);color:#d7dde5;font-size:9px;font-weight:900
+      width:54px;height:38px;display:grid;place-items:center;padding:0;
+      border-radius:11px;border:1px solid rgba(255,255,255,.08);
+      background:rgba(255,255,255,.035);color:#d7dde5
     }
     .weapon.selected{background:#fff;color:#091018;border-color:#fff}
+    .weapon canvas{width:48px;height:28px;display:block;pointer-events:none}
     .damage{
       position:fixed;inset:0;z-index:18;pointer-events:none;overflow:hidden
     }
@@ -126,7 +128,8 @@
     .tiny{margin-top:11px!important;color:#9da8b6!important;font-size:11px!important;text-align:center}
     .error{display:none;margin-top:12px;color:#ffc0c0;font-size:12px;line-height:1.7}
     @media(max-width:430px){
-      .weapon{width:45px;height:36px;font-size:8px}
+      .weapon{width:48px;height:36px}
+      .weapon canvas{width:44px;height:26px}
       .weapon-strip{gap:2px}
     }
   </style>
@@ -137,29 +140,23 @@
   <a class="home-btn" href="./index.html">⌂ الرئيسية</a>
 
   <div class="ui" id="gameUi" style="display:none">
-    <div class="status" id="statusText">امسح الأرضية ببطء</div>
+    <div class="status" id="statusText">جاري تثبيت الساحة…</div>
     <div class="guide" id="guide">
-      <b>وجّه الجوال للأرض أمامك</b>
-      حرّك الكاميرا بهدوء. عند استقرار السطح ستبدأ المواجهة تلقائيًا بدون زر تثبيت.
+      <b>ثبّت الجوال لحظة</b>
+      ستظهر المواجهة تلقائيًا أمامك بدون مسح دقيق أو زر تثبيت.
     </div>
     <div class="crosshair" id="crosshair"><i></i></div>
     <div class="toast" id="toast"></div>
 
     <div class="combat-hud">
-      <div class="weapon-strip" id="weaponStrip">
-        <button class="weapon" data-weapon="pistol">Pistol</button>
-        <button class="weapon selected" data-weapon="ak">AK</button>
-        <button class="weapon" data-weapon="smg">SMG</button>
-        <button class="weapon" data-weapon="shotgun">Shotgun</button>
-        <button class="weapon" data-weapon="sniper">Sniper</button>
-      </div>
+      <div class="weapon-strip" id="weaponStrip" aria-label="اختيار السلاح"></div>
     </div>
   </div>
 
   <div id="intro">
     <div class="card">
       <h1>عملية الإنقاذ — AR</h1>
-      <p>تحدّي كرات الألوان بالواقع المعزز. امسح أرضية الغرفة، ثم أصب الجنود بكراتك الزرقاء وتجنّب كراتهم البرتقالية. اختر سلاحك وابدأ المواجهة.</p>
+      <p>تحدّي كرات الألوان بالواقع المعزز. بعد فتح الكاميرا ستظهر المواجهة تلقائيًا أمامك، ثم أصب الجنود بكراتك الزرقاء وتجنّب كراتهم البرتقالية.</p>
       <button class="start" id="startBtn" disabled>جاري تجهيز محرك AR…</button>
       <div class="error" id="errorBox"></div>
       <p class="tiny">وضع تجربة بصحة غير محدودة — المس الشاشة للإطلاق.</p>
@@ -189,13 +186,14 @@
     const guide=document.getElementById('guide');
     const statusText=document.getElementById('statusText');
     const toast=document.getElementById('toast');
+    const weaponStrip=document.getElementById('weaponStrip');
     const damageFlash=document.getElementById('damageFlash');
     const gameover=document.getElementById('gameover');
     const gameoverText=document.getElementById('gameoverText');
     const restartBtn=document.getElementById('restartBtn');
 
     let xrReady=false,xrStarted=false,scene,camera,renderer,combat=null;
-    let latestWorldPoints=[],nextGroundSample=0,lastTick=performance.now(),sceneReady=false;
+    let lastTick=performance.now(),sceneReady=false;
     let placed=false,reticle=null,groundRing=null;
     const placement=new GroundPlacement();
     const raycaster=new THREE.Raycaster();
@@ -203,7 +201,9 @@
     const groundPlane=new THREE.Plane(new THREE.Vector3(0,1,0),0);
     const hitPoint=new THREE.Vector3();
     const stablePoint=new THREE.Vector3();
+    const estimatedForward=new THREE.Vector3(0,0,-1);
     let previewInitialized=false;
+    const FAST_TRACKING_DELAY=280;
 
     let audioCtx=null,audioMaster=null,audioNoise=null,lastPaintImpact=-Infinity;
 
@@ -288,8 +288,57 @@
     }
 
     function updateHud(h){
-      document.querySelectorAll('.weapon').forEach(b=>b.classList.toggle('selected',b.dataset.weapon===h.weapon));
+      document.querySelectorAll('.weapon').forEach(button=>{
+        const selected=button.dataset.weapon===h.weapon;
+        button.classList.toggle('selected',selected);button.setAttribute('aria-pressed',String(selected));
+        drawWeaponIcon(button.querySelector('canvas'),button.dataset.weapon,selected);
+      });
     }
+
+    function drawWeaponIcon(canvas,name,selected=false){
+      const ratio=Math.min(window.devicePixelRatio||1,2),w=48,h=28;
+      canvas.width=w*ratio;canvas.height=h*ratio;
+      const ctx=canvas.getContext('2d');ctx.scale(ratio,ratio);
+      ctx.fillStyle=selected?'#071019':'#e8f0f6';ctx.strokeStyle=ctx.fillStyle;
+      ctx.lineWidth=2;ctx.lineCap='round';ctx.lineJoin='round';
+      const polygon=points=>{
+        ctx.beginPath();ctx.moveTo(points[0][0],points[0][1]);
+        for(let i=1;i<points.length;i++)ctx.lineTo(points[i][0],points[i][1]);
+        ctx.closePath();ctx.fill();
+      };
+      if(name==='pistol'){
+        ctx.fillRect(11,7,25,6);ctx.fillRect(34,8,7,3);
+        polygon([[22,13],[31,13],[28,24],[22,23],[20,17]]);
+      }else if(name==='ak'){
+        polygon([[3,14],[11,8],[16,10],[15,16],[7,18]]);
+        ctx.fillRect(14,9,19,7);ctx.fillRect(32,10,12,3);
+        polygon([[22,16],[29,16],[28,24],[23,23],[20,18]]);
+        ctx.fillRect(16,16,4,6);
+      }else if(name==='smg'){
+        ctx.strokeRect(5,10,8,6);ctx.fillRect(12,8,22,9);ctx.fillRect(33,10,10,3);
+        polygon([[19,17],[25,17],[24,24],[20,24]]);ctx.fillRect(28,17,4,5);
+      }else if(name==='shotgun'){
+        polygon([[3,15],[10,9],[17,11],[16,16],[8,19]]);
+        ctx.fillRect(15,9,27,3);ctx.fillRect(15,14,27,2);ctx.fillRect(25,12,9,6);
+      }else if(name==='sniper'){
+        polygon([[2,16],[10,10],[17,11],[17,16],[8,19]]);
+        ctx.fillRect(15,10,29,3);ctx.fillRect(18,15,10,3);
+        ctx.fillRect(20,6,13,3);ctx.beginPath();ctx.arc(20,7.5,2.4,0,Math.PI*2);ctx.fill();
+        polygon([[17,17],[22,17],[20,23],[17,23]]);
+      }
+      ctx.fillStyle='#25c9ff';ctx.beginPath();ctx.arc(45,11,1.5,0,Math.PI*2);ctx.fill();
+    }
+
+    function buildWeaponSelector(){
+      for(const name of ['pistol','ak','smg','shotgun','sniper']){
+        const button=document.createElement('button'),icon=document.createElement('canvas');
+        button.type='button';button.className='weapon';button.dataset.weapon=name;
+        button.setAttribute('aria-label',WEAPONS[name].label);button.setAttribute('aria-pressed',String(name==='ak'));
+        button.append(icon);weaponStrip.append(button);drawWeaponIcon(icon,name,name==='ak');
+      }
+    }
+
+    buildWeaponSelector();
 
     function createReticle(){
       reticle=new THREE.Group();
@@ -322,44 +371,36 @@
 
     function updatePlacement(dt,now){
       if(placed){reticle.visible=false;return;}
-      if(!placement.trackingReady(now)) placement.invalidate('tracking');
-      else if(now>=nextGroundSample){
-        nextGroundSample=now+100;
-        camera.updateMatrixWorld(true);
-        raycaster.setFromCamera(centerNdc,camera);
-        const hit=raycaster.ray.intersectPlane(groundPlane,hitPoint);
-        if(!hit || hit.distanceTo(camera.position)>6 || raycaster.ray.direction.y>-.15){
-          placement.invalidate('aim');
-        }else{
-          const observations=[...latestWorldPoints];
-          try{observations.push(...XR8.XrController.hitTest(.5,.5,['FEATURE_POINT']));}catch{}
-          placement.sample(hit,observations,now);
-        }
-      }
-
-      if(!placement.candidate){
+      if(!fastTrackingReady(now)){
         reticle.visible=false;previewInitialized=false;
-        statusText.textContent=placement.reason==='aim'?'وجّه المؤشر للأرض أمامك':'حرّك الجوال ببطء حتى يستقر التتبع';
+        statusText.textContent='جاري تثبيت الساحة…';
         return;
       }
 
-      const p=placement.candidate;
-      if(!previewInitialized){stablePoint.set(p.x,p.y,p.z);previewInitialized=true;}
-      else stablePoint.lerp(hitPoint.set(p.x,p.y,p.z),1-Math.exp(-12*dt));
-      reticle.position.copy(stablePoint);reticle.position.y+=.008;reticle.visible=true;
-      statusText.textContent=placement.ready?'تم العثور على الأرضية — بدء المواجهة…':'ثبّت الجوال لحظة واحدة';
-
-      if(placement.ready){
-        const anchor=placement.lock(now);
-        if(anchor) createCombat(new THREE.Vector3(anchor.x,anchor.y,anchor.z));
+      camera.updateMatrixWorld(true);raycaster.setFromCamera(centerNdc,camera);
+      const floorHit=raycaster.ray.direction.y<-.04 && raycaster.ray.intersectPlane(groundPlane,hitPoint) && hitPoint.distanceTo(camera.position)<=6;
+      if(!floorHit){
+        camera.getWorldDirection(estimatedForward);estimatedForward.y=0;
+        if(estimatedForward.lengthSq()<.01)estimatedForward.set(0,0,-1);else estimatedForward.normalize();
+        camera.getWorldPosition(hitPoint);hitPoint.addScaledVector(estimatedForward,2.8);hitPoint.y=0;
       }
+      if(!previewInitialized){stablePoint.copy(hitPoint);previewInitialized=true;}
+      else stablePoint.lerp(hitPoint,1-Math.exp(-18*dt));
+      reticle.position.copy(stablePoint);reticle.position.y+=.008;reticle.visible=true;
+      statusText.textContent='بدء المواجهة…';
+      if(now-placement.normalSince>=FAST_TRACKING_DELAY+100)createCombat(stablePoint.clone());
+    }
+
+    function fastTrackingReady(now){
+      return placement.status==='NORMAL' && placement.normalSince!==null &&
+        now-placement.normalSince>=FAST_TRACKING_DELAY && now-placement.lastTracking<=250;
     }
 
     function tick(now){
       if(!sceneReady||!camera) return;
       const dt=Math.min(.05,Math.max(0,(now-lastTick)/1000||.016));lastTick=now;
       updatePlacement(dt,now);
-      const tracking=placement.trackingReady(now);
+      const tracking=fastTrackingReady(now);
       if(combat){combat.setTracking(tracking);combat.update(dt);}
       if(placed && !tracking) statusText.textContent='التتبع ضعيف — حرّك الجوال ببطء';
       else if(placed) statusText.textContent='المواجهة تعمل';
@@ -376,7 +417,7 @@
       placement.reset();
       sceneReady=true;lastTick=performance.now();
       intro.style.display='none';gameUi.style.display='block';
-      statusText.textContent='حرّك الجوال لمسح الأرضية';
+      statusText.textContent='جاري تثبيت الساحة…';
     }
 
     function worldModule(){
@@ -390,7 +431,6 @@
           if(!sceneReady) return;
           const now=performance.now(),reality=processCpuResult?.reality;
           placement.observe({now,status:reality?.trackingStatus,position:reality?.position,rotation:reality?.rotation});
-          latestWorldPoints=reality?.worldPoints||[];
           tick(now);
         },
         onCameraStatusChange:({status})=>{
@@ -414,8 +454,8 @@
       if(combat){combat.dispose();combat=null;}
       damageFlash.replaceChildren();
       placed=false;groundRing.visible=false;reticle.visible=false;previewInitialized=false;
-      latestWorldPoints=[];nextGroundSample=0;placement.reset();
-      guide.classList.remove('hidden');statusText.textContent='أعد مسح الأرضية أمامك';
+      placement.reset();
+      guide.classList.remove('hidden');statusText.textContent='جاري تثبيت الساحة…';
       gameover.style.display='none';
       try{XR8.XrController.recenter();}catch{}
       notify('تمت المعايرة');
