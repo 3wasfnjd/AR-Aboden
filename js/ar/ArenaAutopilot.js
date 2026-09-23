@@ -5,6 +5,10 @@
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const wrap=a=>((a+Math.PI)%(2*Math.PI)+2*Math.PI)%(2*Math.PI)-Math.PI;
 
+// Spectator show speed is expressed relative to arena scale so every placement
+// size keeps the same apparent pace. Previous value was 0.65 and looked too slow.
+const SHOW_SPEED=1.25;
+
 export class ArenaAutopilot {
   constructor({center,roadY,scale=1,roadRadius=1.30,carRadius=.25,random=Math.random}) {
     if(!Number.isFinite(scale)||scale<=0 || roadRadius<=carRadius+.1) throw new Error('Invalid show dimensions');
@@ -58,12 +62,12 @@ export class ArenaAutopilot {
     } else {
       this.steer=clamp(-error*2,-1,1);throttle=.85;grip=4;
     }
-    const turnGrip=this.handbrake?1:clamp(this.speed/(.65*this.scale),.2,1);
-    const turn=-this.steer*turnGrip*(this.handbrake?3.8:2.8);
-    this.angularSpeed+=(turn-this.angularSpeed)*(1-Math.exp(-4*dt));
+    const turnGrip=this.handbrake?1:clamp(this.speed/(SHOW_SPEED*this.scale),.2,1);
+    const turn=-this.steer*turnGrip*(this.handbrake?4.6:3.5);
+    this.angularSpeed+=(turn-this.angularSpeed)*(1-Math.exp(-5*dt));
     this.heading=wrap(this.heading+this.angularSpeed*dt);
-    const targetSpeed=.65*this.scale*throttle*(this.handbrake?.8:1);
-    this.speed+=(targetSpeed-this.speed)*(1-Math.exp(-2*dt));
+    const targetSpeed=SHOW_SPEED*this.scale*throttle*(this.handbrake?.86:1);
+    this.speed+=(targetSpeed-this.speed)*(1-Math.exp(-3.4*dt));
     this.vx+=(Math.sin(this.heading)*this.speed-this.vx)*(1-Math.exp(-grip*dt));
     this.vz+=(Math.cos(this.heading)*this.speed-this.vz)*(1-Math.exp(-grip*dt));
 
