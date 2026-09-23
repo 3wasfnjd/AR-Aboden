@@ -94,10 +94,24 @@ export class ArenaAutopilot {
 
     this.timer-=dt;
     const radius=Math.hypot(this.x,this.z);
-    const predicted=Math.hypot(this.x+this.vx*.65,this.z+this.vz*.65);
-    if(radius>this.limit*.78 || predicted>this.limit*.9) this.state='AVOIDANCE';
+
+    // Predict only OUTWARD motion. Tangential drift speed should not be
+    // mistaken for a collision course with the barrier.
+    let outwardSpeed=0;
+    if(radius>.001){
+      const nx=this.x/radius;
+      const nz=this.z/radius;
+      outwardSpeed=Math.max(0,this.vx*nx+this.vz*nz);
+    }
+    const predicted=radius+outwardSpeed*.32;
+
+    if(radius>this.limit*.88 || predicted>this.limit*.94) this.state='AVOIDANCE';
     if(this.state==='AVOIDANCE') {
-      if(radius<this.limit*.52 && predicted<this.limit*.65){this.state='DRIFTING';this.timer=4;this.pickTarget();}
+      if(radius<this.limit*.66 && outwardSpeed<SHOW_SPEED*this.scale*.12){
+        this.state='DRIFTING';
+        this.timer=4;
+        this.pickTarget();
+      }
     } else if(this.timer<=0) this.nextState();
 
     if(this.state!=='DONUT' && this.state!=='AVOIDANCE' && Math.hypot(this.x-this.target.x,this.z-this.target.z)<this.limit*.18) this.pickTarget();
