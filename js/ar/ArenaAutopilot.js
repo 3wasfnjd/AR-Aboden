@@ -227,9 +227,9 @@ export class ArenaAutopilot {
 
     if(this.state==='DONUT'){
       // Yellow spends longer here; red reaches it occasionally.
-      this.steer=(this.profile===1?.92:.82)*this.direction;
+      this.steer=(this.profile===1 ? .92 : .82)*this.direction;
       this.handbrake=Math.sin(this.time*(this.profile===1?7.0:8.0))>-.20;
-      this.throttle=this.profile===1?.82:.92;
+      this.throttle=this.profile===1 ? .82 : .92;
     }else{
       const target=this.state==='AVOIDANCE'
         ?{x:0,z:0}
@@ -245,15 +245,15 @@ export class ArenaAutopilot {
       }else if(this.state==='DRIFTING'){
         const gain=this.profile===1?3.9:this.profile===2?2.7:3.4;
         this.steer=clamp(-error*gain,-1,1);
-        this.handbrake=Math.abs(error)>(this.profile===2?.58:.34);
-        this.throttle=this.profile===1?.88:this.profile===2?.80:1;
+        this.handbrake=Math.abs(error)>(this.profile===2 ? .58 : .34);
+        this.throttle=this.profile===1 ? .88 : (this.profile===2 ? .80 : 1);
       }else if(this.state==='AVOIDANCE'){
         this.steer=clamp(-error*3.0,-1,1);
         this.handbrake=Math.abs(error)>.72;
         this.throttle=Math.abs(error)>1.15?.18:.64;
       }else{
         this.steer=clamp(-error*(this.profile===2?1.55:2.0),-1,1);
-        this.throttle=this.profile===2?.76:.86;
+        this.throttle=this.profile===2 ? .76 : .86;
       }
     }
 
