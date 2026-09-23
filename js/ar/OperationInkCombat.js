@@ -405,11 +405,11 @@ export class OperationInkCombat {
     return true;
   }
 
-  reload(){
+  reload({automatic=false}={}){
     const rule=WEAPONS[this.weapon], mag=this.magazines[this.weapon], reserve=this.reserve[this.weapon];
     if(this.reloadTimer>0 || mag>=rule.capacity || reserve<=0) return false;
     this.reloadTimer=rule.reload;
-    this.triggerHeld=false;
+    if(!automatic)this.triggerHeld=false;
     this.onEvent({type:'reload-start',weapon:this.weapon,duration:rule.reload});
     this.pushHud();
     return true;
@@ -450,7 +450,10 @@ export class OperationInkCombat {
   fireOnce(){
     if(!this.running || !this.tracking || this.playerHealth<=0 || this.reloadTimer>0 || this.fireCooldown>0) return false;
     const rule=WEAPONS[this.weapon];
-    if(this.magazines[this.weapon]<=0){ this.reload(); return false; }
+    if(this.magazines[this.weapon]<=0){
+      if(!this.reload({automatic:true}))this.triggerHeld=false;
+      return false;
+    }
     this.magazines[this.weapon]--;
     this.fireCooldown=rule.interval;
     this.alert=1;
@@ -468,7 +471,7 @@ export class OperationInkCombat {
     }else{
       this.castPlayerShot(rule,this.weapon==='smg'?.006:this.weapon==='ak'?.0035:0);
     }
-    if(this.magazines[this.weapon]===0) this.onEvent({type:'empty-soon',weapon:this.weapon});
+    if(this.magazines[this.weapon]===0 && !this.reload({automatic:true}))this.triggerHeld=false;
     this.pushHud();
     return true;
   }

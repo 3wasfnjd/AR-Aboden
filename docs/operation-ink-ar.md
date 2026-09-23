@@ -36,6 +36,12 @@ Stains last six seconds on soldiers or the captured floor. Soldier stains are al
 
 Short air-pop and splat sounds are synthesized with Web Audio after a user gesture. This mode does not download or play firearm/flesh recordings. Noise is reused from one small audio buffer and each sound's nodes disconnect after playback.
 
+## Mobile UI
+
+The combat view keeps only Home, the placement/status text, crosshair and a compact weapon strip. Ammo, score/wave/enemy count, manual reload and recenter panels are intentionally omitted. Reload starts automatically as soon as the active magazine becomes empty; automatic weapons resume after reload while the same press remains held.
+
+The page locks Safari to scale 1, disables selection/callouts and text resizing, and cancels Safari gesture, multi-touch pinch, double-tap and selection events. Interactive controls retain `touch-action: manipulation` while the game surface continues using pointer events for firing.
+
 ## Upstream MIT notice
 
 MIT License

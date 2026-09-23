@@ -2,7 +2,7 @@
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+  <meta name="viewport" content="width=device-width,initial-scale=1,minimum-scale=1,maximum-scale=1,viewport-fit=cover,user-scalable=no">
   <meta name="theme-color" content="#05070b">
   <title>عملية الإنقاذ AR — عبودين</title>
 
@@ -19,9 +19,15 @@
   </script>
 
   <style>
-    *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+    *{
+      box-sizing:border-box;-webkit-tap-highlight-color:transparent;
+      -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-user-drag:none
+    }
     :root{--app-w:100vw;--app-h:100dvh}
-    html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#02050a}
+    html,body{
+      margin:0;width:100%;height:100%;overflow:hidden;background:#02050a;
+      -webkit-text-size-adjust:100%;text-size-adjust:100%;touch-action:none
+    }
     body{
       position:fixed;left:0;top:0;width:var(--app-w);height:var(--app-h);
       color:#fff;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Tahoma,Arial,sans-serif;
@@ -33,24 +39,13 @@
       display:block!important;z-index:0!important
     }
     .ui{position:fixed;inset:0;width:var(--app-w);height:var(--app-h);z-index:20;pointer-events:none}
+    button,a{touch-action:manipulation}
     .home-btn{
-      position:fixed;left:14px;top:max(14px,env(safe-area-inset-top));z-index:70;
+      position:fixed;left:10px;top:max(10px,env(safe-area-inset-top));z-index:70;
       pointer-events:auto;text-decoration:none;color:#fff;background:rgba(4,8,14,.78);
-      border:1px solid rgba(255,255,255,.16);border-radius:999px;padding:9px 13px;
-      font-size:12px;font-weight:900;backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)
+      border:1px solid rgba(255,255,255,.13);border-radius:999px;padding:7px 10px;
+      font-size:11px;font-weight:900;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)
     }
-    .top{
-      position:absolute;top:max(14px,env(safe-area-inset-top));left:112px;right:14px;
-      display:flex;align-items:center;justify-content:space-between;gap:8px
-    }
-    .pill{
-      background:rgba(4,8,14,.72);border:1px solid rgba(255,255,255,.14);
-      border-radius:999px;padding:8px 11px;backdrop-filter:blur(13px);-webkit-backdrop-filter:blur(13px);
-      box-shadow:0 8px 26px rgba(0,0,0,.26);font-size:12px;font-weight:900
-    }
-    .health{display:flex;align-items:center;gap:7px;min-width:95px}
-    .healthbar{width:46px;height:5px;background:rgba(255,255,255,.16);border-radius:10px;overflow:hidden}
-    .healthbar span{display:block;width:100%;height:100%;background:#5ce28b;transition:.15s}
     .crosshair{
       position:absolute;left:50%;top:50%;width:40px;height:40px;transform:translate(-50%,-50%);
       filter:drop-shadow(0 2px 8px rgba(0,0,0,.85))
@@ -67,45 +62,26 @@
     .guide b{display:block;font-size:20px;margin-bottom:5px}
     .guide.hidden{display:none}
     .status{
-      position:absolute;left:50%;top:20%;transform:translateX(-50%);
-      background:rgba(4,8,14,.70);border:1px solid rgba(255,255,255,.13);
-      border-radius:999px;padding:9px 14px;font-size:12px;font-weight:800;
-      backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);white-space:nowrap
+      position:absolute;left:50%;top:max(11px,env(safe-area-inset-top));transform:translateX(-50%);
+      background:rgba(4,8,14,.58);border:1px solid rgba(255,255,255,.10);
+      border-radius:999px;padding:7px 11px;font-size:11px;font-weight:800;
+      backdrop-filter:blur(9px);-webkit-backdrop-filter:blur(9px);white-space:nowrap
     }
     .combat-hud{
-      position:absolute;left:14px;right:14px;bottom:max(16px,env(safe-area-inset-bottom));
-      height:118px;pointer-events:none
+      position:absolute;left:8px;right:8px;bottom:max(8px,env(safe-area-inset-bottom));
+      height:44px;pointer-events:none
     }
     .weapon-strip{
       position:absolute;left:50%;bottom:0;transform:translateX(-50%);
-      display:flex;direction:ltr;gap:5px;padding:5px;border-radius:18px;
-      background:rgba(4,8,14,.74);border:1px solid rgba(255,255,255,.13);
-      backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);pointer-events:auto
+      display:flex;direction:ltr;gap:3px;padding:3px;border-radius:14px;
+      background:rgba(4,8,14,.62);border:1px solid rgba(255,255,255,.10);
+      backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);pointer-events:auto
     }
     .weapon{
-      width:56px;height:52px;border-radius:13px;border:1px solid rgba(255,255,255,.10);
-      background:rgba(255,255,255,.045);color:#d7dde5;font-size:10px;font-weight:900
+      width:50px;height:38px;border-radius:11px;border:1px solid rgba(255,255,255,.08);
+      background:rgba(255,255,255,.035);color:#d7dde5;font-size:9px;font-weight:900
     }
     .weapon.selected{background:#fff;color:#091018;border-color:#fff}
-    .reload{
-      position:absolute;right:0;bottom:22px;height:48px;min-width:76px;border:1px solid rgba(255,255,255,.17);
-      border-radius:16px;background:rgba(4,8,14,.76);color:#fff;font-weight:900;pointer-events:auto
-    }
-    .recenter{
-      position:absolute;left:0;bottom:22px;height:48px;border:1px solid rgba(255,255,255,.17);
-      border-radius:16px;background:rgba(4,8,14,.76);color:#fff;font-weight:900;padding:0 13px;pointer-events:auto
-    }
-    .ammo{
-      position:absolute;right:0;bottom:101px;min-width:91px;text-align:center;
-      background:rgba(4,8,14,.76);border:1px solid rgba(255,255,255,.13);
-      border-radius:14px;padding:8px 10px;font-variant-numeric:tabular-nums;font-weight:950;font-size:14px
-    }
-    .ammo small{display:block;color:#aeb9c7;font-size:9px;margin-top:2px}
-    .scorebox{
-      position:absolute;left:0;bottom:81px;background:rgba(4,8,14,.76);
-      border:1px solid rgba(255,255,255,.13);border-radius:14px;padding:8px 10px;
-      font-size:11px;font-weight:900;line-height:1.5
-    }
     .damage{
       position:fixed;inset:0;z-index:18;pointer-events:none;overflow:hidden
     }
@@ -150,9 +126,8 @@
     .tiny{margin-top:11px!important;color:#9da8b6!important;font-size:11px!important;text-align:center}
     .error{display:none;margin-top:12px;color:#ffc0c0;font-size:12px;line-height:1.7}
     @media(max-width:430px){
-      .weapon{width:49px;height:48px;font-size:9px}
-      .weapon-strip{gap:4px}
-      .reload{right:0;min-width:70px}
+      .weapon{width:45px;height:36px;font-size:8px}
+      .weapon-strip{gap:2px}
     }
   </style>
 </head>
@@ -162,11 +137,6 @@
   <a class="home-btn" href="./index.html">⌂ الرئيسية</a>
 
   <div class="ui" id="gameUi" style="display:none">
-    <div class="top">
-      <div class="pill health"><span>وضع تجربة</span><b id="healthText">∞</b></div>
-      <div class="pill">كرات الألوان</div>
-    </div>
-
     <div class="status" id="statusText">امسح الأرضية ببطء</div>
     <div class="guide" id="guide">
       <b>وجّه الجوال للأرض أمامك</b>
@@ -176,10 +146,6 @@
     <div class="toast" id="toast"></div>
 
     <div class="combat-hud">
-      <div class="ammo"><span id="ammoText">30 / 120</span><small id="weaponName">AK</small></div>
-      <div class="scorebox">الموجة <span id="waveText">0</span><br>النقاط <span id="scoreText">0</span><br>الأعداء <span id="enemyText">0</span></div>
-      <button class="recenter" id="recenterBtn">معايرة</button>
-      <button class="reload" id="reloadBtn">تلقيم</button>
       <div class="weapon-strip" id="weaponStrip">
         <button class="weapon" data-weapon="pistol">Pistol</button>
         <button class="weapon selected" data-weapon="ak">AK</button>
@@ -223,14 +189,6 @@
     const guide=document.getElementById('guide');
     const statusText=document.getElementById('statusText');
     const toast=document.getElementById('toast');
-    const reloadBtn=document.getElementById('reloadBtn');
-    const recenterBtn=document.getElementById('recenterBtn');
-    const ammoText=document.getElementById('ammoText');
-    const weaponName=document.getElementById('weaponName');
-    const healthText=document.getElementById('healthText');
-    const waveText=document.getElementById('waveText');
-    const scoreText=document.getElementById('scoreText');
-    const enemyText=document.getElementById('enemyText');
     const damageFlash=document.getElementById('damageFlash');
     const gameover=document.getElementById('gameover');
     const gameoverText=document.getElementById('gameoverText');
@@ -326,21 +284,10 @@
         notify('تم إسقاط الهدف');
       }else if(e.type==='wave-start'){
         notify('الموجة '+e.wave+' — '+e.count+' جنود');
-      }else if(e.type==='reload-start'){
-        reloadBtn.textContent='جاري التلقيم…';reloadBtn.disabled=true;
-      }else if(e.type==='reload-complete'){
-        reloadBtn.textContent='تلقيم';reloadBtn.disabled=false;
       }
     }
 
     function updateHud(h){
-      ammoText.textContent=h.ammo+' / '+h.reserve;
-      weaponName.textContent=h.label;
-      healthText.textContent='∞';
-      waveText.textContent=h.wave;
-      scoreText.textContent=h.score;
-      enemyText.textContent=h.enemies;
-      if(!h.reloading){reloadBtn.textContent='تلقيم';reloadBtn.disabled=false;}
       document.querySelectorAll('.weapon').forEach(b=>b.classList.toggle('selected',b.dataset.weapon===h.weapon));
     }
 
@@ -499,9 +446,17 @@
     document.addEventListener('pointerup',stopFire,{passive:true});
     document.addEventListener('pointercancel',stopFire,{passive:true});
 
-    reloadBtn.addEventListener('click',()=>combat?.reload());
-    recenterBtn.addEventListener('click',recenter);
     restartBtn.addEventListener('click',()=>{gameover.style.display='none';recenter();});
+
+    // iOS Safari may still select text or magnify on rapid taps even with the
+    // viewport lock. Cancel its non-standard gestures without affecting firing.
+    const preventSafariGesture=e=>e.preventDefault();
+    for(const type of ['gesturestart','gesturechange','gestureend','dblclick','selectstart']){
+      document.addEventListener(type,preventSafariGesture,{passive:false});
+    }
+    document.addEventListener('touchmove',e=>{
+      if(e.touches.length>1)e.preventDefault();
+    },{passive:false});
 
     document.addEventListener('visibilitychange',()=>{
       placement.observe({now:performance.now(),status:'LIMITED'});
