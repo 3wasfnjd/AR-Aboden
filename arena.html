@@ -296,9 +296,10 @@
     let floorPointCount = 0;
     const floorSamples = [];
     const FLOOR_SAMPLE_WINDOW = 18;
-    const FLOOR_MIN_POINTS = 6;
+    const FLOOR_MIN_POINTS = 5;
     const featureHitPoint = new THREE.Vector3();
     let featureHitReady = false;
+    let lastFloorHitTime = -Infinity;
 
     let sceneReady = false;
     let startupFailed = false;
@@ -358,6 +359,7 @@
       floorSamples.length=0;
       featureHitPoint.set(0,0,0);
       featureHitReady=false;
+      lastFloorHitTime=-Infinity;
       groundPlane.constant=0;
       stablePoint.set(0,0,0);
       previewInitialized=false;
@@ -365,53 +367,106 @@
       placeBtn.disabled=true;
     }
 
-    function sampleFloorFromCenterHitTest(){
+    function sampleFloorFromCenterHitTest(now){
       if(!camera||!canvas)return false;
 
-      const camPos=camera.getWorldPosition(new THREE.Vector3());
-      let hits=[];
+      camera.updateMatrixWorld(true);
+      raycaster.setFromCamera(centerNdc,camera);
 
+      // Do not accept a nearly-horizontal centre ray as a floor sample.
+      if(raycaster.ray.direction.y>-.10){
+        featureHitReady=(now-lastFloorHitTime)<650;
+        return floorEstimate!==null
+          && featureHitReady
+          && floorSamples.length>=FLOOR_MIN_POINTS
+          && floorJitter<.05;
+      }
+
+      const camPos=camera.getWorldPosition(new THREE.Vector3());
+      let candidates=[];
+
+      // Preferred source: XR8's local feature-point hit at the screen centre.
       try{
-        // XR8 hitTest expects canvas pixel coordinates. Pointing the centre
-        // cursor at the real floor gives us a local SLAM feature-point hit,
-        // instead of inferring height from unrelated world points elsewhere.
-        hits=XR8.XrController.hitTest(
+        const hits=XR8.XrController.hitTest(
           Math.round(canvas.width*.5),
           Math.round(canvas.height*.5),
           ['FEATURE_POINT']
         )||[];
+
+        candidates=hits
+          .map(hit=>hit?.position||hit)
+          .filter(p=>p && Number.isFinite(p.x)&&Number.isFinite(p.y)&&Number.isFinite(p.z))
+          .map(p=>({
+            p,
+            score:0,
+            distance:Math.hypot(p.x-camPos.x,p.y-camPos.y,p.z-camPos.z)
+          }))
+          .filter(item=>
+            item.distance>=.18 &&
+            item.distance<=6 &&
+            item.p.y<=camPos.y-.30 &&
+            item.p.y>=camPos.y-3.0
+          );
       }catch(error){
         if(diagnostics && !window.arCenterHitTestError){
           window.arCenterHitTestError=String(error);
         }
-        return false;
       }
 
-      const valid=hits
-        .map(hit=>hit?.position||hit)
-        .filter(p=>p && Number.isFinite(p.x)&&Number.isFinite(p.y)&&Number.isFinite(p.z))
-        .map(p=>({
-          p,
-          distance:Math.hypot(p.x-camPos.x,p.y-camPos.y,p.z-camPos.z)
-        }))
-        .filter(item=>
-          item.distance>=.18 &&
-          item.distance<=6 &&
-          item.p.y<=camPos.y-.35 &&
-          item.p.y>=camPos.y-3.0
-        )
-        .sort((a,b)=>a.distance-b.distance);
+      // Fallback: FEATURE_POINT hitTest can be sparse indoors. Find the
+      // world point nearest the centre camera ray, so the sample is still
+      // local to exactly where the player is aiming.
+      if(!candidates.length && Array.isArray(latestWorldPoints)){
+        const origin=raycaster.ray.origin;
+        const dir=raycaster.ray.direction;
+        const stride=Math.max(1,Math.ceil(latestWorldPoints.length/900));
 
-      if(!valid.length){
+        for(let i=0;i<latestWorldPoints.length;i+=stride){
+          const wp=latestWorldPoints[i];
+          const p=wp?.position||wp;
+          if(!p||!Number.isFinite(p.x)||!Number.isFinite(p.y)||!Number.isFinite(p.z))continue;
+          if(Number.isFinite(wp?.confidence)&&wp.confidence<.15)continue;
+          if(p.y>camPos.y-.30||p.y<camPos.y-3.0)continue;
+
+          const rx=p.x-origin.x;
+          const ry=p.y-origin.y;
+          const rz=p.z-origin.z;
+          const along=rx*dir.x+ry*dir.y+rz*dir.z;
+          if(along<.18||along>6)continue;
+
+          const cx=origin.x+dir.x*along;
+          const cy=origin.y+dir.y*along;
+          const cz=origin.z+dir.z*along;
+          const perpendicular=Math.hypot(p.x-cx,p.y-cy,p.z-cz);
+
+          // Broad enough to work on sparse SLAM clouds, but still tightly
+          // tied to the centre cursor rather than unrelated room surfaces.
+          if(perpendicular>.34)continue;
+
+          candidates.push({
+            p,
+            distance:along,
+            score:perpendicular+along*.012
+          });
+        }
+      }
+
+      if(!candidates.length){
         floorPointCount=0;
-        featureHitReady=false;
-        return false;
+        featureHitReady=(now-lastFloorHitTime)<650;
+        return floorEstimate!==null
+          && featureHitReady
+          && floorSamples.length>=FLOOR_MIN_POINTS
+          && floorJitter<.05;
       }
 
-      const chosen=valid[0].p;
+      candidates.sort((a,b)=>a.score-b.score||a.distance-b.distance);
+      const chosen=candidates[0].p;
+
       featureHitPoint.set(chosen.x,chosen.y,chosen.z);
       featureHitReady=true;
-      floorPointCount=valid.length;
+      lastFloorHitTime=now;
+      floorPointCount=candidates.length;
 
       floorSamples.push(chosen.y);
       if(floorSamples.length>FLOOR_SAMPLE_WINDOW)floorSamples.shift();
@@ -420,7 +475,7 @@
       const deviations=floorSamples.map(v=>Math.abs(v-floorEstimate));
       floorJitter=median(deviations)??Infinity;
 
-      return floorSamples.length>=FLOOR_MIN_POINTS && floorJitter<.028;
+      return floorSamples.length>=FLOOR_MIN_POINTS && floorJitter<.05;
     }
 
     function setStatus(text, ready=false){
@@ -766,12 +821,13 @@
       let floorStable=false;
       if(now>=nextGroundSample){
         nextGroundSample=now+100;
-        floorStable=sampleFloorFromCenterHitTest();
+        floorStable=sampleFloorFromCenterHitTest(now);
       }else{
         floorStable=floorEstimate!==null
           && featureHitReady
+          && (now-lastFloorHitTime)<650
           && floorSamples.length>=FLOOR_MIN_POINTS
-          && floorJitter<.028;
+          && floorJitter<.05;
       }
 
       if(floorEstimate===null||!featureHitReady){
