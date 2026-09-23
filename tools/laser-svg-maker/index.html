@@ -1,0 +1,378 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#030607">
+  <title>ABODEN · Laser SVG Maker</title>
+  <style>
+    :root{color-scheme:dark;--bg:#030607;--panel:#0a1010;--panel2:#0d1714;--line:rgba(255,255,255,.10);--text:#f3f7f5;--muted:#8fa49a;--green:#62ff9a;--cyan:#66e8ff;--warn:#ffc66d}
+    *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+    html,body{margin:0;min-height:100%;background:radial-gradient(circle at 50% -10%,rgba(42,255,123,.12),transparent 35%),linear-gradient(#050909,#020404);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Tahoma,Arial,sans-serif}
+    body{min-height:100dvh}
+    button,input,select{font:inherit}
+    .page{width:min(1160px,100%);margin:auto;padding:max(18px,env(safe-area-inset-top)) 16px max(28px,env(safe-area-inset-bottom))}
+    .top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:20px}
+    .brand{font-weight:950;letter-spacing:.03em}.brand b{color:var(--green)}.brand small{display:block;color:var(--muted);font-size:10px;margin-top:4px;letter-spacing:.12em}
+    .hidden-badge{padding:7px 10px;border:1px solid var(--line);border-radius:999px;color:var(--muted);font-size:10px;background:rgba(255,255,255,.03)}
+    .hero{padding:18px 2px 22px}.hero h1{font-size:clamp(28px,7vw,52px);line-height:1.06;margin:0}.hero p{color:var(--muted);line-height:1.75;margin:12px 0 0;max-width:760px;font-size:13px}
+    .status{margin-top:13px;display:inline-flex;align-items:center;gap:8px;padding:8px 11px;border:1px solid var(--line);border-radius:999px;background:rgba(255,255,255,.025);font-size:11px;color:#dce7e2}
+    .dot{width:8px;height:8px;border-radius:50%;background:var(--warn);box-shadow:0 0 14px rgba(255,198,109,.6)}.status.ready .dot{background:var(--green);box-shadow:0 0 14px rgba(98,255,154,.6)}
+    .layout{display:grid;grid-template-columns:360px 1fr;gap:14px}
+    .panel{border:1px solid var(--line);background:linear-gradient(155deg,rgba(255,255,255,.035),rgba(255,255,255,.012)),var(--panel);border-radius:24px;box-shadow:0 22px 70px rgba(0,0,0,.28)}
+    .controls{padding:17px}.controls h2,.preview-head h2{font-size:14px;margin:0}
+    .mode-tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin:15px 0}
+    .tab{min-height:42px;border:1px solid var(--line);border-radius:13px;background:#0a1110;color:#b9c8c1;font-size:12px;font-weight:850}
+    .tab.active{background:linear-gradient(135deg,var(--green),#d7ffe5);color:#041008;border-color:transparent}
+    .field{margin-top:13px}.field label{display:flex;justify-content:space-between;gap:12px;color:#cbd8d2;font-size:11px;font-weight:800;margin:0 2px 7px}.value{color:var(--green);font-variant-numeric:tabular-nums}
+    input[type="text"],input[type="number"],select{width:100%;height:44px;border:1px solid var(--line);border-radius:13px;background:#050909;color:#fff;padding:0 12px;outline:none}
+    input[type="range"]{width:100%;accent-color:#65ff9b}
+    .presets{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}.chip{border:1px solid var(--line);background:#07100d;color:#c8d7d0;border-radius:999px;padding:7px 9px;font-size:10px}
+    .note{margin-top:13px;padding:10px 11px;border-radius:13px;background:rgba(255,198,109,.07);border:1px solid rgba(255,198,109,.16);color:#e1c99d;font-size:10px;line-height:1.65}
+    .actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:16px}.btn{height:47px;border-radius:14px;border:1px solid var(--line);font-weight:900}.btn.primary{background:linear-gradient(135deg,var(--green),#d9ffe6);color:#041008;border:0}.btn.secondary{background:#09100e;color:#fff}.btn:disabled{opacity:.45}
+    .preview{min-height:600px;display:flex;flex-direction:column;overflow:hidden}.preview-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:15px 17px;border-bottom:1px solid var(--line)}
+    .metrics{display:flex;gap:7px;flex-wrap:wrap;justify-content:flex-end}.metric{padding:6px 8px;border-radius:999px;border:1px solid var(--line);color:var(--muted);font-size:9px}
+    .stage-wrap{flex:1;min-height:460px;padding:14px}.stage{position:relative;width:100%;height:100%;min-height:430px;border:1px solid rgba(98,255,154,.16);border-radius:20px;overflow:hidden;background:radial-gradient(circle at center,rgba(29,255,111,.05),transparent 38%),#010202}
+    .stage:before,.stage:after{content:"";position:absolute;pointer-events:none;background:rgba(98,255,154,.08)}.stage:before{left:50%;top:0;bottom:0;width:1px}.stage:after{top:50%;left:0;right:0;height:1px}
+    #svgHost{position:absolute;inset:18px;display:grid;place-items:center}#svgHost svg{width:100%;height:100%;overflow:visible;filter:drop-shadow(0 0 5px rgba(98,255,154,.62))}#svgHost path{vector-effect:non-scaling-stroke}
+    .empty{color:#53635b;text-align:center;font-size:12px;line-height:1.8}
+    .footer{margin-top:12px;color:#617069;font-size:9px;line-height:1.7;text-align:center}
+    .only-text,.only-shape{display:none}.show-text .only-text,.show-shape .only-shape{display:block}
+    @media(max-width:820px){.layout{grid-template-columns:1fr}.preview{min-height:520px}.stage-wrap{min-height:400px}.stage{min-height:390px}}
+  </style>
+</head>
+<body>
+<main class="page">
+  <div class="top">
+    <div class="brand"><b>ABODEN</b> LASER SVG MAKER<small>INTERNAL DESIGN TOOL</small></div>
+    <div class="hidden-badge">غير مرتبط بصفحة التجارب</div>
+  </div>
+
+  <section class="hero">
+    <h1>مولّد مسارات SVG لعرض الليزر</h1>
+    <p>أداة مؤقتة داخل المستودع تعتمد على SandSkrit لتوليد مسارات متصلة، ثم تصدّر SVG نظيفًا لاستخدامه لاحقًا في خط التحويل إلى ILDA. لا تغيّر تجربة الليزر الحالية ولا تظهر في الصفحة الرئيسية.</p>
+    <div class="status" id="engineStatus"><span class="dot"></span><span id="engineText">جاري تحميل محرك SandSkrit…</span></div>
+  </section>
+
+  <section class="layout">
+    <div class="panel controls show-text" id="controls">
+      <h2>إعداد المسار</h2>
+
+      <div class="mode-tabs">
+        <button class="tab active" data-mode="text">نص</button>
+        <button class="tab" data-mode="spiral">حلزون</button>
+        <button class="tab" data-mode="circle">دائرة</button>
+      </div>
+
+      <div class="only-text">
+        <div class="field">
+          <label><span>النص</span><span class="value" id="charCount">6</span></label>
+          <input id="textInput" type="text" value="ABODEN" maxlength="30" autocomplete="off" spellcheck="false" dir="ltr">
+          <div class="presets">
+            <button class="chip" data-text="ABODEN">ABODEN</button>
+            <button class="chip" data-text="ABODEN GAMES">ABODEN GAMES</button>
+            <button class="chip" data-text="96">96</button>
+            <button class="chip" data-text="SAUDI 96">SAUDI 96</button>
+          </div>
+        </div>
+
+        <div class="field">
+          <label><span>حجم الحروف</span><span class="value" id="scaleVal">15</span></label>
+          <input id="scaleInput" type="range" min="4" max="35" step="1" value="15">
+        </div>
+
+        <div class="field">
+          <label><span>المسافة بين الحروف</span><span class="value" id="spacingVal">0.10</span></label>
+          <input id="spacingInput" type="range" min="0" max="0.5" step="0.02" value="0.10">
+        </div>
+
+        <div class="field">
+          <label><span>رفع/خفض مسار الحرف</span><span class="value" id="offsetVal">0.90</span></label>
+          <input id="offsetInput" type="range" min="0" max="2" step="0.05" value="0.90">
+        </div>
+      </div>
+
+      <div class="only-shape">
+        <div class="field">
+          <label><span>نصف القطر</span><span class="value" id="radiusVal">100</span></label>
+          <input id="radiusInput" type="range" min="20" max="180" step="5" value="100">
+        </div>
+        <div class="field" id="turnsField">
+          <label><span>عدد اللفات</span><span class="value" id="turnsVal">5</span></label>
+          <input id="turnsInput" type="range" min="1" max="30" step="1" value="5">
+        </div>
+      </div>
+
+      <div class="field">
+        <label><span>لون المعاينة/الـ SVG</span></label>
+        <select id="colorInput">
+          <option value="#00ff66">أخضر ليزر</option>
+          <option value="#ffffff">أبيض</option>
+          <option value="#00d9ff">سماوي</option>
+          <option value="#ff334d">أحمر</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label><span>تبسيط النقاط</span><span class="value" id="simplifyVal">0.15</span></label>
+        <input id="simplifyInput" type="range" min="0" max="1.5" step="0.05" value="0.15">
+      </div>
+
+      <div class="note">مهم: SandSkrit يدعم حاليًا الحروف اللاتينية والأرقام والرموز المعرفة في ملفه. العربية سنضيف لها مسارات مخصصة لاحقًا بدل تحويلها إلى خط مملوء.</div>
+
+      <div class="actions">
+        <button class="btn primary" id="generateBtn" disabled>توليد المسار</button>
+        <button class="btn secondary" id="downloadBtn" disabled>تصدير SVG</button>
+      </div>
+    </div>
+
+    <div class="panel preview">
+      <div class="preview-head">
+        <h2>المعاينة</h2>
+        <div class="metrics">
+          <span class="metric" id="pointMetric">0 نقطة</span>
+          <span class="metric" id="sizeMetric">—</span>
+          <span class="metric">Continuous Path</span>
+        </div>
+      </div>
+      <div class="stage-wrap">
+        <div class="stage">
+          <div id="svgHost"><div class="empty">بعد تجهيز المحرك اضغط «توليد المسار».<br>لن يتم تعديل ملفات ILD الحالية.</div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="footer">SandSkrit © 2026 UnintelligibleMaker · MIT License · upstream pinned to c770ac5a51c1b196f58f4e82d9c2859be9359f2a</div>
+</main>
+
+<script type="module">
+  import {loadPyodide} from "https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.mjs";
+
+  const UPSTREAM_COMMIT = "c770ac5a51c1b196f58f4e82d9c2859be9359f2a";
+  const UPSTREAM_BASE = `https://cdn.jsdelivr.net/gh/UnintelligibleMaker/sandskrit@${UPSTREAM_COMMIT}/`;
+
+  const $ = id => document.getElementById(id);
+  const status = $("engineStatus");
+  const statusText = $("engineText");
+  const controls = $("controls");
+  const generateBtn = $("generateBtn");
+  const downloadBtn = $("downloadBtn");
+  const host = $("svgHost");
+
+  let pyodide = null;
+  let currentMode = "text";
+  let currentSvg = "";
+  let currentName = "laser-path.svg";
+
+  const setStatus = (message, ready=false) => {
+    statusText.textContent = message;
+    status.classList.toggle("ready", ready);
+  };
+
+  async function fetchText(url){
+    const res = await fetch(url, {cache:"force-cache"});
+    if(!res.ok) throw new Error(`HTTP ${res.status}: ${url}`);
+    return await res.text();
+  }
+
+  async function boot(){
+    try{
+      setStatus("جاري تحميل Python داخل المتصفح…");
+      pyodide = await loadPyodide();
+      setStatus("جاري تحميل SandSkrit المثبّت على نسخة محددة…");
+
+      const [core, chars] = await Promise.all([
+        fetchText(UPSTREAM_BASE + "sandskrit.py"),
+        fetchText(UPSTREAM_BASE + "characters_data.py")
+      ]);
+
+      pyodide.FS.writeFile("/home/pyodide/sandskrit.py", core);
+      pyodide.FS.writeFile("/home/pyodide/characters_data.py", chars);
+      await pyodide.runPythonAsync(`
+import os, sys
+os.chdir("/home/pyodide")
+if "/home/pyodide" not in sys.path:
+    sys.path.insert(0, "/home/pyodide")
+from sandskrit import SandSkrit
+`);
+
+      generateBtn.disabled = false;
+      setStatus("المحرك جاهز — SandSkrit يعمل محليًا داخل الصفحة", true);
+      await generate();
+    }catch(err){
+      console.error(err);
+      setStatus("تعذر تحميل SandSkrit: " + (err?.message || err));
+    }
+  }
+
+  function rdp(points, epsilon){
+    if(!epsilon || points.length < 3) return points.slice();
+
+    function perpendicular(p, a, b){
+      const dx=b[0]-a[0], dy=b[1]-a[1];
+      if(dx===0 && dy===0) return Math.hypot(p[0]-a[0],p[1]-a[1]);
+      const t=((p[0]-a[0])*dx+(p[1]-a[1])*dy)/(dx*dx+dy*dy);
+      const x=a[0]+t*dx, y=a[1]+t*dy;
+      return Math.hypot(p[0]-x,p[1]-y);
+    }
+
+    function simplify(arr){
+      if(arr.length<3) return arr.slice();
+      let max=0, idx=0;
+      for(let i=1;i<arr.length-1;i++){
+        const d=perpendicular(arr[i],arr[0],arr[arr.length-1]);
+        if(d>max){max=d;idx=i}
+      }
+      if(max>epsilon){
+        const left=simplify(arr.slice(0,idx+1));
+        const right=simplify(arr.slice(idx));
+        return left.slice(0,-1).concat(right);
+      }
+      return [arr[0],arr[arr.length-1]];
+    }
+    return simplify(points);
+  }
+
+  function buildSvg(points, color){
+    if(!points.length) throw new Error("لا توجد نقاط في المسار");
+    const xs=points.map(p=>p[0]), ys=points.map(p=>p[1]);
+    const minX=Math.min(...xs), maxX=Math.max(...xs), minY=Math.min(...ys), maxY=Math.max(...ys);
+    const width=Math.max(1,maxX-minX), height=Math.max(1,maxY-minY);
+    const pad=Math.max(width,height)*0.06 + 2;
+    const viewX=minX-pad, viewY=minY-pad, viewW=width+pad*2, viewH=height+pad*2;
+    const d=points.map((p,i)=>`${i?"L":"M"} ${p[0].toFixed(3)} ${p[1].toFixed(3)}`).join(" ");
+    return {
+      svg:`<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewX.toFixed(3)} ${viewY.toFixed(3)} ${viewW.toFixed(3)} ${viewH.toFixed(3)}"><path d="${d}" fill="none" stroke="${color}" stroke-width="${Math.max(viewW,viewH)*0.004}" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+      width, height
+    };
+  }
+
+  async function generate(){
+    if(!pyodide) return;
+    generateBtn.disabled = true;
+    downloadBtn.disabled = true;
+    generateBtn.textContent = "جاري التوليد…";
+
+    try{
+      const cfg = {
+        mode: currentMode,
+        text: $("textInput").value || "ABODEN",
+        scale: Number($("scaleInput").value),
+        spacing: Number($("spacingInput").value),
+        offset: Number($("offsetInput").value),
+        radius: Number($("radiusInput").value),
+        turns: Number($("turnsInput").value)
+      };
+
+      pyodide.globals.set("cfg_json", JSON.stringify(cfg));
+      const raw = await pyodide.runPythonAsync(`
+import json
+from sandskrit import SandSkrit
+cfg = json.loads(cfg_json)
+
+mode = cfg["mode"]
+if mode == "text":
+    sand = SandSkrit(0, 0)
+    sand.add_string(
+        cfg["text"],
+        scale=float(cfg["scale"]),
+        offset_up=float(cfg["offset"]),
+        character_spacing=float(cfg["spacing"])
+    )
+elif mode == "spiral":
+    sand = SandSkrit(0, 0)
+    sand.add_spiral_out(
+        radius=float(cfg["radius"]),
+        turns=float(cfg["turns"]),
+        ending_angle=0
+    )
+elif mode == "circle":
+    sand = SandSkrit(float(cfg["radius"]), 0)
+    sand.add_outer_loop(turns=1, ending_angle=0)
+else:
+    raise ValueError("Unknown mode")
+
+json.dumps({"points": sand.points})
+`);
+
+      const result = JSON.parse(raw);
+      const original = result.points.map(p=>[Number(p[0]),Number(p[1])]);
+      const simplified = rdp(original, Number($("simplifyInput").value));
+      const built = buildSvg(simplified, $("colorInput").value);
+
+      currentSvg = built.svg;
+      currentName = currentMode === "text"
+        ? (cfg.text.trim().replace(/[^a-z0-9_-]+/gi,"-") || "text") + ".svg"
+        : currentMode + ".svg";
+
+      host.innerHTML = currentSvg;
+      $("pointMetric").textContent = `${simplified.length} نقطة · الأصل ${original.length}`;
+      $("sizeMetric").textContent = `${built.width.toFixed(1)} × ${built.height.toFixed(1)}`;
+      downloadBtn.disabled = false;
+      setStatus("تم توليد المسار بنجاح", true);
+    }catch(err){
+      console.error(err);
+      host.innerHTML = `<div class="empty" style="color:#ff9fa8">فشل توليد المسار.<br>${String(err?.message || err).replaceAll("<","&lt;")}</div>`;
+      setStatus("خطأ في التوليد — راجع الحروف أو الإعدادات");
+    }finally{
+      generateBtn.disabled = false;
+      generateBtn.textContent = "توليد المسار";
+    }
+  }
+
+  function downloadSvg(){
+    if(!currentSvg) return;
+    const blob = new Blob([currentSvg], {type:"image/svg+xml;charset=utf-8"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = currentName;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),1000);
+  }
+
+  document.querySelectorAll(".tab").forEach(btn=>{
+    btn.addEventListener("click",()=>{
+      document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));
+      btn.classList.add("active");
+      currentMode=btn.dataset.mode;
+      controls.classList.toggle("show-text",currentMode==="text");
+      controls.classList.toggle("show-shape",currentMode!=="text");
+      $("turnsField").style.display=currentMode==="spiral"?"block":"none";
+      if(pyodide) generate();
+    });
+  });
+
+  document.querySelectorAll(".chip").forEach(btn=>{
+    btn.addEventListener("click",()=>{
+      $("textInput").value=btn.dataset.text;
+      $("charCount").textContent=btn.dataset.text.length;
+      generate();
+    });
+  });
+
+  const rangeBindings=[
+    ["scaleInput","scaleVal",v=>v],
+    ["spacingInput","spacingVal",v=>Number(v).toFixed(2)],
+    ["offsetInput","offsetVal",v=>Number(v).toFixed(2)],
+    ["radiusInput","radiusVal",v=>v],
+    ["turnsInput","turnsVal",v=>v],
+    ["simplifyInput","simplifyVal",v=>Number(v).toFixed(2)]
+  ];
+  rangeBindings.forEach(([inputId,valueId,fmt])=>{
+    $(inputId).addEventListener("input",()=>{$(valueId).textContent=fmt($(inputId).value)});
+  });
+
+  $("textInput").addEventListener("input",()=>{$("charCount").textContent=$("textInput").value.length});
+  generateBtn.addEventListener("click",generate);
+  downloadBtn.addEventListener("click",downloadSvg);
+  $("colorInput").addEventListener("change",()=>{if(pyodide) generate()});
+  $("simplifyInput").addEventListener("change",()=>{if(pyodide) generate()});
+
+  boot();
+</script>
+</body>
+</html>
