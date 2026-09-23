@@ -285,25 +285,16 @@
     const hitPoint = new THREE.Vector3();
     const stablePoint = new THREE.Vector3();
 
-    // Single placement pipeline:
-    // XR8 tracking status -> world-point floor calibration -> one locked floor Y.
+    // XR8 World Tracking defines the ground as Y=0. We only wait for
+    // tracking + a short stable centre-ray intersection, then freeze placement.
     let trackingStatus = 'LIMITED';
     let trackingNormalSince = null;
     let trackingLastSeen = -Infinity;
-
-    let floorEstimate = null;
-    let floorJitter = Infinity;
-    let floorPointCount = 0;
-    const floorSamples = [];
-    const FLOOR_SAMPLE_WINDOW = 18;
-    const FLOOR_MIN_POINTS = 5;
-    const featureHitPoint = new THREE.Vector3();
-    let featureHitReady = false;
-    let lastFloorHitTime = -Infinity;
+    let stableHitSince = null;
+    const previousGroundHit = new THREE.Vector3(999,999,999);
 
     let sceneReady = false;
     let startupFailed = false;
-    let latestWorldPoints = [];
     let nextGroundSample = 0;
     let previewInitialized = false;
     let drivingEnabled = false;
@@ -352,130 +343,13 @@
       trackingLastSeen=-Infinity;
     }
 
-    function resetFloorCalibration(){
-      floorEstimate=null;
-      floorJitter=Infinity;
-      floorPointCount=0;
-      floorSamples.length=0;
-      featureHitPoint.set(0,0,0);
-      featureHitReady=false;
-      lastFloorHitTime=-Infinity;
-      groundPlane.constant=0;
+    function resetPlacementStability(){
+      stableHitSince=null;
+      previousGroundHit.set(999,999,999);
       stablePoint.set(0,0,0);
       previewInitialized=false;
       surfaceReady=false;
       placeBtn.disabled=true;
-    }
-
-    function sampleFloorFromCenterHitTest(now){
-      if(!camera||!canvas)return false;
-
-      camera.updateMatrixWorld(true);
-      raycaster.setFromCamera(centerNdc,camera);
-
-      // Do not accept a nearly-horizontal centre ray as a floor sample.
-      if(raycaster.ray.direction.y>-.10){
-        featureHitReady=(now-lastFloorHitTime)<650;
-        return floorEstimate!==null
-          && featureHitReady
-          && floorSamples.length>=FLOOR_MIN_POINTS
-          && floorJitter<.05;
-      }
-
-      const camPos=camera.getWorldPosition(new THREE.Vector3());
-      let candidates=[];
-
-      // Preferred source: XR8's local feature-point hit at the screen centre.
-      try{
-        const hits=XR8.XrController.hitTest(
-          Math.round(canvas.width*.5),
-          Math.round(canvas.height*.5),
-          ['FEATURE_POINT']
-        )||[];
-
-        candidates=hits
-          .map(hit=>hit?.position||hit)
-          .filter(p=>p && Number.isFinite(p.x)&&Number.isFinite(p.y)&&Number.isFinite(p.z))
-          .map(p=>({
-            p,
-            score:0,
-            distance:Math.hypot(p.x-camPos.x,p.y-camPos.y,p.z-camPos.z)
-          }))
-          .filter(item=>
-            item.distance>=.18 &&
-            item.distance<=6 &&
-            item.p.y<=camPos.y-.30 &&
-            item.p.y>=camPos.y-3.0
-          );
-      }catch(error){
-        if(diagnostics && !window.arCenterHitTestError){
-          window.arCenterHitTestError=String(error);
-        }
-      }
-
-      // Fallback: FEATURE_POINT hitTest can be sparse indoors. Find the
-      // world point nearest the centre camera ray, so the sample is still
-      // local to exactly where the player is aiming.
-      if(!candidates.length && Array.isArray(latestWorldPoints)){
-        const origin=raycaster.ray.origin;
-        const dir=raycaster.ray.direction;
-        const stride=Math.max(1,Math.ceil(latestWorldPoints.length/900));
-
-        for(let i=0;i<latestWorldPoints.length;i+=stride){
-          const wp=latestWorldPoints[i];
-          const p=wp?.position||wp;
-          if(!p||!Number.isFinite(p.x)||!Number.isFinite(p.y)||!Number.isFinite(p.z))continue;
-          if(Number.isFinite(wp?.confidence)&&wp.confidence<.15)continue;
-          if(p.y>camPos.y-.30||p.y<camPos.y-3.0)continue;
-
-          const rx=p.x-origin.x;
-          const ry=p.y-origin.y;
-          const rz=p.z-origin.z;
-          const along=rx*dir.x+ry*dir.y+rz*dir.z;
-          if(along<.18||along>6)continue;
-
-          const cx=origin.x+dir.x*along;
-          const cy=origin.y+dir.y*along;
-          const cz=origin.z+dir.z*along;
-          const perpendicular=Math.hypot(p.x-cx,p.y-cy,p.z-cz);
-
-          // Broad enough to work on sparse SLAM clouds, but still tightly
-          // tied to the centre cursor rather than unrelated room surfaces.
-          if(perpendicular>.34)continue;
-
-          candidates.push({
-            p,
-            distance:along,
-            score:perpendicular+along*.012
-          });
-        }
-      }
-
-      if(!candidates.length){
-        floorPointCount=0;
-        featureHitReady=(now-lastFloorHitTime)<650;
-        return floorEstimate!==null
-          && featureHitReady
-          && floorSamples.length>=FLOOR_MIN_POINTS
-          && floorJitter<.05;
-      }
-
-      candidates.sort((a,b)=>a.score-b.score||a.distance-b.distance);
-      const chosen=candidates[0].p;
-
-      featureHitPoint.set(chosen.x,chosen.y,chosen.z);
-      featureHitReady=true;
-      lastFloorHitTime=now;
-      floorPointCount=candidates.length;
-
-      floorSamples.push(chosen.y);
-      if(floorSamples.length>FLOOR_SAMPLE_WINDOW)floorSamples.shift();
-
-      floorEstimate=median(floorSamples);
-      const deviations=floorSamples.map(v=>Math.abs(v-floorEstimate));
-      floorJitter=median(deviations)??Infinity;
-
-      return floorSamples.length>=FLOOR_MIN_POINTS && floorJitter<.05;
     }
 
     function setStatus(text, ready=false){
@@ -737,7 +611,7 @@
       // XR8 owns camera intrinsics/pose. Absolute scale estimates physical
       // height; never overwrite the tracked camera with an assumed height.
       resetTrackingState();
-      resetFloorCalibration();
+      resetPlacementStability();
       sceneReady = true;
       lastTick = performance.now();
       setLoadProgress(100,'جاهز');
@@ -774,7 +648,6 @@
           const now = performance.now();
           const reality = processCpuResult?.reality;
           updateTrackingState(reality,now);
-          latestWorldPoints = reality?.worldPoints || [];
           tickWorld(now);
         },
         onCameraStatusChange:({status})=>{
@@ -806,69 +679,82 @@
     }
 
     function updatePlacement(dt,now){
-      if (placed){reticle.visible=false;return;}
+      if(placed){
+        reticle.visible=false;
+        return;
+      }
 
-      if (!trackingReady(now)){
+      if(!trackingReady(now)){
         reticle.visible=false;
         arenaGroup.visible=false;
         previewInitialized=false;
+        stableHitSince=null;
         surfaceReady=false;
         placeBtn.disabled=true;
         setStatus('حرّك الجوال ببطء حتى يستقر التتبع',false);
         return;
       }
 
-      let floorStable=false;
-      if(now>=nextGroundSample){
-        nextGroundSample=now+100;
-        floorStable=sampleFloorFromCenterHitTest(now);
-      }else{
-        floorStable=floorEstimate!==null
-          && featureHitReady
-          && (now-lastFloorHitTime)<650
-          && floorSamples.length>=FLOOR_MIN_POINTS
-          && floorJitter<.05;
-      }
+      camera.updateMatrixWorld(true);
+      raycaster.setFromCamera(centerNdc,camera);
 
-      if(floorEstimate===null||!featureHitReady){
+      // XR8 World Tracking maintains one floor plane at world Y=0.
+      // Only accept a centre ray that is clearly looking down at that plane.
+      const hit=raycaster.ray.intersectPlane(groundPlane,hitPoint);
+      const camPos=camera.getWorldPosition(new THREE.Vector3());
+      const distance=hit?hit.distanceTo(camPos):Infinity;
+
+      if(!hit||distance<.20||distance>7||raycaster.ray.direction.y>-.12){
         reticle.visible=false;
         arenaGroup.visible=false;
         previewInitialized=false;
+        stableHitSince=null;
         surfaceReady=false;
         placeBtn.disabled=true;
-        const pct=Math.min(99,Math.round((floorSamples.length/FLOOR_MIN_POINTS)*100));
-        setStatus(floorSamples.length?'ثبّت المؤشر على الأرض '+pct+'%':'وجّه المؤشر مباشرة إلى الأرض',false);
+        setStatus('وجّه الجوال نحو الأرض أمامك',false);
         return;
       }
 
-      // Use the actual local feature-point position under the centre cursor
-      // for X/Z as well as the calibrated Y. This avoids projecting onto a
-      // synthetic plane that may not match the physical floor.
-      if(!previewInitialized){
-        stablePoint.copy(featureHitPoint);
-        previewInitialized=true;
-      }else{
-        stablePoint.lerp(featureHitPoint,1-Math.exp(-10*dt));
-      }
-      stablePoint.y=floorEstimate;
+      hitPoint.y=0;
 
-      surfaceReady=floorStable;
+      if(!previewInitialized){
+        stablePoint.copy(hitPoint);
+        previousGroundHit.copy(hitPoint);
+        previewInitialized=true;
+        stableHitSince=now;
+      }else{
+        const movement=previousGroundHit.distanceTo(hitPoint);
+
+        // Reset only for a real jump. Small hand shake should not restart
+        // placement, which keeps detection fast on mobile.
+        if(movement>.18){
+          stableHitSince=now;
+          stablePoint.copy(hitPoint);
+        }else{
+          stablePoint.lerp(hitPoint,1-Math.exp(-14*dt));
+        }
+        previousGroundHit.copy(hitPoint);
+      }
+
+      stablePoint.y=0;
+      const stableFor=stableHitSince===null?0:now-stableHitSince;
+      surfaceReady=stableFor>=450;
       placeBtn.disabled=!surfaceReady;
 
       reticle.visible=true;
       reticle.position.copy(stablePoint);
-      reticle.position.y+=.008;
+      reticle.position.y=.008;
 
-      // Arena GLB was normalized so its minimum Y is exactly zero. Placing the
-      // arena root at floorEstimate therefore puts the physical base directly
-      // on the calibrated real-world floor.
+      // Preview follows the cursor only BEFORE placement.
       arenaGroup.position.copy(stablePoint);
-      arenaGroup.position.y=floorEstimate;
+      arenaGroup.position.y=0;
       arenaGroup.scale.setScalar(placementScale);
       arenaGroup.visible=true;
 
-      const samplePct=Math.min(99,Math.round((floorSamples.length/FLOOR_MIN_POINTS)*100));
-      setStatus(surfaceReady?'نقطة الأرض ثابتة — اضغط ثبّت هنا':'ثبّت المؤشر على الأرض '+samplePct+'%',surfaceReady);
+      setStatus(
+        surfaceReady?'الموضع جاهز — اضغط ثبّت هنا':'ثبّت الجوال لحظة',
+        surfaceReady
+      );
     }
 
     function tickWorld(now){
@@ -883,7 +769,7 @@
       }
       if(diagnostics){
         diagnostics.push({time:now,status:trackingStatus,
-          ready:surfaceReady,floorEstimate,floorJitter,floorPointCount,
+          ready:surfaceReady,
           camera:camera.position.toArray(),
           arena:arenaGroup.position.toArray(),placed});
         if(diagnostics.length>240) diagnostics.shift();
@@ -914,13 +800,9 @@
         return;
       }
 
-      if(floorEstimate===null){
-        notify('أعد مسح الأرض حتى يكتمل الاكتشاف');
-        return;
-      }
       const scale = placementScale;
       const arenaCenter = stablePoint.clone();
-      arenaCenter.y = floorEstimate;
+      arenaCenter.y = 0;
       const roadY = arenaCenter.y + arenaRoadY * scale;
 
       arenaGroup.position.copy(arenaCenter);
@@ -967,8 +849,7 @@
       placed = false;
       surfaceReady = false;
       resetTrackingState();
-      resetFloorCalibration();
-      latestWorldPoints=[];
+      resetPlacementStability();
       nextGroundSample=0;
       drivingEnabled=false;
 
@@ -1052,8 +933,8 @@
         XR8.XrController.configure({
           disableWorldTracking:false,
           enableLighting:true,
-          enableWorldPoints:true,
-          scale:'absolute'
+          enableWorldPoints:false,
+          scale:'responsive'
         });
 
         XR8.addCameraPipelineModules([
