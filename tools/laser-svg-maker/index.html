@@ -54,6 +54,14 @@
     #laserPreview{position:absolute;inset:0;width:100%;height:100%;display:none;background:#000;z-index:4}#laserPreview.show{display:block}
     #svgHost.preview-dim{opacity:.08}
     .previewTools{display:flex;align-items:center;gap:7px}
+    .showBox{margin-top:15px;padding:13px;border:1px solid rgba(255,198,109,.18);border-radius:17px;background:rgba(255,198,109,.035)}
+    .showBox h3{margin:0;font-size:12px}.showBox p{margin:5px 0 10px;color:var(--muted);font-size:9px;line-height:1.55}
+    .showActions{display:grid;grid-template-columns:1fr 1fr;gap:7px}.showActions .btn{height:42px;font-size:10px}
+    .sceneList{display:grid;gap:7px;margin-top:10px}.sceneEmpty{padding:10px;border:1px dashed var(--line);border-radius:12px;color:var(--muted);font-size:9px;text-align:center}
+    .sceneItem{display:grid;grid-template-columns:12px minmax(0,1fr) auto;gap:8px;align-items:center;padding:9px;border:1px solid var(--line);border-radius:12px;background:#070c0b}
+    .sceneColor{width:10px;height:28px;border-radius:999px;box-shadow:0 0 10px currentColor}.sceneMeta{min-width:0}.sceneMeta b{display:block;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.sceneMeta small{display:block;color:var(--muted);font-size:8px;margin-top:3px}
+    .sceneBtns{display:flex;gap:4px}.sceneBtns button{width:28px;height:28px;border:1px solid var(--line);border-radius:8px;background:#0b1210;color:#dce7e2;font-size:10px}
+    .limitOk{color:var(--green)!important}.limitWarn{color:var(--warn)!important}
     @media(max-width:820px){.layout{grid-template-columns:1fr}.preview{min-height:520px}.stage-wrap{min-height:400px}.stage{min-height:390px}}
   </style>
 </head>
@@ -66,7 +74,7 @@
 
   <section class="hero">
     <h1>مولّد مسارات SVG لعرض الليزر</h1>
-    <p>أداة داخلية لتتبع صور الـOutline، معاينة مسارات الليزر، وتصدير SVG أو ILD مباشرة من المتصفح. لا تغيّر تجربة الليزر الحالية ولا تظهر في الصفحة الرئيسية.</p>
+    <p>أداة داخلية لتتبع صور الـOutline والنصوص، معاينة الليزر، وتجميع عدة صور ونصوص داخل ملف ILD واحد. التصدير ملتزم بحد التجربة: 2048 نقطة كحد أقصى لكل Frame.</p>
     <div class="status" id="engineStatus"><span class="dot"></span><span id="engineText">جاري تجهيز مولّد المسارات…</span></div>
   </section>
 
@@ -202,8 +210,8 @@
         </div>
 
         <div class="field">
-          <label><span>نقاط الإطار</span><span class="value" id="ppfVal">1000</span></label>
-          <input id="ppfInput" type="range" min="200" max="3000" step="50" value="1000">
+          <label><span>نقاط الإطار</span><span class="value" id="ppfVal">1000 / 2048</span></label>
+          <input id="ppfInput" type="range" min="200" max="2048" step="50" value="1000">
         </div>
         <div class="field">
           <label><span>Point Rate</span><span class="value" id="rateVal">8000</span></label>
@@ -230,6 +238,15 @@
         </div>
 
         <label class="checkRow"><input id="preserveOrderInput" type="checkbox" checked><span>الحفاظ على ترتيب المسارات الأصلي</span></label>
+        <div class="imageHint"><b>حد التجربة:</b> الحد الأقصى الصارم هو <b>2048 نقطة لكل Frame</b>. الرسومات الثقيلة تُقسّم تلقائيًا إلى Frames إضافية بدل تجاوز الحد.</div>
+      </div>
+
+      <div class="showBox">
+        <h3>ملف عرض متعدد العناصر</h3>
+        <p>أضف الصورة أو النص الحالي، ثم جهّز العنصر التالي. عند التصدير تُجمع الصور والنصوص بالترتيب داخل ملف ILD واحد مع الاحتفاظ بلون كل عنصر.</p>
+        <div class="showActions"><button class="btn secondary" id="addSceneBtn" disabled>＋ أضف الحالي للعرض</button><button class="btn secondary" id="clearScenesBtn" disabled>مسح القائمة</button></div>
+        <div class="sceneList" id="sceneList"><div class="sceneEmpty">لم تتم إضافة عناصر بعد</div></div>
+        <div class="showActions" style="margin-top:8px"><button class="btn ild" id="previewShowBtn" disabled>▶ معاينة العرض</button><button class="btn primary" id="downloadShowBtn" disabled>تصدير ILD واحد</button></div>
       </div>
 
       <div class="note">النصوص تعمل كمسارات vector، ووضع الصورة مخصص لصور الـOutline الواضحة مثل السيفين والنخلة والجمل والحصان والدرعية. كل المعالجة تتم محليًا داخل الجهاز.</div>
@@ -277,6 +294,11 @@
   const previewLaserBtn = $("previewLaserBtn");
   const laserPreview = $("laserPreview");
   const host = $("svgHost");
+  const addSceneBtn = $("addSceneBtn");
+  const clearScenesBtn = $("clearScenesBtn");
+  const previewShowBtn = $("previewShowBtn");
+  const downloadShowBtn = $("downloadShowBtn");
+  const MAX_FRAME_POINTS = 2048;
 
   let currentMode = "text";
   let currentSvg = "";
@@ -289,6 +311,7 @@
   let previewRAF = 0;
   let previewFrame = 0;
   let previewNextAt = 0;
+  let showItems = [];
 
   const setStatus = (message, ready=false) => {
     statusText.textContent = message;
@@ -675,7 +698,7 @@
     return {
       mode:$("ildaMode").value,
       format:Number($("ildaFormat").value),
-      ppf:Number($("ppfInput").value),
+      ppf:Math.min(MAX_FRAME_POINTS,Math.max(200,Number($("ppfInput").value))),
       rate:Number($("rateInput").value),
       drawFrames:Number($("drawFramesInput").value),
       holdFrames:Number($("holdFramesInput").value),
@@ -974,7 +997,7 @@
     ["thresholdInput","thresholdVal",v=>v],
     ["imageSmoothInput","imageSmoothVal",v=>Number(v).toFixed(1)],
     ["minPathInput","minPathVal",v=>v],
-    ["ppfInput","ppfVal",v=>v],
+    ["ppfInput","ppfVal",v=>Math.min(MAX_FRAME_POINTS,Number(v))+" / 2048"],
     ["rateInput","rateVal",v=>v],
     ["drawFramesInput","drawFramesVal",v=>v],
     ["holdFramesInput","holdFramesVal",v=>v],
