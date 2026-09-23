@@ -2,6 +2,10 @@
 https://3wasfnjd.github.io/AR-Aboden/
 مختبر AR للجوال يعمل مباشرة من المتصفح عبر GitHub Pages.
 
+## الكتابة على الرمل
+
+[افتح التجربة](https://3wasfnjd.github.io/AR-Aboden/sand.html): كتابة ورسم باللمس على الرمل، مع تغيير حجم القلم ومسح الرسم بموجة أو إعادة الرمل فورًا. تعمل بدون كاميرا وتحتاج متصفحًا وجهازًا يدعمان WebGPU. مأخوذة من نموذج `deformable-sand` في [Threejs-Awesome-Graphics-Agent-Skills](https://github.com/scottstts/Threejs-Awesome-Graphics-Agent-Skills). [المصدر والترخيص](js/sand/NOTICE.md).
+
 ## النسخة الحالية
 
 تم استبدال تجربة HIRO Marker بتجربة تحكم مباشرة:

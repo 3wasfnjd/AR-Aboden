@@ -1,0 +1,62 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: GPL-3.0-only; see js/sand/NOTICE.md -->
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#191510">
+  <meta name="description" content="اكتب وارسم بإصبعك على الرمل، وشاهد حبيباته تتحرك ثم امسح رسمك بموجة بحر. تجربة تفاعلية من عبودين.">
+  <title>الكتابة على الرمل | تجارب عبودين</title>
+  <link rel="stylesheet" href="./sand.css?v=1">
+</head>
+<body>
+  <main class="experience">
+    <header class="topbar">
+      <a class="home" href="./index.html" aria-label="العودة إلى تجارب عبودين">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 6 6 6-6 6M20 12H4"/></svg>
+        <span>التجارب</span>
+      </a>
+      <div class="heading"><span class="brand">عبودين</span><h1>الكتابة على الرمل</h1></div>
+      <span class="live-state" id="state">جارٍ التجهيز</span>
+    </header>
+
+    <section class="sand-stage" aria-label="لوحة الرمل">
+      <canvas id="sand" tabindex="0" aria-label="ارسم على الرمل باللمس أو الماوس. بلوحة المفاتيح: تحرّك بالأسهم واضغط المسافة أثناء الرسم."></canvas>
+      <p class="hint" id="hint">مرّر إصبعك… واترك أثرك</p>
+      <div class="startup" id="startup" role="status" aria-live="polite">
+        <span class="spinner" id="spinner" aria-hidden="true"></span>
+        <h2 id="startup-title">نجهّز لك الرمل</h2>
+        <p id="startup-message">لحظات وتبدأ الكتابة</p>
+        <button id="retry" type="button" hidden>إعادة المحاولة</button>
+      </div>
+      <noscript><p class="noscript">فعّل JavaScript لتشغيل تجربة الرمل.</p></noscript>
+    </section>
+
+    <footer class="tools">
+      <fieldset id="tool-controls" disabled>
+        <div class="brush-control">
+          <label for="brush">حجم القلم <output id="brush-value" for="brush">متوسط</output></label>
+          <input id="brush" type="range" min="4" max="16" value="8" step="1" aria-label="حجم قلم الرمل">
+        </div>
+        <button id="wash" class="wash" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 8c3 0 3-3 6-3s3 3 6 3 3-3 6-3M2 14c3 0 3-3 6-3s3 3 6 3 3-3 6-3M2 20c3 0 3-3 6-3s3 3 6 3 3-3 6-3"/></svg>
+          <span id="wash-label">امسح بموجة</span>
+        </button>
+        <button id="clear" class="clear" type="button">رمل جديد</button>
+      </fieldset>
+      <div class="footnote"><span id="feedback" role="status" aria-live="polite">ارسم بحرية • لا تحتاج إلى الكاميرا</span><a href="https://github.com/3wasfnjd/AR-Aboden/blob/main/js/sand/NOTICE.md" target="_blank" rel="noopener">عن التجربة</a></div>
+    </footer>
+  </main>
+  <script type="module">
+    document.getElementById('retry').addEventListener('click', () => location.reload());
+    import('./js/sand/app.js?v=1').then(({start}) => start()).catch(error => {
+      console.error('Sand startup:', error);
+      document.getElementById('spinner').hidden = true;
+      document.getElementById('state').textContent = 'تعذّر التحميل';
+      document.getElementById('startup-title').textContent = 'تعذّر تحميل التجربة';
+      document.getElementById('startup-message').textContent = 'تحقّق من اتصال الإنترنت ثم أعد المحاولة.';
+      document.getElementById('retry').hidden = false;
+    });
+  </script>
+</body>
+</html>
