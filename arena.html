@@ -183,7 +183,6 @@
     import * as THREE from 'three';
     import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
-    import { GroundPlacement } from './js/ar/GroundPlacement.js?v=3';
     import { Vehicle } from './js/Vehicle.js?v=drift-show-1';
     import { ArenaAutopilot } from './js/ar/ArenaAutopilot.js?v=1';
     import { SmokeTrails } from './js/Particles.js?v=drift-show-1';
@@ -285,11 +284,13 @@
     const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
     const hitPoint = new THREE.Vector3();
     const stablePoint = new THREE.Vector3();
-    const placement = new GroundPlacement();
 
-    // Calibrate the actual floor height from XR8 world points. GroundPlacement
-    // remains responsible for camera tracking stability only; it no longer
-    // falls back to an assumed Y=0 surface for this experiment.
+    // Single placement pipeline:
+    // XR8 tracking status -> world-point floor calibration -> one locked floor Y.
+    let trackingStatus = 'LIMITED';
+    let trackingNormalSince = null;
+    let trackingLastSeen = -Infinity;
+
     let floorEstimate = null;
     let floorJitter = Infinity;
     let floorPointCount = 0;
@@ -323,6 +324,31 @@
       const sorted=values.slice().sort((a,b)=>a-b);
       const mid=Math.floor(sorted.length/2);
       return sorted.length%2 ? sorted[mid] : (sorted[mid-1]+sorted[mid])*.5;
+    }
+
+    function updateTrackingState(reality,now){
+      const status=reality?.trackingStatus||'LIMITED';
+      trackingStatus=status;
+      trackingLastSeen=now;
+
+      if(status==='NORMAL'){
+        if(trackingNormalSince===null) trackingNormalSince=now;
+      }else{
+        trackingNormalSince=null;
+      }
+    }
+
+    function trackingReady(now){
+      return trackingStatus==='NORMAL'
+        && trackingNormalSince!==null
+        && now-trackingNormalSince>=800
+        && now-trackingLastSeen<=250;
+    }
+
+    function resetTrackingState(){
+      trackingStatus='LIMITED';
+      trackingNormalSince=null;
+      trackingLastSeen=-Infinity;
     }
 
     function resetFloorCalibration(){
@@ -671,7 +697,7 @@
 
       // XR8 owns camera intrinsics/pose. Absolute scale estimates physical
       // height; never overwrite the tracked camera with an assumed height.
-      placement.reset();
+      resetTrackingState();
       resetFloorCalibration();
       sceneReady = true;
       lastTick = performance.now();
@@ -708,8 +734,7 @@
           if (!sceneReady) return;
           const now = performance.now();
           const reality = processCpuResult?.reality;
-          placement.observe({now,status:reality?.trackingStatus,
-            position:reality?.position,rotation:reality?.rotation});
+          updateTrackingState(reality,now);
           latestWorldPoints = reality?.worldPoints || [];
           tickWorld(now);
         },
@@ -720,7 +745,9 @@
           console.error(error);
           if(!sceneReady) startupFailure('تعذر تشغيل التتبع. أعد تحميل الصفحة وحاول مجددًا.');
           else {
-            placement.observe({now:performance.now(),status:'LIMITED'});
+            trackingStatus='LIMITED';
+            trackingNormalSince=null;
+            trackingLastSeen=performance.now();
             setStatus('توقف التتبع — أعد توجيه الجوال للأرضية',false);
           }
         }
@@ -742,7 +769,7 @@
     function updatePlacement(dt,now){
       if (placed){reticle.visible=false;return;}
 
-      if (!placement.trackingReady(now)){
+      if (!trackingReady(now)){
         reticle.visible=false;
         arenaGroup.visible=false;
         previewInitialized=false;
@@ -820,16 +847,15 @@
       const dt=Math.min(.1,Math.max(0,(now-lastTick)/1000));
       lastTick=now;
       updatePlacement(dt,now);
-      const canDrive=placed && !document.hidden && placement.trackingReady(now);
+      const canDrive=placed && !document.hidden && trackingReady(now);
       if(canDrive!==drivingEnabled){
         drivingEnabled=canDrive;
         if(placed) setStatus(canDrive?'عرض الدرفت يعمل تلقائيًا':'العرض متوقف — أعد مسح المكان ببطء',canDrive);
       }
       if(diagnostics){
-        diagnostics.push({time:now,status:placement.status,reason:placement.reason,
-          support:placement.support,surface:placement.surface,steady:placement.ready,
-          ready:surfaceReady,cameraStep:placement.cameraStep,
-          camera:camera.position.toArray(),anchor:placement.anchor,
+        diagnostics.push({time:now,status:trackingStatus,
+          ready:surfaceReady,floorEstimate,floorJitter,floorPointCount,
+          camera:camera.position.toArray(),
           arena:arenaGroup.position.toArray(),placed});
         if(diagnostics.length>240) diagnostics.shift();
       }
@@ -840,7 +866,9 @@
     }
 
     document.addEventListener('visibilitychange',()=>{
-      placement.observe({now:performance.now(),status:'LIMITED'});
+      trackingStatus='LIMITED';
+      trackingNormalSince=null;
+      trackingLastSeen=performance.now();
       lastTick=performance.now();
     });
 
@@ -909,7 +937,7 @@
 
       placed = false;
       surfaceReady = false;
-      placement.reset();
+      resetTrackingState();
       resetFloorCalibration();
       latestWorldPoints=[];
       nextGroundSample=0;
