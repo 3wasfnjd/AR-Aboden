@@ -185,7 +185,7 @@
     import { updateWorld } from 'crashcat';
 
     import { Vehicle } from './js/Vehicle.js?v=hajwala-physics-2';
-    import { ArenaAutopilot } from './js/ar/ArenaAutopilot.js?v=7';
+    import { ArenaAutopilot } from './js/ar/ArenaAutopilot.js?v=8';
     import {
       createVehicleWorld,
       createArenaPhysics,
@@ -992,9 +992,10 @@
         car.container.scale.setScalar(scale);
         car.sphereRadius=scaledVehicleRadius;
 
-        // Hajwala uses the same Vehicle physics at every visual scale. Scaling
-        // max speed with the AR arena keeps the same perceived car-lengths/sec.
-        car.maxSpeedMultiplier=1.4*scale;
+        // Slightly slower than the previous 2.10×scale tune. Each car also
+        // gets its own pace so their movement does not read as synchronized.
+        const speedProfiles=[1.10,.98,.90];
+        car.maxSpeedMultiplier=(speedProfiles[i]||1.0)*scale;
 
         const ai=new ArenaAutopilot({
           center:arenaCenter,
@@ -1003,7 +1004,8 @@
           roadRadius:ARENA_ROAD_RADIUS,
           carRadius:carFootprint,
           startAngle:startAngles[i]||0,
-          introLap:i===0
+          introLap:i===0,
+          profile:i
         });
 
         const initial=ai.getInitialPose();
