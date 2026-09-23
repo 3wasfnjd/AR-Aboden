@@ -185,6 +185,7 @@
 
     import { Vehicle } from './js/Vehicle.js?v=drift-show-1';
     import { ArenaAutopilot } from './js/ar/ArenaAutopilot.js?v=5';
+
     import { SmokeTrails } from './js/Particles.js?v=drift-show-1';
     import { DriftMarks } from './js/DriftMarks.js?v=drift-show-1';
 
@@ -549,7 +550,7 @@
       setLoadProgress(84,'تحميل السيارة…');
       const gltf = await new Promise((resolve,reject)=>{
         loader.load(
-          './assets/car_carton_ar.glb',
+          './assets/car_carton_ar.glb?v=colors-2',
           resolve,
           (event)=>updateFileProgress(event,84,14,'تحميل السيارة…'),
           reject
@@ -609,18 +610,28 @@
       model.traverse(obj=>{
         if(!obj.isMesh)return;
 
-        const partName=(obj.name||'').toLowerCase();
-        const keepOriginal=/(wheel|tire|tyre|glass|window|light|lamp|chrome|black)/i.test(partName);
+        const objectName=(obj.name||'').toLowerCase();
         const materials=Array.isArray(obj.material)?obj.material:[obj.material];
 
         const cloned=materials.map(material=>{
           if(!material)return material;
-          const mat=material.clone();
 
-          // Preserve tyres, glass and lamps. Tint body/interior painted parts
-          // while retaining texture maps and their original detail.
+          const mat=material.clone();
+          const materialName=(material.name||'').toLowerCase();
+          const tag=objectName+' '+materialName;
+
+          // Keep functional / dark parts from the original model.
+          const keepOriginal=/(wheel|tire|tyre|rim|glass|window|windshield|light|lamp|chrome|interior|seat|dashboard)/i.test(tag);
+
           if(!keepOriginal && mat.color){
-            mat.color.set(tint);
+            // The GLB's body texture contains its original paint colour.
+            // Removing that colour map is required for red/yellow/black
+            // variants to be visually distinct instead of all looking red.
+            mat.color.setHex(tint);
+            if(mat.map){
+              mat.map=null;
+              mat.needsUpdate=true;
+            }
           }
 
           return mat;
@@ -692,9 +703,9 @@
 
       const carModel = await loadCar();
       const carModels = [
-        carModel,
-        createCarVariant(carModel,0xf5c400,'arena-car-yellow'),
-        createCarVariant(carModel,0x1976d2,'arena-car-blue')
+        createCarVariant(carModel,0xd71920,'arena-car-red'),
+        createCarVariant(carModel,0xffd400,'arena-car-yellow'),
+        createCarVariant(carModel,0x111111,'arena-car-black')
       ];
 
       for(const model of carModels){
