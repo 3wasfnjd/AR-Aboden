@@ -315,7 +315,14 @@ export class Vehicle {
 
       // Safety net: if the physics body ever tunnels through the AR floor,
       // restore it to the latest placement point instead of letting it fall forever.
-      const fallLimit = this.spawnPos.y - Math.max(1.0, this.sphereRadius * 8);
+      // Same scale-aware recovery used by Hajwala: at tiny AR scales the
+      // car should recover after a proportional drop, not after falling a
+      // full real-world metre below a tabletop-sized arena.
+      const respawnDropDistance = Math.max(
+        2.0 * (this.sphereRadius / 0.5),
+        0.05
+      );
+      const fallLimit = this.spawnPos.y - respawnDropDistance;
       if (this.spherePos.y < fallLimit) {
         rigidBody.setPosition(
           this.physicsWorld,
