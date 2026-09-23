@@ -692,18 +692,20 @@
     const maxBlank=Math.max(0,target-minVisible);
     const effectiveBlank=Math.min(cfg.blankDwell,Math.floor(maxBlank/paths.length));
     const blankCount=effectiveBlank*paths.length;
-    const visibleCount=Math.max(minVisible,target-blankCount);
+    const afterBlank=target-blankCount;
+    const maxDwell=Math.max(0,afterBlank-minVisible);
+    const effectiveDwell=Math.min(cfg.cornerDwell,Math.floor(maxDwell/(paths.length*2)));
+    const dwellCount=effectiveDwell*paths.length*2;
+    const visibleCount=Math.max(minVisible,afterBlank-dwellCount);
     const allocations=allocatePoints(paths,visibleCount,2);
     const pts=[];
     for(let i=0;i<paths.length;i++){
       const sampled=resamplePath(paths[i],allocations[i]);
-      for(let j=0;j<effectiveBlank;j++) pts.push({x:sampled[0][0],y:sampled[0][1],blank:1});
-      for(let j=0;j<sampled.length;j++){
-        const q=sampled[j];pts.push({x:q[0],y:q[1],blank:0});
-        if(cfg.cornerDwell&&j>0&&j<sampled.length-1){
-          for(let k=0;k<cfg.cornerDwell;k++) pts.push({x:q[0],y:q[1],blank:0});
-        }
-      }
+      const first=sampled[0],last=sampled[sampled.length-1];
+      for(let j=0;j<effectiveBlank;j++) pts.push({x:first[0],y:first[1],blank:1});
+      for(let j=0;j<effectiveDwell;j++) pts.push({x:first[0],y:first[1],blank:0});
+      for(const q of sampled) pts.push({x:q[0],y:q[1],blank:0});
+      for(let j=0;j<effectiveDwell;j++) pts.push({x:last[0],y:last[1],blank:0});
     }
     if(pts.length>target) pts.length=target;
     while(pts.length<target){const last=pts[pts.length-1]||{x:0,y:0,blank:1};pts.push({...last,blank:1})}
@@ -725,8 +727,11 @@
         for(let j=1;j<=travel;j++){const t=j/travel;stream.push({x:prev[0]+(start[0]-prev[0])*t,y:prev[1]+(start[1]-prev[1])*t,blank:1})}
       }
       for(let j=0;j<cfg.blankDwell;j++) stream.push({x:start[0],y:start[1],blank:1});
+      for(let j=0;j<cfg.cornerDwell;j++) stream.push({x:start[0],y:start[1],blank:0});
       for(const q of sampled) stream.push({x:q[0],y:q[1],blank:0});
-      prev=sampled[sampled.length-1];
+      const end=sampled[sampled.length-1];
+      for(let j=0;j<cfg.cornerDwell;j++) stream.push({x:end[0],y:end[1],blank:0});
+      prev=end;
     }
     const frames=[];
     for(let i=0;i<stream.length;i+=target){
@@ -743,7 +748,8 @@
     let paths=normalizeForIlda(currentPaths);
     if(!cfg.preserveOrder) paths=reorderNearest(paths);
 
-    const minTarget=Math.min(65535,Math.max(cfg.ppf,paths.length*2));
+    const minimumPerPath=2+(cfg.blankDwell>0?1:0);
+    const minTarget=Math.min(65535,Math.max(cfg.ppf,paths.length*minimumPerPath));
     const target=minTarget;
     let frames=[];
     if(cfg.mode==="static"){
@@ -803,7 +809,8 @@
   function refreshIldaStats(data){
     currentIlda=data;
     const kb=(data.bytes.length/1024).toFixed(1);
-    $("ildaMetric").textContent=`${data.frames.length} إطار · ${data.target} نقطة · ${data.duration.toFixed(1)}ث · ${kb}KB`;
+    const cap=data.target>2048?" ⚠": "";
+    $("ildaMetric").textContent=`${data.frames.length} إطار · ${data.target} نقطة${cap} · ${data.duration.toFixed(1)}ث · ${kb}KB`;
     downloadIldBtn.disabled=false;
     previewLaserBtn.disabled=false;
   }
