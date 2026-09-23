@@ -27,3 +27,13 @@ maintained source, and Arabic touch UI/lifecycle integration added. All source
 is shipped here without minification or a build step. Mobile uses a 384²
 simulation grid and a capped drawing buffer; desktop uses the original 512².
 The original sand transport, grain and water shaders are retained.
+
+## Original Sandboard audio
+
+The `js/sand/audio/` modules and `assets/sand/beach.mp3` / `wave.mp3` are
+from https://github.com/scottstts/Sandboard at revision
+`489cb01e81b11ba575887f7c76760498eb41aaa8`, under its GPL-3.0-only license.
+The procedural sand AudioWorklet and the original gain/filter settings are
+preserved. Local changes convert TypeScript to JavaScript, resolve asset URLs
+under the GitHub Pages repository path, add mute/background/disposal handling,
+bound metadata loading, and connect audio to the Arabic experience's controls.

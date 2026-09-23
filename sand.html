@@ -7,7 +7,7 @@
   <meta name="theme-color" content="#191510">
   <meta name="description" content="اكتب وارسم بإصبعك على الرمل، وشاهد حبيباته تتحرك ثم امسح رسمك بموجة بحر. تجربة تفاعلية من عبودين.">
   <title>الكتابة على الرمل | تجارب عبودين</title>
-  <link rel="stylesheet" href="./sand.css?v=1">
+  <link rel="stylesheet" href="./sand.css?v=2">
 </head>
 <body>
   <main class="experience">
@@ -43,13 +43,16 @@
           <span id="wash-label">امسح بموجة</span>
         </button>
         <button id="clear" class="clear" type="button">رمل جديد</button>
+        <button id="sound" class="sound" type="button" aria-pressed="true" aria-label="كتم الصوت" title="كتم الصوت">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 4 6 8H3v8h3l5 4Z"/><path class="sound-waves" d="M15 8a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14"/><path class="sound-off" d="m16 9 6 6m0-6-6 6"/></svg>
+        </button>
       </fieldset>
       <div class="footnote"><span id="feedback" role="status" aria-live="polite">ارسم بحرية • لا تحتاج إلى الكاميرا</span><a href="https://github.com/3wasfnjd/AR-Aboden/blob/main/js/sand/NOTICE.md" target="_blank" rel="noopener">عن التجربة</a></div>
     </footer>
   </main>
   <script type="module">
     document.getElementById('retry').addEventListener('click', () => location.reload());
-    import('./js/sand/app.js?v=1').then(({start}) => start()).catch(error => {
+    import('./js/sand/app.js?v=2').then(({start}) => start()).catch(error => {
       console.error('Sand startup:', error);
       document.getElementById('spinner').hidden = true;
       document.getElementById('state').textContent = 'تعذّر التحميل';

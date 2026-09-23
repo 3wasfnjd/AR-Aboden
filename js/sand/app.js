@@ -7,6 +7,7 @@ import { SandSolver } from './vendor/simulation/solver.js';
 import { FixedClock } from './vendor/simulation/clock.js';
 import { WaveResetEffect, idleWaveResetState } from './vendor/reset/effect.js';
 import { waveResetViewport } from './vendor/reset/viewport.js';
+import { SandSound } from './audio/sound.js';
 
 export async function start() {
   const $ = id => document.getElementById(id);
@@ -19,10 +20,10 @@ export async function start() {
   const mobile = matchMedia('(pointer: coarse)').matches;
   let wave = new WaveResetEffect();
   let waveState = idleWaveResetState();
-  let device, context, renderer, solver, observer;
+  let device, context, renderer, solver, observer, sound;
   let ready = false, stopped = false, frameId = 0;
   let keyboardDrawing = false, keyboardCursor = false;
-  let elapsed = 0, previousTime;
+  let elapsed = 0, waveTime = 0, previousTime;
   const keyboardId = -1;
 
   function cancelInput() {
@@ -30,6 +31,7 @@ export async function start() {
     pointers.clear();
     for (const id of captured) if (canvas.hasPointerCapture(id)) canvas.releasePointerCapture(id);
     strokes.cancel();
+    sound?.cancelAll();
     keyboardDrawing = false;
     keyboardCursor = false;
   }
@@ -42,6 +44,7 @@ export async function start() {
     cancelInput();
     listeners.abort();
     observer?.disconnect();
+    sound?.dispose();
     renderer?.dispose();
     solver?.dispose();
     context?.unconfigure();
@@ -89,8 +92,19 @@ export async function start() {
     solver = new SandSolver(device, mobile ? 384 : SAND.resolution);
     renderer = new SandRenderer(device, solver, format, mobile,
       new URL('../../assets/sand/coconut_tree.glb', import.meta.url).href);
+    sound = new SandSound();
+    sound.setPaused(document.hidden);
+    const soundReady = sound.prepare().catch(error => {
+      console.warn('Sand audio unavailable:', error);
+      sound?.dispose();
+      sound = undefined;
+      $('sound').disabled = true;
+      $('sound').title = 'الصوت غير متاح في هذا المتصفح';
+      $('sound').setAttribute('aria-label', 'الصوت غير متاح في هذا المتصفح');
+    });
     await solver.initialize();
     await renderer.initialize();
+    await soundReady;
     if (stopped) return;
 
     function resize() {
@@ -146,6 +160,7 @@ export async function start() {
       canvas.setPointerCapture(event.pointerId);
       canvas.focus({ preventScroll: true });
       strokes.begin(pointFor(event), pressureFor(event), now, event.pointerId);
+      sound?.beginPointer(event);
       // Give a stationary touch a tiny contact segment so Arabic dots and taps
       // leave a mark, even when there is no pointermove between down and up.
       const point = pointFor(event);
@@ -159,7 +174,10 @@ export async function start() {
       event.preventDefault();
       const samples = event.getCoalescedEvents?.();
       for (const sample of samples?.length ? samples : [event]) {
-        if (!stale(sample)) strokes.move(pointFor(sample), pressureFor(sample), timeFor(sample), event.pointerId);
+        if (!stale(sample)) {
+          strokes.move(pointFor(sample), pressureFor(sample), timeFor(sample), event.pointerId);
+          sound?.movePointer(sample, event.pointerId);
+        }
       }
     }, { passive: false });
 
@@ -167,6 +185,7 @@ export async function start() {
       if (!pointers.has(event.pointerId) || stale(event)) return;
       strokes.move(pointFor(event), pressureFor(event), timeFor(event), event.pointerId);
       strokes.end(event.pointerId);
+      sound?.endPointer(event.pointerId);
       pointers.delete(event.pointerId);
       if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
     });
@@ -174,6 +193,7 @@ export async function start() {
       if (stale(event) || !pointers.has(event.pointerId)) return;
       pointers.delete(event.pointerId);
       strokes.cancel(event.pointerId);
+      sound?.endPointer(event.pointerId);
       if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
     };
     on(canvas, 'pointercancel', cancelPointer);
@@ -207,6 +227,15 @@ export async function start() {
     });
     on(canvas, 'blur', cancelInput);
 
+    on($('sound'), 'click', () => {
+      if (!sound) return;
+      sound.setMuted(!sound.muted);
+      $('sound').setAttribute('aria-pressed', String(!sound.muted));
+      const label = sound.muted ? 'تشغيل الصوت' : 'كتم الصوت';
+      $('sound').setAttribute('aria-label', label);
+      $('sound').title = label;
+    });
+
     function washing(active) {
       $('wash').disabled = active;
       $('brush').disabled = active;
@@ -216,14 +245,15 @@ export async function start() {
     on($('wash'), 'click', () => {
       if (!ready || waveState.active) return;
       cancelInput();
-      wave.start(elapsed, undefined, waveResetViewport(renderer.camera));
-      waveState = wave.update(elapsed);
+      wave.start(waveTime, sound?.playResetWave(), waveResetViewport(renderer.camera));
+      waveState = wave.update(waveTime);
       washing(true);
       markUsed();
     });
     on($('clear'), 'click', () => {
       if (!ready) return;
       cancelInput();
+      sound?.stopResetWave();
       wave = new WaveResetEffect();
       waveState = idleWaveResetState();
       solver.reset();
@@ -237,13 +267,18 @@ export async function start() {
     function frame(now) {
       if (!ready || stopped || document.hidden) return;
       try {
-        const delta = previousTime === undefined ? 0 : Math.min(50, Math.max(0, now - previousTime));
+        const rawDelta = previousTime === undefined ? 0 : Math.max(0, now - previousTime);
+        const delta = Math.min(50, rawDelta);
         previousTime = now;
         elapsed += delta;
+        // The audio clip uses real time: do not slow its wave at low frame rates.
+        // Visibility changes reset previousTime and pause both media elements.
+        waveTime += rawDelta;
+        sound?.update(now);
         const steps = clock.advance(elapsed);
         const encoder = device.createCommandEncoder({ label: 'Aboden sand frame' });
         // Preserve justStarted until the frame consumes it.
-        if (!waveState.justStarted) waveState = wave.update(elapsed);
+        if (!waveState.justStarted) waveState = wave.update(waveTime);
         if (waveState.justStarted) solver.clearTransientState(encoder);
         if (waveState.erase) solver.encodeWaveReset(encoder, waveState);
         if (!waveState.active && !waveState.justFinished && steps) {
@@ -262,6 +297,7 @@ export async function start() {
 
     on(document, 'visibilitychange', () => {
       cancelInput();
+      sound?.setPaused(document.hidden);
       cancelAnimationFrame(frameId);
       previousTime = undefined;
       clock.reset(elapsed);
@@ -271,10 +307,11 @@ export async function start() {
     // this page is actually unloaded.
     on(window, 'pagehide', event => {
       if (!event.persisted) dispose();
-      else { cancelInput(); cancelAnimationFrame(frameId); previousTime = undefined; }
+      else { cancelInput(); sound?.setPaused(true); cancelAnimationFrame(frameId); previousTime = undefined; }
     });
     on(window, 'pageshow', event => {
       if (event.persisted && ready && !stopped) {
+        sound?.setPaused(document.hidden);
         cancelAnimationFrame(frameId);
         previousTime = undefined;
         clock.reset(elapsed);
