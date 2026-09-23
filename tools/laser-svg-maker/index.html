@@ -50,8 +50,8 @@
 
   <section class="hero">
     <h1>مولّد مسارات SVG لعرض الليزر</h1>
-    <p>أداة مؤقتة داخل المستودع تعتمد على SandSkrit لتوليد مسارات متصلة، ثم تصدّر SVG نظيفًا لاستخدامه لاحقًا في خط التحويل إلى ILDA. لا تغيّر تجربة الليزر الحالية ولا تظهر في الصفحة الرئيسية.</p>
-    <div class="status" id="engineStatus"><span class="dot"></span><span id="engineText">جاري تحميل محرك SandSkrit…</span></div>
+    <p>أداة مؤقتة داخل المستودع مبنية على فكرة المسارات أحادية الخط المستفادة من SandSkrit، وتعمل الآن مباشرة بـ JavaScript لتصدير SVG نظيف للاستخدام لاحقًا في خط التحويل إلى ILDA. لا تغيّر تجربة الليزر الحالية ولا تظهر في الصفحة الرئيسية.</p>
+    <div class="status" id="engineStatus"><span class="dot"></span><span id="engineText">جاري تجهيز مولّد المسارات…</span></div>
   </section>
 
   <section class="layout">
@@ -118,7 +118,7 @@
         <input id="simplifyInput" type="range" min="0" max="1.5" step="0.05" value="0.15">
       </div>
 
-      <div class="note">مهم: SandSkrit يدعم حاليًا الحروف اللاتينية والأرقام والرموز المعرفة في ملفه. العربية سنضيف لها مسارات مخصصة لاحقًا بدل تحويلها إلى خط مملوء.</div>
+      <div class="note">النسخة الحالية تعمل مباشرة على iPhone بدون Python. تدعم A–Z والأرقام 0–9. العربية سنضيف لها مسارات single-line مخصصة لاحقًا بدل تحويلها إلى خطوط مملوءة.</div>
 
       <div class="actions">
         <button class="btn primary" id="generateBtn" disabled>توليد المسار</button>
@@ -143,15 +143,11 @@
     </div>
   </section>
 
-  <div class="footer">SandSkrit © 2026 UnintelligibleMaker · MIT License · upstream pinned to c770ac5a51c1b196f58f4e82d9c2859be9359f2a</div>
+  <div class="footer">Laser SVG Maker · native JavaScript · single-line path workflow inspired by SandSkrit (MIT)</div>
 </main>
 
-<script type="module">
-  import {loadPyodide} from "https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.mjs";
-
-  const UPSTREAM_COMMIT = "c770ac5a51c1b196f58f4e82d9c2859be9359f2a";
-  const UPSTREAM_BASE = `https://cdn.jsdelivr.net/gh/UnintelligibleMaker/sandskrit@${UPSTREAM_COMMIT}/`;
-
+<script>
+(() => {
   const $ = id => document.getElementById(id);
   const status = $("engineStatus");
   const statusText = $("engineText");
@@ -160,7 +156,6 @@
   const downloadBtn = $("downloadBtn");
   const host = $("svgHost");
 
-  let pyodide = null;
   let currentMode = "text";
   let currentSvg = "";
   let currentName = "laser-path.svg";
@@ -170,167 +165,188 @@
     status.classList.toggle("ready", ready);
   };
 
-  async function fetchText(url){
-    const res = await fetch(url, {cache:"force-cache"});
-    if(!res.ok) throw new Error(`HTTP ${res.status}: ${url}`);
-    return await res.text();
+  // Simple single-line vector glyphs. Coordinates are normalized 0..1.
+  // A glyph may contain multiple visible strokes; later SVG→ILDA conversion
+  // can insert blanking between those strokes.
+  const F = {
+    A:[[[0,1],[.5,0],[1,1]],[[.22,.58],[.78,.58]]],
+    B:[[[0,0],[0,1]],[[0,0],[.62,0],[.86,.16],[.62,.48],[0,.48]],[[0,.48],[.66,.48],[.9,.66],[.66,1],[0,1]]],
+    C:[[[.95,.12],[.72,0],[.22,0],[0,.22],[0,.78],[.22,1],[.72,1],[.95,.88]]],
+    D:[[[0,0],[0,1]],[[0,0],[.58,0],[.9,.25],[.9,.75],[.58,1],[0,1]]],
+    E:[[[.9,0],[0,0],[0,1],[.9,1]],[[0,.5],[.68,.5]]],
+    F:[[[0,1],[0,0],[.9,0]],[[0,.5],[.68,.5]]],
+    G:[[[.95,.18],[.72,0],[.22,0],[0,.22],[0,.78],[.22,1],[.72,1],[.95,.82],[.95,.58],[.58,.58]]],
+    H:[[[0,0],[0,1]],[[1,0],[1,1]],[[0,.5],[1,.5]]],
+    I:[[[.15,0],[.85,0]],[[.5,0],[.5,1]],[[.15,1],[.85,1]]],
+    J:[[[.15,0],[.9,0],[.9,.75],[.7,1],[.28,1],[.08,.8]]],
+    K:[[[0,0],[0,1]],[[1,0],[0,.56],[1,1]]],
+    L:[[[0,0],[0,1],[.9,1]]],
+    M:[[[0,1],[0,0],[.5,.58],[1,0],[1,1]]],
+    N:[[[0,1],[0,0],[1,1],[1,0]]],
+    O:[[[.25,0],[.75,0],[1,.25],[1,.75],[.75,1],[.25,1],[0,.75],[0,.25],[.25,0]]],
+    P:[[[0,1],[0,0],[.65,0],[.9,.2],[.65,.5],[0,.5]]],
+    Q:[[[.25,0],[.75,0],[1,.25],[1,.75],[.75,1],[.25,1],[0,.75],[0,.25],[.25,0]],[[.62,.65],[1.05,1.05]]],
+    R:[[[0,1],[0,0],[.65,0],[.9,.2],[.65,.5],[0,.5]],[[.5,.5],[1,1]]],
+    S:[[[.92,.12],[.7,0],[.24,0],[.04,.2],[.18,.47],[.72,.55],[.94,.78],[.76,1],[.24,1],[.04,.88]]],
+    T:[[[0,0],[1,0]],[[.5,0],[.5,1]]],
+    U:[[[0,0],[0,.75],[.24,1],[.76,1],[1,.75],[1,0]]],
+    V:[[[0,0],[.5,1],[1,0]]],
+    W:[[[0,0],[.22,1],[.5,.48],[.78,1],[1,0]]],
+    X:[[[0,0],[1,1]],[[1,0],[0,1]]],
+    Y:[[[0,0],[.5,.5],[1,0]],[[.5,.5],[.5,1]]],
+    Z:[[[0,0],[1,0],[0,1],[1,1]]],
+    "0":[[[.25,0],[.75,0],[1,.25],[1,.75],[.75,1],[.25,1],[0,.75],[0,.25],[.25,0]],[[.18,.82],[.82,.18]]],
+    "1":[[[.28,.2],[.5,0],[.5,1]],[[.25,1],[.78,1]]],
+    "2":[[[.08,.22],[.25,0],[.74,0],[.94,.2],[.88,.42],[.08,1],[.96,1]]],
+    "3":[[[.08,.12],[.3,0],[.72,0],[.94,.2],[.62,.5],[.94,.8],[.72,1],[.28,1],[.06,.88]]],
+    "4":[[[.78,1],[.78,0],[.08,.68],[1,.68]]],
+    "5":[[[.92,0],[.16,0],[.08,.48],[.7,.48],[.94,.68],[.8,1],[.26,1],[.06,.86]]],
+    "6":[[[.88,.14],[.68,0],[.3,.08],[.06,.45],[.08,.8],[.3,1],[.72,1],[.94,.78],[.78,.54],[.22,.54]]],
+    "7":[[[.06,0],[.96,0],[.36,1]]],
+    "8":[[[.28,.5],[.08,.28],[.22,0],[.72,0],[.92,.28],[.72,.5],[.28,.5],[.08,.72],[.22,1],[.72,1],[.92,.72],[.72,.5]]],
+    "9":[[[.9,.55],[.72,.02],[.28,0],[.06,.22],[.22,.48],[.78,.48],[.92,.2],[.9,.72],[.68,1],[.28,1],[.08,.86]]],
+    "-":[[[.12,.52],[.88,.52]]],
+    "_":[[[.08,1],[.92,1]]]
+  };
+
+  const WIDTH = {
+    I:.55,J:.78,L:.78,T:.88,"1":.62," ":.55,"-":.75,"_":.9
+  };
+
+  function glyphWidth(ch){ return WIDTH[ch] ?? 1; }
+
+  function textPaths(text, scale, spacing, offset){
+    const out=[];
+    let x=0;
+    const upper=text.toUpperCase();
+    for(const ch of upper){
+      if(ch===" "){ x += scale*(glyphWidth(ch)+spacing); continue; }
+      const glyph=F[ch];
+      if(!glyph) throw new Error("الحرف غير مدعوم حاليًا: " + ch);
+      const gw=glyphWidth(ch);
+      for(const stroke of glyph){
+        out.push(stroke.map(([px,py])=>[
+          x + px*scale*gw,
+          (py + offset*.03)*scale
+        ]));
+      }
+      x += scale*(gw + spacing);
+    }
+    return out;
   }
 
-  async function boot(){
-    try{
-      setStatus("جاري تحميل Python داخل المتصفح…");
-      pyodide = await loadPyodide();
-      setStatus("جاري تحميل SandSkrit المثبّت على نسخة محددة…");
-
-      const [core, chars] = await Promise.all([
-        fetchText(UPSTREAM_BASE + "sandskrit.py"),
-        fetchText(UPSTREAM_BASE + "characters_data.py")
-      ]);
-
-      pyodide.FS.writeFile("/home/pyodide/sandskrit.py", core);
-      pyodide.FS.writeFile("/home/pyodide/characters_data.py", chars);
-      await pyodide.runPythonAsync(`
-import os, sys
-os.chdir("/home/pyodide")
-if "/home/pyodide" not in sys.path:
-    sys.path.insert(0, "/home/pyodide")
-from sandskrit import SandSkrit
-`);
-
-      generateBtn.disabled = false;
-      setStatus("المحرك جاهز — SandSkrit يعمل محليًا داخل الصفحة", true);
-      await generate();
-    }catch(err){
-      console.error(err);
-      setStatus("تعذر تحميل SandSkrit: " + (err?.message || err));
+  function spiralPath(radius, turns){
+    const pts=[];
+    const steps=Math.max(180, Math.round(turns*90));
+    for(let i=0;i<=steps;i++){
+      const t=i/steps;
+      const a=t*turns*Math.PI*2 - Math.PI/2;
+      const r=radius*t;
+      pts.push([Math.cos(a)*r, Math.sin(a)*r]);
     }
+    return [pts];
+  }
+
+  function circlePath(radius){
+    const pts=[];
+    const steps=180;
+    for(let i=0;i<=steps;i++){
+      const a=(i/steps)*Math.PI*2 - Math.PI/2;
+      pts.push([Math.cos(a)*radius, Math.sin(a)*radius]);
+    }
+    return [pts];
   }
 
   function rdp(points, epsilon){
-    if(!epsilon || points.length < 3) return points.slice();
-
-    function perpendicular(p, a, b){
-      const dx=b[0]-a[0], dy=b[1]-a[1];
-      if(dx===0 && dy===0) return Math.hypot(p[0]-a[0],p[1]-a[1]);
-      const t=((p[0]-a[0])*dx+(p[1]-a[1])*dy)/(dx*dx+dy*dy);
-      const x=a[0]+t*dx, y=a[1]+t*dy;
-      return Math.hypot(p[0]-x,p[1]-y);
+    if(!epsilon || points.length<3) return points.slice();
+    function dist(p,a,b){
+      const dx=b[0]-a[0],dy=b[1]-a[1];
+      if(dx===0&&dy===0) return Math.hypot(p[0]-a[0],p[1]-a[1]);
+      const t=Math.max(0,Math.min(1,((p[0]-a[0])*dx+(p[1]-a[1])*dy)/(dx*dx+dy*dy)));
+      return Math.hypot(p[0]-(a[0]+t*dx),p[1]-(a[1]+t*dy));
     }
-
-    function simplify(arr){
-      if(arr.length<3) return arr.slice();
-      let max=0, idx=0;
-      for(let i=1;i<arr.length-1;i++){
-        const d=perpendicular(arr[i],arr[0],arr[arr.length-1]);
-        if(d>max){max=d;idx=i}
-      }
-      if(max>epsilon){
-        const left=simplify(arr.slice(0,idx+1));
-        const right=simplify(arr.slice(idx));
-        return left.slice(0,-1).concat(right);
-      }
-      return [arr[0],arr[arr.length-1]];
+    let max=0,idx=0;
+    for(let i=1;i<points.length-1;i++){
+      const d=dist(points[i],points[0],points[points.length-1]);
+      if(d>max){max=d;idx=i}
     }
-    return simplify(points);
+    if(max>epsilon){
+      const left=rdp(points.slice(0,idx+1),epsilon);
+      const right=rdp(points.slice(idx),epsilon);
+      return left.slice(0,-1).concat(right);
+    }
+    return [points[0],points[points.length-1]];
   }
 
-  function buildSvg(points, color){
-    if(!points.length) throw new Error("لا توجد نقاط في المسار");
-    const xs=points.map(p=>p[0]), ys=points.map(p=>p[1]);
+  function buildSvg(paths,color){
+    const valid=paths.filter(p=>p.length>1);
+    if(!valid.length) throw new Error("لا توجد مسارات");
+    const all=valid.flat();
+    const xs=all.map(p=>p[0]), ys=all.map(p=>p[1]);
     const minX=Math.min(...xs), maxX=Math.max(...xs), minY=Math.min(...ys), maxY=Math.max(...ys);
-    const width=Math.max(1,maxX-minX), height=Math.max(1,maxY-minY);
-    const pad=Math.max(width,height)*0.06 + 2;
-    const viewX=minX-pad, viewY=minY-pad, viewW=width+pad*2, viewH=height+pad*2;
-    const d=points.map((p,i)=>`${i?"L":"M"} ${p[0].toFixed(3)} ${p[1].toFixed(3)}`).join(" ");
+    const width=Math.max(1,maxX-minX),height=Math.max(1,maxY-minY);
+    const pad=Math.max(width,height)*.06+2;
+    const viewX=minX-pad,viewY=minY-pad,viewW=width+pad*2,viewH=height+pad*2;
+    const sw=Math.max(viewW,viewH)*.004;
+    const body=valid.map((pts,i)=>{
+      const d=pts.map((p,j)=>`${j?"L":"M"} ${p[0].toFixed(3)} ${p[1].toFixed(3)}`).join(" ");
+      return `<path id="laser-stroke-${i+1}" d="${d}" fill="none" stroke="${color}" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round"/>`;
+    }).join("");
     return {
-      svg:`<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewX.toFixed(3)} ${viewY.toFixed(3)} ${viewW.toFixed(3)} ${viewH.toFixed(3)}"><path d="${d}" fill="none" stroke="${color}" stroke-width="${Math.max(viewW,viewH)*0.004}" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
-      width, height
+      svg:`<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewX.toFixed(3)} ${viewY.toFixed(3)} ${viewW.toFixed(3)} ${viewH.toFixed(3)}" data-laser-svg="true">${body}</svg>`,
+      width,height,strokes:valid.length,points:all.length
     };
   }
 
-  async function generate(){
-    if(!pyodide) return;
-    generateBtn.disabled = true;
-    downloadBtn.disabled = true;
-    generateBtn.textContent = "جاري التوليد…";
-
+  function generate(){
+    generateBtn.disabled=true;
+    downloadBtn.disabled=true;
     try{
-      const cfg = {
-        mode: currentMode,
-        text: $("textInput").value || "ABODEN",
-        scale: Number($("scaleInput").value),
-        spacing: Number($("spacingInput").value),
-        offset: Number($("offsetInput").value),
-        radius: Number($("radiusInput").value),
-        turns: Number($("turnsInput").value)
+      const cfg={
+        text:$("textInput").value||"ABODEN",
+        scale:Number($("scaleInput").value),
+        spacing:Number($("spacingInput").value),
+        offset:Number($("offsetInput").value),
+        radius:Number($("radiusInput").value),
+        turns:Number($("turnsInput").value),
+        simplify:Number($("simplifyInput").value),
+        color:$("colorInput").value
       };
 
-      pyodide.globals.set("cfg_json", JSON.stringify(cfg));
-      const raw = await pyodide.runPythonAsync(`
-import json
-from sandskrit import SandSkrit
-cfg = json.loads(cfg_json)
+      let paths;
+      if(currentMode==="text") paths=textPaths(cfg.text,cfg.scale,cfg.spacing,cfg.offset);
+      else if(currentMode==="spiral") paths=spiralPath(cfg.radius,cfg.turns);
+      else paths=circlePath(cfg.radius);
 
-mode = cfg["mode"]
-if mode == "text":
-    sand = SandSkrit(0, 0)
-    sand.add_string(
-        cfg["text"],
-        scale=float(cfg["scale"]),
-        offset_up=float(cfg["offset"]),
-        character_spacing=float(cfg["spacing"])
-    )
-elif mode == "spiral":
-    sand = SandSkrit(0, 0)
-    sand.add_spiral_out(
-        radius=float(cfg["radius"]),
-        turns=float(cfg["turns"]),
-        ending_angle=0
-    )
-elif mode == "circle":
-    sand = SandSkrit(float(cfg["radius"]), 0)
-    sand.add_outer_loop(turns=1, ending_angle=0)
-else:
-    raise ValueError("Unknown mode")
+      const simplified=paths.map(p=>rdp(p,cfg.simplify));
+      const built=buildSvg(simplified,cfg.color);
+      currentSvg=built.svg;
+      currentName=currentMode==="text"
+        ? (cfg.text.trim().replace(/[^a-z0-9_-]+/gi,"-")||"text")+".svg"
+        : currentMode+".svg";
 
-json.dumps({"points": sand.points})
-`);
-
-      const result = JSON.parse(raw);
-      const original = result.points.map(p=>[Number(p[0]),Number(p[1])]);
-      const simplified = rdp(original, Number($("simplifyInput").value));
-      const built = buildSvg(simplified, $("colorInput").value);
-
-      currentSvg = built.svg;
-      currentName = currentMode === "text"
-        ? (cfg.text.trim().replace(/[^a-z0-9_-]+/gi,"-") || "text") + ".svg"
-        : currentMode + ".svg";
-
-      host.innerHTML = currentSvg;
-      $("pointMetric").textContent = `${simplified.length} نقطة · الأصل ${original.length}`;
-      $("sizeMetric").textContent = `${built.width.toFixed(1)} × ${built.height.toFixed(1)}`;
-      downloadBtn.disabled = false;
-      setStatus("تم توليد المسار بنجاح", true);
+      host.innerHTML=currentSvg;
+      $("pointMetric").textContent=`${built.points} نقطة · ${built.strokes} مسار`;
+      $("sizeMetric").textContent=`${built.width.toFixed(1)} × ${built.height.toFixed(1)}`;
+      downloadBtn.disabled=false;
+      setStatus("المولد جاهز — يعمل مباشرة على الجهاز",true);
     }catch(err){
       console.error(err);
-      host.innerHTML = `<div class="empty" style="color:#ff9fa8">فشل توليد المسار.<br>${String(err?.message || err).replaceAll("<","&lt;")}</div>`;
-      setStatus("خطأ في التوليد — راجع الحروف أو الإعدادات");
+      host.innerHTML=`<div class="empty" style="color:#ff9fa8">فشل توليد المسار.<br>${String(err?.message||err).replaceAll("<","&lt;")}</div>`;
+      setStatus("خطأ في التوليد: "+(err?.message||err),false);
     }finally{
-      generateBtn.disabled = false;
-      generateBtn.textContent = "توليد المسار";
+      generateBtn.disabled=false;
+      generateBtn.textContent="توليد المسار";
     }
   }
 
   function downloadSvg(){
     if(!currentSvg) return;
-    const blob = new Blob([currentSvg], {type:"image/svg+xml;charset=utf-8"});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = currentName;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
+    const blob=new Blob([currentSvg],{type:"image/svg+xml;charset=utf-8"});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement("a");
+    a.href=url;a.download=currentName;
+    document.body.appendChild(a);a.click();a.remove();
     setTimeout(()=>URL.revokeObjectURL(url),1000);
   }
 
@@ -342,7 +358,7 @@ json.dumps({"points": sand.points})
       controls.classList.toggle("show-text",currentMode==="text");
       controls.classList.toggle("show-shape",currentMode!=="text");
       $("turnsField").style.display=currentMode==="spiral"?"block":"none";
-      if(pyodide) generate();
+      generate();
     });
   });
 
@@ -354,7 +370,7 @@ json.dumps({"points": sand.points})
     });
   });
 
-  const rangeBindings=[
+  const bindings=[
     ["scaleInput","scaleVal",v=>v],
     ["spacingInput","spacingVal",v=>Number(v).toFixed(2)],
     ["offsetInput","offsetVal",v=>Number(v).toFixed(2)],
@@ -362,17 +378,20 @@ json.dumps({"points": sand.points})
     ["turnsInput","turnsVal",v=>v],
     ["simplifyInput","simplifyVal",v=>Number(v).toFixed(2)]
   ];
-  rangeBindings.forEach(([inputId,valueId,fmt])=>{
+  bindings.forEach(([inputId,valueId,fmt])=>{
     $(inputId).addEventListener("input",()=>{$(valueId).textContent=fmt($(inputId).value)});
   });
 
   $("textInput").addEventListener("input",()=>{$("charCount").textContent=$("textInput").value.length});
   generateBtn.addEventListener("click",generate);
   downloadBtn.addEventListener("click",downloadSvg);
-  $("colorInput").addEventListener("change",()=>{if(pyodide) generate()});
-  $("simplifyInput").addEventListener("change",()=>{if(pyodide) generate()});
+  $("colorInput").addEventListener("change",generate);
+  $("simplifyInput").addEventListener("change",generate);
 
-  boot();
+  generateBtn.disabled=false;
+  setStatus("المولد جاهز — بدون Python أو Pyodide",true);
+  generate();
+})();
 </script>
 </body>
 </html>
