@@ -15,11 +15,11 @@
 
 `/AR-Aboden/tools/laser-svg-maker/`
 
-الأداة تعمل بالكامل داخل المتصفح. يتم تحميل Pyodide ثم تحميل ملفات SandSkrit من نسخة upstream مثبتة على commit محدد.
+الأداة تعمل بالكامل داخل المتصفح باستخدام JavaScript مباشر بدون Pyodide أو Python، لتكون أخف وأكثر ثباتًا على iPhone/Safari. تصميم المسارات أحادية الخط مستلهم من SandSkrit.
 
 ## ما تدعمه النسخة الأولى
 
-- نصوص الحروف اللاتينية/الأرقام/الرموز التي يدعمها SandSkrit.
+- نصوص A–Z والأرقام 0–9 وبعض الرموز الأساسية بخط vector أحادي.
 - Spiral.
 - Circle.
 - تبسيط عدد النقاط قبل التصدير.
@@ -31,12 +31,11 @@
 - لا يوجد ربط بـ `index.html`.
 - لا يتم تعديل `laser.html`.
 - لا يتم تعديل ملفات `assets/laser/*.ild`.
-- لا يوجد تحويل SVG → ILD في هذه المرحلة.
+- لا يوجد تحويل SVG → ILD في هذه المرحلة؛ كل stroke يُصدر كـ SVG path مستقل تمهيدًا لإضافة blanking أثناء التحويل.
 - العربية تحتاج مسارات custom single-line خاصة بها؛ لن نحولها إلى font outlines مملوءة.
 
 ## المصدر
 
 SandSkrit by UnintelligibleMaker, MIT License.
 
-Pinned upstream commit:
-`c770ac5a51c1b196f58f4e82d9c2859be9359f2a`
+SandSkrit remains the design reference and attribution source; the browser runtime no longer downloads or executes its Python code.
