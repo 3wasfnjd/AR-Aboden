@@ -184,7 +184,7 @@
     import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
     import { Vehicle } from './js/Vehicle.js?v=drift-show-1';
-    import { ArenaAutopilot } from './js/ar/ArenaAutopilot.js?v=3';
+    import { ArenaAutopilot } from './js/ar/ArenaAutopilot.js?v=4';
     import { SmokeTrails } from './js/Particles.js?v=drift-show-1';
     import { DriftMarks } from './js/DriftMarks.js?v=drift-show-1';
 
@@ -693,7 +693,7 @@
       const carModel = await loadCar();
       const carModels = [
         carModel,
-        createCarVariant(carModel,0xe53935,'arena-car-red'),
+        createCarVariant(carModel,0xf5c400,'arena-car-yellow'),
         createCarVariant(carModel,0x1976d2,'arena-car-blue')
       ];
 
@@ -960,7 +960,8 @@
           scale,
           roadRadius:ARENA_ROAD_RADIUS,
           carRadius:carFootprint,
-          startAngle:startAngles[i]||0
+          startAngle:startAngles[i]||0,
+          introLap:i===0
         });
 
         autopilots.push(ai);
@@ -982,7 +983,7 @@
       scalePanel.style.display = 'none';
       placeBtn.textContent = 'نقل الحلبة';
       setStatus('عرض الدرفت يعمل تلقائيًا', true);
-      notify('بدأ عرض الدرفت');
+      notify('السيارة الأولى تبدأ بلفة ثم يدخل عرض الدرفت');
 
       if (navigator.vibrate) navigator.vibrate(30);
     }
