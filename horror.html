@@ -719,7 +719,8 @@
       const hit=raycaster.ray.intersectPlane(floorPlane,hitPoint);
       const camPos=camera.getWorldPosition(new THREE.Vector3());
 
-      if(!hit||hit.distanceTo(camPos)>.18&&hit.distanceTo(camPos)>7){
+      const hitDistance=hit?hit.distanceTo(camPos):Infinity;
+      if(!hit||hitDistance<.18||hitDistance>7){
         reticleEl.classList.remove('on');
         stableMs=Math.max(0,stableMs-dt*900);
         surfaceReady=false;
