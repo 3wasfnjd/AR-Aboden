@@ -182,9 +182,15 @@
   <script type="module">
     import * as THREE from 'three';
     import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+    import { updateWorld } from 'crashcat';
 
-    import { Vehicle } from './js/Vehicle.js?v=drift-show-1';
-    import { ArenaAutopilot } from './js/ar/ArenaAutopilot.js?v=5';
+    import { Vehicle } from './js/Vehicle.js?v=hajwala-physics-1';
+    import { ArenaAutopilot } from './js/ar/ArenaAutopilot.js?v=6';
+    import {
+      createVehicleWorld,
+      createArenaPhysics,
+      createVehicleBody
+    } from './js/Physics.js?v=hajwala-physics-1';
 
     import { SmokeTrails } from './js/Particles.js?v=drift-show-1';
     import { DriftMarks } from './js/DriftMarks.js?v=drift-show-1';
@@ -266,6 +272,8 @@
     let vehicle = null;
     const vehicles = [];
     const autopilots = [];
+    let physicsWorld = null;
+    let physicsArena = null;
     let smokeTrails = null;
     let driftMarks = null;
     let placed = false;
@@ -900,13 +908,19 @@
           arena:arenaGroup.position.toArray(),placed});
         if(diagnostics.length>240) diagnostics.shift();
       }
-      if(!canDrive || !autopilots.length) return;
+      if(!canDrive || !autopilots.length || !physicsWorld) return;
+
+      // Same ordering as Hajwala: advance Crashcat/Jolt first, then apply
+      // this frame's steering/throttle/handbrake inputs to each vehicle.
+      updateWorld(physicsWorld,null,dt);
 
       for(let i=0;i<vehicles.length;i++){
         const car=vehicles[i];
         const ai=autopilots[i];
         if(!car||!ai)continue;
-        car.updateAutonomous(ai.update(dt),dt);
+
+        const input=ai.updateControls(dt,car);
+        car.update(dt,input);
       }
 
       smokeTrails?.update(dt,vehicle);
@@ -947,15 +961,27 @@
       shadowPlane.visible = true;
 
       const scaledVehicleRadius = vehicleRadius * scale;
-      const spawn = new THREE.Vector3(
-        arenaCenter.x,
-        roadY + scaledVehicleRadius,
-        arenaCenter.z
-      );
 
       applyEffectScale(scale);
       smokeTrails?.reset();
       driftMarks?.reset();
+
+      // Fresh physical world per placement so floor/wall dimensions always
+      // match the currently selected AR scale.
+      physicsWorld=createVehicleWorld();
+      physicsArena=createArenaPhysics(
+        physicsWorld,
+        arenaCenter.x,
+        arenaCenter.z,
+        {
+          radius:ARENA_ROAD_RADIUS*scale,
+          segments:36,
+          wallThickness:.09*scale,
+          wallHeight:.22*scale,
+          floorMargin:.30*scale,
+          floorY:roadY
+        }
+      );
 
       autopilots.length=0;
       const startAngles=[0,(Math.PI*2)/3,(Math.PI*4)/3];
@@ -964,6 +990,10 @@
         const car=vehicles[i];
         car.container.scale.setScalar(scale);
         car.sphereRadius=scaledVehicleRadius;
+
+        // Hajwala uses the same Vehicle physics at every visual scale. Scaling
+        // max speed with the AR arena keeps the same perceived car-lengths/sec.
+        car.maxSpeedMultiplier=scale;
 
         const ai=new ArenaAutopilot({
           center:arenaCenter,
@@ -975,12 +1005,22 @@
           introLap:i===0
         });
 
-        autopilots.push(ai);
+        const initial=ai.getInitialPose();
+        const spawn=new THREE.Vector3(
+          initial.x,
+          roadY+scaledVehicleRadius,
+          initial.z
+        );
 
-        // place() initializes all Vehicle visual state, then the AI pose
-        // immediately moves each car to its own staggered starting position.
-        car.place(spawn,startAngles[i]||0);
-        car.updateAutonomous(ai.update(0),0);
+        const body=createVehicleBody(
+          physicsWorld,
+          [spawn.x,spawn.y,spawn.z],
+          scaledVehicleRadius
+        );
+
+        car.attachPhysics(physicsWorld,body,scaledVehicleRadius);
+        car.place(spawn,initial.heading);
+        autopilots.push(ai);
       }
 
       autopilot=autopilots[0]||null;
@@ -1013,6 +1053,14 @@
 
       autopilot = null;
       autopilots.length=0;
+      physicsArena=null;
+      physicsWorld=null;
+
+      for(const car of vehicles){
+        car.rigidBody=null;
+        car.physicsWorld=null;
+      }
+
       smokeTrails?.reset();
       driftMarks?.reset();
 
