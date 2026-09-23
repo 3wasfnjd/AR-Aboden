@@ -184,13 +184,13 @@
     import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
     import { updateWorld } from 'crashcat';
 
-    import { Vehicle } from './js/Vehicle.js?v=hajwala-physics-1';
-    import { ArenaAutopilot } from './js/ar/ArenaAutopilot.js?v=6';
+    import { Vehicle } from './js/Vehicle.js?v=hajwala-physics-2';
+    import { ArenaAutopilot } from './js/ar/ArenaAutopilot.js?v=7';
     import {
       createVehicleWorld,
       createArenaPhysics,
       createVehicleBody
-    } from './js/Physics.js?v=hajwala-physics-1';
+    } from './js/Physics.js?v=hajwala-physics-2';
 
     import { SmokeTrails } from './js/Particles.js?v=drift-show-1';
     import { DriftMarks } from './js/DriftMarks.js?v=drift-show-1';
@@ -274,6 +274,7 @@
     const autopilots = [];
     let physicsWorld = null;
     let physicsArena = null;
+    const physicsContactListener = { onContactAdded(){} };
     let smokeTrails = null;
     let driftMarks = null;
     let placed = false;
@@ -912,7 +913,7 @@
 
       // Same ordering as Hajwala: advance Crashcat/Jolt first, then apply
       // this frame's steering/throttle/handbrake inputs to each vehicle.
-      updateWorld(physicsWorld,null,dt);
+      updateWorld(physicsWorld,physicsContactListener,dt);
 
       for(let i=0;i<vehicles.length;i++){
         const car=vehicles[i];
@@ -993,7 +994,7 @@
 
         // Hajwala uses the same Vehicle physics at every visual scale. Scaling
         // max speed with the AR arena keeps the same perceived car-lengths/sec.
-        car.maxSpeedMultiplier=scale;
+        car.maxSpeedMultiplier=1.4*scale;
 
         const ai=new ArenaAutopilot({
           center:arenaCenter,
