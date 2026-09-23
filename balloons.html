@@ -557,7 +557,7 @@
         sprite,type,velocity:velocity.clone(),life,maxLife:life,
         startSize:size,growth,baseOpacity:opacity,drag,buoyancy,gravity
       });
-      if(fxParticles.length>340){
+      if(fxParticles.length>180){
         const old=fxParticles.shift();
         scene.remove(old.sprite);
         old.sprite.material.dispose();
@@ -663,7 +663,7 @@
       });
 
       const rear=direction.clone().multiplyScalar(-.75);
-      for(let i=0;i<5;i++){
+      for(let i=0;i<2;i++){
         const v=rear.clone()
           .add(new THREE.Vector3(
             THREE.MathUtils.randFloatSpread(.35),
@@ -671,7 +671,7 @@
             THREE.MathUtils.randFloatSpread(.35)
           ))
           .multiplyScalar(THREE.MathUtils.randFloat(.22,.50));
-        spawnSmokePuff(position,v,THREE.MathUtils.randFloat(.045,.075),THREE.MathUtils.randFloat(.38,.65),i<2);
+        spawnSmokePuff(position,v,THREE.MathUtils.randFloat(.04,.06),THREE.MathUtils.randFloat(.28,.45),i<1);
       }
       addBlastLight(position,1.4,.7,.09,0xffa14a);
     }
@@ -705,7 +705,7 @@
         });
       }
 
-      for(let i=0;i<10;i++){
+      for(let i=0;i<4;i++){
         const v=new THREE.Vector3(
           THREE.MathUtils.randFloatSpread(1),
           THREE.MathUtils.randFloat(.05,.9),
@@ -718,9 +718,9 @@
             THREE.MathUtils.randFloatSpread(.09)
           )),
           v,
-          THREE.MathUtils.randFloat(.09,.16),
-          THREE.MathUtils.randFloat(.75,1.35),
-          i<5
+          THREE.MathUtils.randFloat(.07,.12),
+          THREE.MathUtils.randFloat(.48,.82),
+          i<2
         );
       }
 
@@ -1290,8 +1290,8 @@
         r.trailTimer+=dt;
         const homingTrail=r.type==='homing';
         const interval=homingTrail
-          ? (r.age<.18?.026:.050)
-          : (r.age<.20?.024:.040);
+          ? (r.age<.18?.060:.095)
+          : (r.age<.20?.055:.085);
 
         while(r.trailTimer>=interval){
           r.trailTimer-=interval;
@@ -1321,12 +1321,12 @@
             rear,
             v,
             homingTrail
-              ? THREE.MathUtils.randFloat(.024,.036)
-              : THREE.MathUtils.randFloat(.026,.038),
+              ? THREE.MathUtils.randFloat(.020,.030)
+              : THREE.MathUtils.randFloat(.022,.032),
             homingTrail
-              ? THREE.MathUtils.randFloat(1.65,2.25)
-              : THREE.MathUtils.randFloat(.48,.78),
-            homingTrail ? Math.random()<.58 : Math.random()<.28
+              ? THREE.MathUtils.randFloat(.65,1.00)
+              : THREE.MathUtils.randFloat(.32,.52),
+            homingTrail ? Math.random()<.35 : Math.random()<.18
           );
         }
 
