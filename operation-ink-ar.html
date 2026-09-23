@@ -58,7 +58,7 @@
     .crosshair:before,.crosshair:after{content:"";position:absolute;background:rgba(255,255,255,.95);border-radius:3px}
     .crosshair:before{width:2px;height:40px;left:19px;top:0}
     .crosshair:after{width:40px;height:2px;left:0;top:19px}
-    .crosshair i{position:absolute;width:6px;height:6px;border-radius:50%;background:#ef4d54;left:17px;top:17px;box-shadow:0 0 8px #ef4d54}
+    .crosshair i{position:absolute;width:6px;height:6px;border-radius:50%;background:#25c9ff;left:17px;top:17px;box-shadow:0 0 8px #25c9ff}
     .guide{
       position:absolute;left:50%;top:36%;transform:translate(-50%,-50%);
       width:min(88vw,430px);padding:12px 16px;text-align:center;line-height:1.8;
@@ -107,10 +107,23 @@
       font-size:11px;font-weight:900;line-height:1.5
     }
     .damage{
-      position:fixed;inset:0;z-index:18;pointer-events:none;background:rgba(190,0,0,0);
-      transition:background .14s
+      position:fixed;inset:0;z-index:18;pointer-events:none;overflow:hidden
     }
-    .damage.hit{background:rgba(190,0,0,.22)}
+    .paint-hit{
+      position:absolute;width:clamp(90px,28vw,140px);height:clamp(90px,28vw,140px);
+      background:radial-gradient(ellipse at 47% 48%,var(--paint-color) 0 27%,transparent 28%),
+        radial-gradient(ellipse at 62% 32%,var(--paint-color) 0 11%,transparent 12%),
+        radial-gradient(ellipse at 28% 63%,var(--paint-color) 0 13%,transparent 14%),
+        radial-gradient(circle at 77% 68%,var(--paint-color) 0 5%,transparent 6%),
+        radial-gradient(circle at 23% 24%,var(--paint-color) 0 4%,transparent 5%),
+        radial-gradient(circle at 58% 84%,var(--paint-color) 0 3%,transparent 4%);
+      animation:paint-hit .75s ease-out forwards
+    }
+    @keyframes paint-hit{
+      0%{opacity:0;transform:rotate(var(--splat-angle)) scale(.55)}
+      14%,55%{opacity:.78;transform:rotate(var(--splat-angle)) scale(1)}
+      100%{opacity:0;transform:rotate(var(--splat-angle)) scale(1.07)}
+    }
     .toast{
       position:absolute;left:50%;top:13%;transform:translate(-50%,-7px);
       opacity:0;transition:.2s;background:rgba(4,8,14,.84);border:1px solid rgba(255,255,255,.14);
@@ -151,7 +164,7 @@
   <div class="ui" id="gameUi" style="display:none">
     <div class="top">
       <div class="pill health"><span>وضع تجربة</span><b id="healthText">∞</b></div>
-      <div class="pill">OPERATION AR</div>
+      <div class="pill">كرات الألوان</div>
     </div>
 
     <div class="status" id="statusText">امسح الأرضية ببطء</div>
@@ -180,10 +193,10 @@
   <div id="intro">
     <div class="card">
       <h1>عملية الإنقاذ — AR</h1>
-      <p>تجربة قتال واقع معزز مستوحاة من Operation Safe Return. امسح أرضية الغرفة، ثم تظهر وحدات معادية تتحرك وتعيد التموضع وتهاجمك. اختر سلاحك وابدأ المواجهة.</p>
+      <p>تحدّي كرات الألوان بالواقع المعزز. امسح أرضية الغرفة، ثم أصب الجنود بكراتك الزرقاء وتجنّب كراتهم البرتقالية. اختر سلاحك وابدأ المواجهة.</p>
       <button class="start" id="startBtn" disabled>جاري تجهيز محرك AR…</button>
       <div class="error" id="errorBox"></div>
-      <p class="tiny">تجربة مجانية غير تجارية. أصوات القتال المستخدمة هنا من أصول CC0 فقط.</p>
+      <p class="tiny">وضع تجربة بصحة غير محدودة — المس الشاشة للإطلاق.</p>
     </div>
   </div>
 
@@ -198,7 +211,7 @@
   <script type="module">
     import * as THREE from 'three';
     import { GroundPlacement } from './js/ar/GroundPlacement.js?v=3';
-    import { OperationInkCombat, WEAPONS } from './js/ar/OperationInkCombat.js?v=2';
+    import { OperationInkCombat, WEAPONS } from './js/ar/OperationInkCombat.js?v=3';
 
     window.THREE=THREE;
 
@@ -234,15 +247,7 @@
     const stablePoint=new THREE.Vector3();
     let previewInitialized=false;
 
-    let audioCtx=null,audioMaster=null;
-    const sounds={};
-    const SOUND_BASE='https://raw.githubusercontent.com/byteab/operation-ink/main/public/sounds/';
-    const soundFiles={
-      pistol:'shot_pistol_0.m4a',
-      rifle:'shot_rifle_0.m4a',
-      hit:'hit_flesh_0.m4a',
-      world:'hit_world_0.m4a'
-    };
+    let audioCtx=null,audioMaster=null,audioNoise=null,lastPaintImpact=-Infinity;
 
     function syncVisualViewport(){
       const vv=window.visualViewport;
@@ -269,45 +274,51 @@
       if(!audioCtx){
         audioCtx=new (window.AudioContext||window.webkitAudioContext)();
         audioMaster=audioCtx.createGain();audioMaster.gain.value=.72;audioMaster.connect(audioCtx.destination);
+        audioNoise=audioCtx.createBuffer(1,Math.ceil(audioCtx.sampleRate*.12),audioCtx.sampleRate);
+        const samples=audioNoise.getChannelData(0);
+        for(let i=0;i<samples.length;i++)samples[i]=Math.random()*2-1;
       }
       if(audioCtx.state==='suspended') audioCtx.resume().catch(()=>{});
       return audioCtx;
     }
 
-    async function loadSound(key,file){
-      try{
-        const ctx=ensureAudio();
-        const res=await fetch(SOUND_BASE+file,{mode:'cors'});
-        if(!res.ok) throw new Error('HTTP '+res.status);
-        sounds[key]=await ctx.decodeAudioData(await res.arrayBuffer());
-      }catch(err){console.warn('sound fallback',key,err);}
+    function playPaintSound({impact=false,enemy=false}={}){
+      const ctx=ensureAudio(),now=ctx.currentTime;
+      if(impact && now-lastPaintImpact<.035)return;
+      if(impact)lastPaintImpact=now;
+      const duration=impact?.10:.065,volume=enemy?.13:impact?.23:.32;
+      const noise=ctx.createBufferSource(),filter=ctx.createBiquadFilter(),envelope=ctx.createGain();
+      noise.buffer=audioNoise;filter.type='bandpass';filter.frequency.value=impact?850:1500;filter.Q.value=.65;
+      envelope.gain.setValueAtTime(volume,now);envelope.gain.exponentialRampToValueAtTime(.001,now+duration);
+      noise.connect(filter);filter.connect(envelope);envelope.connect(audioMaster);
+      const pop=ctx.createOscillator(),popGain=ctx.createGain();
+      pop.type='sine';pop.frequency.setValueAtTime(impact?220:430,now);pop.frequency.exponentialRampToValueAtTime(80,now+duration);
+      popGain.gain.setValueAtTime(volume*.65,now);popGain.gain.exponentialRampToValueAtTime(.001,now+duration);
+      pop.connect(popGain);popGain.connect(audioMaster);
+      noise.start(now);noise.stop(now+duration);pop.start(now);pop.stop(now+duration);
+      noise.onended=()=>{noise.disconnect();filter.disconnect();envelope.disconnect();pop.disconnect();popGain.disconnect();};
     }
 
-    function preloadSounds(){
-      return Promise.allSettled(Object.entries(soundFiles).map(([k,v])=>loadSound(k,v)));
-    }
-
-    function playSound(key,{rate=1,gain=.55}={}){
-      const ctx=ensureAudio(),buffer=sounds[key];
-      if(!buffer||!audioMaster) return;
-      const src=ctx.createBufferSource(),g=ctx.createGain();
-      src.buffer=buffer;src.playbackRate.value=rate;g.gain.value=gain;
-      src.connect(g);g.connect(audioMaster);src.start();
+    function showPaintHit(color){
+      while(damageFlash.childElementCount>=3)damageFlash.firstElementChild.remove();
+      const splat=document.createElement('i');splat.className='paint-hit';
+      splat.style.setProperty('--paint-color','#'+(color??0xffae26).toString(16).padStart(6,'0'));
+      splat.style.setProperty('--splat-angle',Math.round(Math.random()*360)+'deg');
+      splat.style.left=(Math.random()>.5?4:73)+'%';splat.style.top=(30+Math.random()*35)+'%';
+      damageFlash.append(splat);splat.addEventListener('animationend',()=>splat.remove(),{once:true});
     }
 
     function combatEvent(e){
       if(e.type==='player-shot'){
-        if(e.weapon==='pistol') playSound('pistol',{gain:.64});
-        else playSound('rifle',{gain:e.weapon==='shotgun'?.82:.68,rate:e.weapon==='sniper'?.78:e.weapon==='smg'?1.14:1});
+        playPaintSound();
       }else if(e.type==='enemy-shot'){
-        playSound(e.weapon==='pistol'?'pistol':'rifle',{gain:.26,rate:.92+Math.random()*.14});
+        playPaintSound({enemy:true});
       }else if(e.type==='enemy-hit'){
-        playSound('hit',{gain:.36,rate:.94+Math.random()*.10});
+        playPaintSound({impact:true});
       }else if(e.type==='world-hit'){
-        playSound('world',{gain:.22,rate:1.05});
+        playPaintSound({impact:true,enemy:true});
       }else if(e.type==='player-hit'){
-        damageFlash.classList.add('hit');
-        setTimeout(()=>damageFlash.classList.remove('hit'),100);
+        showPaintHit(e.color);playPaintSound({impact:true,enemy:true});
         if(navigator.vibrate) navigator.vibrate(25);
       }else if(e.type==='weapon-change'){
         notify('السلاح: '+(WEAPONS[e.weapon]?.label||e.weapon));
@@ -416,7 +427,6 @@
       const key=new THREE.DirectionalLight(0xffffff,1.55);key.position.set(2,5,1);key.castShadow=true;scene.add(key);
       createReticle();
       placement.reset();
-      await preloadSounds();
       sceneReady=true;lastTick=performance.now();
       intro.style.display='none';gameUi.style.display='block';
       statusText.textContent='حرّك الجوال لمسح الأرضية';
@@ -455,6 +465,7 @@
     function recenter(){
       if(!xrStarted) return;
       if(combat){combat.dispose();combat=null;}
+      damageFlash.replaceChildren();
       placed=false;groundRing.visible=false;reticle.visible=false;previewInitialized=false;
       latestWorldPoints=[];nextGroundSample=0;placement.reset();
       guide.classList.remove('hidden');statusText.textContent='أعد مسح الأرضية أمامك';

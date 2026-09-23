@@ -18,18 +18,23 @@ Enemy roots and the GLB both face +Z. Every live AI state turns toward the curre
 
 Animation clips used when present: `Idle`, `Walk`, `Idle_Shoot`, `Walk_Shoot`, and `Death`. The primitive soldier remains as a fallback if the external GLB cannot be loaded.
 
+## Enemy movement
+
+Spawns and movement stay in a forward sector relative to the phone's horizontal viewing direction: 1.8–5.8 m forward, with lateral distance capped at 65% of forward distance. Spawn spread also respects the camera's horizontal field of view. Each soldier independently chooses short paths, speed changes and pauses; walking animation timing follows its individual speed. Separation checks prevent walking through another soldier. The old shared circular patrol and player-encircling reposition are removed. All living soldiers keep facing the phone.
+
+If a camera turn puts a soldier behind the view, it re-enters ahead from outside the view rather than circling behind the user. The captured floor height stays fixed. When the phone points straight down, movement keeps the last usable horizontal heading.
+
+## Paintball mode
+
+Player shots are blue paintballs and enemy shots are orange. Balls travel from the weapon muzzle; segment raycasts detect contact during flight, so damage and impact feedback occur on arrival. Paintballs retain the weapon's damage at launch, even if the player switches weapons during flight. Enemy balls target the tracked phone and can be dodged; invincible test mode remains enabled.
+
+Stains last six seconds on soldiers or the captured floor. Soldier stains are aligned to the visible mesh and follow a nearby bone. Real walls/furniture are not collision surfaces because this experiment only captures the ground plane. Phone hits show a brief orange stain near the screen edge.
+
+`PaintballEffects.js` renders balls and spray droplets in one instanced draw. Limits: 48 balls, 80 droplets, 24 stains. Stains fade out, and reset/dispose clears all paint effects. Projectiles pause while tracking is unavailable.
+
 ## Audio
 
-This experiment intentionally does **not** use the Project I.G.I. recordings present in `operation-ink/public/sounds/igi/`.
-
-It loads only the fallback sound files credited as CC0 by the upstream project:
-
-- `shot_pistol_0.m4a`
-- `shot_rifle_0.m4a`
-- `hit_flesh_0.m4a`
-- `hit_world_0.m4a`
-
-Upstream credits identify these as derived from OpenGameArt/Kenney CC0 assets. See the upstream `public/sounds/CREDITS.md` for the original source links and processing notes.
+Short air-pop and splat sounds are synthesized with Web Audio after a user gesture. This mode does not download or play firearm/flesh recordings. Noise is reused from one small audio buffer and each sound's nodes disconnect after playback.
 
 ## Upstream MIT notice
 
