@@ -23,7 +23,7 @@
       box-sizing:border-box;-webkit-tap-highlight-color:transparent;
       -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-user-drag:none
     }
-    :root{--app-w:100vw;--app-h:100dvh}
+    :root{--app-w:100vw;--app-h:100dvh;--active-paint:#25c9ff}
     html,body{
       margin:0;width:100%;height:100%;overflow:hidden;background:#02050a;
       -webkit-text-size-adjust:100%;text-size-adjust:100%;touch-action:none
@@ -53,7 +53,7 @@
     .crosshair:before,.crosshair:after{content:"";position:absolute;background:rgba(255,255,255,.95);border-radius:3px}
     .crosshair:before{width:2px;height:40px;left:19px;top:0}
     .crosshair:after{width:40px;height:2px;left:0;top:19px}
-    .crosshair i{position:absolute;width:6px;height:6px;border-radius:50%;background:#25c9ff;left:17px;top:17px;box-shadow:0 0 8px #25c9ff}
+    .crosshair i{position:absolute;width:6px;height:6px;border-radius:50%;background:var(--active-paint);left:17px;top:17px;box-shadow:0 0 8px var(--active-paint)}
     .guide{
       position:absolute;left:50%;top:36%;transform:translate(-50%,-50%);
       width:min(88vw,430px);padding:12px 16px;text-align:center;line-height:1.8;
@@ -82,7 +82,7 @@
       border-radius:11px;border:1px solid rgba(255,255,255,.08);
       background:rgba(255,255,255,.035);color:#d7dde5
     }
-    .weapon.selected{background:#fff;color:#091018;border-color:#fff}
+    .weapon.selected{background:rgba(255,255,255,.14);border-color:var(--weapon-color);box-shadow:inset 0 0 0 1px var(--weapon-color)}
     .weapon canvas{width:48px;height:28px;display:block;pointer-events:none}
     .damage{
       position:fixed;inset:0;z-index:18;pointer-events:none;overflow:hidden
@@ -142,8 +142,8 @@
   <div class="ui" id="gameUi" style="display:none">
     <div class="status" id="statusText">جاري تثبيت الساحة…</div>
     <div class="guide" id="guide">
-      <b>ثبّت الجوال لحظة</b>
-      ستظهر المواجهة تلقائيًا أمامك بدون مسح دقيق أو زر تثبيت.
+      <b>وجّه الجوال أمامك</b>
+      ستظهر المواجهة تلقائيًا عند بدء التتبع، بدون مسح دقيق أو زر تثبيت.
     </div>
     <div class="crosshair" id="crosshair"><i></i></div>
     <div class="toast" id="toast"></div>
@@ -156,7 +156,7 @@
   <div id="intro">
     <div class="card">
       <h1>عملية الإنقاذ — AR</h1>
-      <p>تحدّي كرات الألوان بالواقع المعزز. بعد فتح الكاميرا ستظهر المواجهة تلقائيًا أمامك، ثم أصب الجنود بكراتك الزرقاء وتجنّب كراتهم البرتقالية.</p>
+      <p>تحدّي كرات الألوان بالواقع المعزز. بعد فتح الكاميرا ستظهر المواجهة تلقائيًا أمامك. لكل سلاح لون، ولكل جندي لون مختلف — وكرات الرمي وآثارها تطابق لون صاحبها.</p>
       <button class="start" id="startBtn" disabled>جاري تجهيز محرك AR…</button>
       <div class="error" id="errorBox"></div>
       <p class="tiny">وضع تجربة بصحة غير محدودة — المس الشاشة للإطلاق.</p>
@@ -173,8 +173,8 @@
 
   <script type="module">
     import * as THREE from 'three';
-    import { GroundPlacement } from './js/ar/GroundPlacement.js?v=3';
-    import { OperationInkCombat, WEAPONS } from './js/ar/OperationInkCombat.js?v=3';
+    import { FastTrackingGate } from './js/ar/FastTrackingGate.js?v=1';
+    import { OperationInkCombat, WEAPONS, preloadSoldierAsset } from './js/ar/OperationInkCombat.js?v=4';
 
     window.THREE=THREE;
 
@@ -194,16 +194,13 @@
 
     let xrReady=false,xrStarted=false,scene,camera,renderer,combat=null;
     let lastTick=performance.now(),sceneReady=false;
-    let placed=false,reticle=null,groundRing=null;
-    const placement=new GroundPlacement();
+    let placed=false,groundRing=null;
+    const trackingGate=new FastTrackingGate();
     const raycaster=new THREE.Raycaster();
     const centerNdc=new THREE.Vector2(0,0);
     const groundPlane=new THREE.Plane(new THREE.Vector3(0,1,0),0);
     const hitPoint=new THREE.Vector3();
-    const stablePoint=new THREE.Vector3();
     const estimatedForward=new THREE.Vector3(0,0,-1);
-    let previewInitialized=false;
-    const FAST_TRACKING_DELAY=280;
 
     let audioCtx=null,audioMaster=null,audioNoise=null,lastPaintImpact=-Infinity;
 
@@ -288,18 +285,18 @@
     }
 
     function updateHud(h){
+      document.documentElement.style.setProperty('--active-paint','#'+WEAPONS[h.weapon].color.toString(16).padStart(6,'0'));
       document.querySelectorAll('.weapon').forEach(button=>{
         const selected=button.dataset.weapon===h.weapon;
         button.classList.toggle('selected',selected);button.setAttribute('aria-pressed',String(selected));
-        drawWeaponIcon(button.querySelector('canvas'),button.dataset.weapon,selected);
       });
     }
 
-    function drawWeaponIcon(canvas,name,selected=false){
+    function drawWeaponIcon(canvas,name){
       const ratio=Math.min(window.devicePixelRatio||1,2),w=48,h=28;
       canvas.width=w*ratio;canvas.height=h*ratio;
       const ctx=canvas.getContext('2d');ctx.scale(ratio,ratio);
-      ctx.fillStyle=selected?'#071019':'#e8f0f6';ctx.strokeStyle=ctx.fillStyle;
+      ctx.fillStyle='#'+WEAPONS[name].color.toString(16).padStart(6,'0');ctx.strokeStyle=ctx.fillStyle;
       ctx.lineWidth=2;ctx.lineCap='round';ctx.lineJoin='round';
       const polygon=points=>{
         ctx.beginPath();ctx.moveTo(points[0][0],points[0][1]);
@@ -326,32 +323,26 @@
         ctx.fillRect(20,6,13,3);ctx.beginPath();ctx.arc(20,7.5,2.4,0,Math.PI*2);ctx.fill();
         polygon([[17,17],[22,17],[20,23],[17,23]]);
       }
-      ctx.fillStyle='#25c9ff';ctx.beginPath();ctx.arc(45,11,1.5,0,Math.PI*2);ctx.fill();
+      ctx.beginPath();ctx.arc(45,11,1.5,0,Math.PI*2);ctx.fill();
     }
 
     function buildWeaponSelector(){
       for(const name of ['pistol','ak','smg','shotgun','sniper']){
         const button=document.createElement('button'),icon=document.createElement('canvas');
         button.type='button';button.className='weapon';button.dataset.weapon=name;
+        button.style.setProperty('--weapon-color','#'+WEAPONS[name].color.toString(16).padStart(6,'0'));
+        button.classList.toggle('selected',name==='ak');
         button.setAttribute('aria-label',WEAPONS[name].label);button.setAttribute('aria-pressed',String(name==='ak'));
-        button.append(icon);weaponStrip.append(button);drawWeaponIcon(icon,name,name==='ak');
+        button.append(icon);weaponStrip.append(button);drawWeaponIcon(icon,name);
       }
     }
 
     buildWeaponSelector();
+    // Download/parse while the intro/AR engine is loading, not after placement.
+    // Combat still has its primitive fallback if this request is slow or fails.
+    preloadSoldierAsset();
 
-    function createReticle(){
-      reticle=new THREE.Group();
-      const ring=new THREE.Mesh(
-        new THREE.RingGeometry(.09,.12,40).rotateX(-Math.PI/2),
-        new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:.95,depthWrite:false})
-      );
-      const outer=new THREE.Mesh(
-        new THREE.RingGeometry(.45,.465,64).rotateX(-Math.PI/2),
-        new THREE.MeshBasicMaterial({color:0x6adfff,transparent:true,opacity:.50,depthWrite:false})
-      );
-      reticle.add(ring,outer);reticle.visible=false;scene.add(reticle);
-
+    function createGroundRing(){
       groundRing=new THREE.Mesh(
         new THREE.RingGeometry(2.15,2.18,96).rotateX(-Math.PI/2),
         new THREE.MeshBasicMaterial({color:0xd7e4ee,transparent:true,opacity:.11,depthWrite:false})
@@ -364,15 +355,14 @@
       combat=new OperationInkCombat({scene,camera,onEvent:combatEvent,onHud:updateHud});
       combat.reset(anchor);
       groundRing.position.copy(anchor);groundRing.position.y+=.006;groundRing.visible=true;
-      placed=true;reticle.visible=false;guide.classList.add('hidden');
+      placed=true;guide.classList.add('hidden');
       statusText.textContent='المواجهة بدأت — المس أي مكان للإطلاق';
       notify('بدأت المواجهة');
     }
 
-    function updatePlacement(dt,now){
-      if(placed){reticle.visible=false;return;}
-      if(!fastTrackingReady(now)){
-        reticle.visible=false;previewInitialized=false;
+    function updatePlacement(now){
+      if(placed)return;
+      if(!trackingGate.ready(now)){
         statusText.textContent='جاري تثبيت الساحة…';
         return;
       }
@@ -384,23 +374,15 @@
         if(estimatedForward.lengthSq()<.01)estimatedForward.set(0,0,-1);else estimatedForward.normalize();
         camera.getWorldPosition(hitPoint);hitPoint.addScaledVector(estimatedForward,2.8);hitPoint.y=0;
       }
-      if(!previewInitialized){stablePoint.copy(hitPoint);previewInitialized=true;}
-      else stablePoint.lerp(hitPoint,1-Math.exp(-18*dt));
-      reticle.position.copy(stablePoint);reticle.position.y+=.008;reticle.visible=true;
-      statusText.textContent='بدء المواجهة…';
-      if(now-placement.normalSince>=FAST_TRACKING_DELAY+100)createCombat(stablePoint.clone());
-    }
-
-    function fastTrackingReady(now){
-      return placement.status==='NORMAL' && placement.normalSince!==null &&
-        now-placement.normalSince>=FAST_TRACKING_DELAY && now-placement.lastTracking<=250;
+      // Capture once: do not drag the arena with later camera movement.
+      createCombat(hitPoint.clone());
     }
 
     function tick(now){
       if(!sceneReady||!camera) return;
       const dt=Math.min(.05,Math.max(0,(now-lastTick)/1000||.016));lastTick=now;
-      updatePlacement(dt,now);
-      const tracking=fastTrackingReady(now);
+      updatePlacement(now);
+      const tracking=trackingGate.ready(now);
       if(combat){combat.setTracking(tracking);combat.update(dt);}
       if(placed && !tracking) statusText.textContent='التتبع ضعيف — حرّك الجوال ببطء';
       else if(placed) statusText.textContent='المواجهة تعمل';
@@ -413,8 +395,8 @@
       syncVisualViewport();
       scene.add(new THREE.HemisphereLight(0xffffff,0x59636f,1.55));
       const key=new THREE.DirectionalLight(0xffffff,1.55);key.position.set(2,5,1);key.castShadow=true;scene.add(key);
-      createReticle();
-      placement.reset();
+      createGroundRing();
+      trackingGate.reset();
       sceneReady=true;lastTick=performance.now();
       intro.style.display='none';gameUi.style.display='block';
       statusText.textContent='جاري تثبيت الساحة…';
@@ -429,8 +411,9 @@
         },
         onUpdate:({processCpuResult})=>{
           if(!sceneReady) return;
+          if(document.hidden){trackingGate.reset();combat?.setTracking(false);lastTick=performance.now();return;}
           const now=performance.now(),reality=processCpuResult?.reality;
-          placement.observe({now,status:reality?.trackingStatus,position:reality?.position,rotation:reality?.rotation});
+          trackingGate.observe({now,status:reality?.trackingStatus,position:reality?.position});
           tick(now);
         },
         onCameraStatusChange:({status})=>{
@@ -438,13 +421,14 @@
         },
         onException:(err)=>{
           console.error(err);
-          placement.observe({now:performance.now(),status:'LIMITED'});
+          trackingGate.reset();combat?.setTracking(false);
           statusText.textContent='توقف التتبع مؤقتًا';
         }
       };
     }
 
     function startupFailure(message){
+      trackingGate.reset();combat?.setTracking(false);
       xrStarted=false;sceneReady=false;startBtn.disabled=false;startBtn.textContent='حاول مرة أخرى';
       intro.style.display='flex';gameUi.style.display='none';errorBox.style.display='block';errorBox.textContent=message;
     }
@@ -453,8 +437,8 @@
       if(!xrStarted) return;
       if(combat){combat.dispose();combat=null;}
       damageFlash.replaceChildren();
-      placed=false;groundRing.visible=false;reticle.visible=false;previewInitialized=false;
-      placement.reset();
+      placed=false;groundRing.visible=false;
+      trackingGate.reset();
       guide.classList.remove('hidden');statusText.textContent='جاري تثبيت الساحة…';
       gameover.style.display='none';
       try{XR8.XrController.recenter();}catch{}
@@ -499,8 +483,8 @@
     },{passive:false});
 
     document.addEventListener('visibilitychange',()=>{
-      placement.observe({now:performance.now(),status:'LIMITED'});
-      combat?.triggerUp();lastTick=performance.now();
+      trackingGate.reset();
+      combat?.setTracking(false);lastTick=performance.now();
     });
 
     startBtn.addEventListener('click',()=>{
@@ -517,7 +501,7 @@
         XR8.XrController.configure({
           disableWorldTracking:false,
           enableLighting:true,
-          enableWorldPoints:true,
+          enableWorldPoints:false,
           scale:'absolute'
         });
         XR8.addCameraPipelineModules([

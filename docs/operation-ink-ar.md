@@ -26,9 +26,11 @@ If a camera turn puts a soldier behind the view, it re-enters ahead from outside
 
 ## Paintball mode
 
-Player shots are blue paintballs and enemy shots are orange. Balls travel from the weapon muzzle; segment raycasts detect contact during flight, so damage and impact feedback occur on arrival. Paintballs retain the weapon's damage at launch, even if the player switches weapons during flight. Enemy balls target the tracked phone and can be dodged; invincible test mode remains enabled.
+Each player weapon has its own colour: yellow pistol, cyan AK, green SMG, orange shotgun and purple sniper. The Canvas icon, 3D weapon body, crosshair dot, balls, spray and stains use that weapon's colour. Balls travel from the weapon muzzle; segment raycasts detect contact during flight, so damage and impact feedback occur on arrival. Paintballs retain both damage and colour at launch, even if the player switches weapons during flight. Enemy balls target the tracked phone and can be dodged; invincible test mode remains enabled.
 
-Stains last six seconds on soldiers or the captured floor. Soldier stains are aligned to the visible mesh and follow a nearby bone. Real walls/furniture are not collision surfaces because this experiment only captures the ground plane. Phone hits show a brief orange stain near the screen edge.
+Each soldier receives a distinct colour from an eight-colour palette (at most eight soldiers per wave). Its fallback uniform and GLB uniform use the same base colour, and its shots/impacts inherit that colour independently of the type of gun it carries. Only the GLB uniform materials are cloned/tinted per soldier, preserving skin and equipment details without modifying the shared asset. Owned colour materials are disposed when soldiers leave the scene; player weapon geometry/materials are disposed on weapon changes.
+
+Stains last six seconds on soldiers or the captured floor. Soldier stains are aligned to the visible mesh and follow a nearby bone. Real walls/furniture are not collision surfaces because this experiment only captures the ground plane. Phone hits show a brief stain near the screen edge in the firing soldier's colour.
 
 `PaintballEffects.js` renders balls and spray droplets in one instanced draw. Limits: 48 balls, 80 droplets, 24 stains. Stains fade out, and reset/dispose clears all paint effects. Projectiles pause while tracking is unavailable.
 
@@ -44,11 +46,13 @@ The page locks Safari to scale 1, disables selection/callouts and text resizing,
 
 ## Fast estimated placement
 
-This experiment does not wait for the shared high-confidence surface sampler. After about 280 ms of normal tracking, it uses the centre ray's estimated ground intersection when available; otherwise it places the anchor 2.8 m ahead on XR8's default `y=0` floor. The preview appears briefly and combat starts automatically about 100 ms later. Tracking loss still pauses combat.
+This experiment uses `FastTrackingGate`, independently of the shared high-confidence surface sampler. Two consecutive fresh `NORMAL` frames with finite camera positions are sufficient; ordinary phone motion does not restart a stillness timer. It uses the centre ray's estimated ground intersection when available; otherwise it places the anchor 2.8 m ahead on XR8's default `y=0` floor. The anchor is captured once, with no preview delay, and the first wave spawns on the first live combat update. World-point output is disabled because this path does not use it.
+
+The GLB download/parse starts while the intro/AR engine loads, and never blocks placement; primitive soldiers remain a fallback. Limited/missing/non-finite tracking, a gap longer than 250 ms, exceptions or a hidden page reset the gate and pause combat. Two fresh valid frames resume it. Actual camera permission and XR8 startup time still depend on the device/browser and are not bypassed.
 
 ## Programmatic weapon icons
 
-The five weapon selectors are created at runtime and rendered as distinct Canvas 2D silhouettes for pistol, AK, SMG, shotgun and sniper. No image assets or text labels are displayed. The underlying compact buttons retain Arabic `aria-label` and `aria-pressed` attributes for touch and accessibility.
+The five weapon selectors are created at runtime and rendered once as distinct coloured Canvas 2D silhouettes for pistol, AK, SMG, shotgun and sniper. Selection updates the matching-colour outline without redrawing all canvases on every shot. No image assets or text labels are displayed. The underlying compact buttons retain Arabic `aria-label` and `aria-pressed` attributes for touch and accessibility.
 
 ## Upstream MIT notice
 

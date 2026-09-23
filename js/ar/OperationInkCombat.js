@@ -1,19 +1,22 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js';
-import { PaintballEffects } from './PaintballEffects.js?v=1';
+import { PaintballEffects } from './PaintballEffects.js?v=2';
 
 // Adapted for AR-Aboden from the gameplay concepts and balancing values in
 // byteab/operation-ink (MIT). This file is intentionally independent from the
 // original mission runtime so it can run inside XR8 on mobile.
 
 export const WEAPONS = {
-  pistol:  { label:'مسدس',      capacity:12, reload:1.85, interval:.25,  range:22, damage:30, automatic:false, kick:.018 },
-  ak:      { label:'AK',         capacity:30, reload:2.30, interval:.12,  range:28, damage:34, automatic:true,  kick:.022 },
-  smg:     { label:'SMG',        capacity:24, reload:2.05, interval:.085, range:20, damage:24, automatic:true,  kick:.012 },
-  shotgun: { label:'Shotgun',    capacity:6,  reload:2.80, interval:.90,  range:11, damage:28, automatic:false, kick:.050 },
-  sniper:  { label:'Sniper',     capacity:5,  reload:2.90, interval:1.35, range:34, damage:65, automatic:false, kick:.038 }
+  pistol:  { label:'مسدس',   color:0xffcf4d, capacity:12, reload:1.85, interval:.25,  range:22, damage:30, automatic:false, kick:.018 },
+  ak:      { label:'AK',      color:0x25c9ff, capacity:30, reload:2.30, interval:.12,  range:28, damage:34, automatic:true,  kick:.022 },
+  smg:     { label:'SMG',     color:0x55e28c, capacity:24, reload:2.05, interval:.085, range:20, damage:24, automatic:true,  kick:.012 },
+  shotgun: { label:'Shotgun', color:0xff9052, capacity:6,  reload:2.80, interval:.90,  range:11, damage:28, automatic:false, kick:.050 },
+  sniper:  { label:'Sniper',  color:0xc58bff, capacity:5,  reload:2.90, interval:1.35, range:34, damage:65, automatic:false, kick:.038 }
 };
+
+// A wave contains at most eight soldiers, so none share a colour in that wave.
+export const ENEMY_COLORS=[0xff5c72,0x56dc80,0xffc648,0x6da4ff,0xc28aff,0xff9654,0x46ded6,0xff82d8];
 
 const ENEMY_WEAPONS = {
   pistol:{damage:10, gap:.72},
@@ -38,7 +41,7 @@ const SOLDIER_GUN_FOR_WEAPON = {
 };
 let soldierAssetPromise = null;
 
-function loadSoldierAsset(){
+export function preloadSoldierAsset(){
   if(soldierAssetPromise) return soldierAssetPromise;
   soldierAssetPromise = new Promise((resolve,reject)=>{
     const loader = new GLTFLoader();
@@ -120,7 +123,7 @@ function attachSoldierMuzzle(root,model){
 }
 
 async function attachSoldierModel(root){
-  const asset=await loadSoldierAsset();
+  const asset=await preloadSoldierAsset();
   if(!asset || !root?.parent) return false;
 
   const model=cloneSkeleton(asset.scene);
@@ -131,16 +134,31 @@ async function attachSoldierModel(root){
   visual.add(model);
   root.add(visual);
 
+  // Skeleton clones share source materials. Clone only the coloured uniform
+  // materials per soldier; never tint the cached asset or another soldier.
+  const tinted=new Map();
+  const tint=source=>{
+    if(source.name!=='Enemy_Red' && source.name!=='Grey')return source;
+    if(!tinted.has(source)){
+      const material=source.clone();
+      material.color.setHex(root.userData.paintColor);
+      if(source.name==='Grey')material.color.multiplyScalar(.65);
+      tinted.set(source,material);
+    }
+    return tinted.get(source);
+  };
   model.traverse(obj=>{
     if(obj.isMesh || obj.isSkinnedMesh){
       obj.castShadow=true;
       obj.receiveShadow=true;
       obj.frustumCulled=false;
+      if(obj.isSkinnedMesh)obj.material=Array.isArray(obj.material)?obj.material.map(tint):tint(obj.material);
     }
     if(SOLDIER_GUN_MESH_NAMES.has(obj.name)){
       obj.visible=obj.name===SOLDIER_GUN_FOR_WEAPON[root.userData.weapon];
     }
   });
+  root.userData.colorMaterials=[...tinted.values()];
 
   const mixer=new THREE.AnimationMixer(model);
   const actions={};
@@ -234,6 +252,7 @@ export function createSoldier(index, weapon='ak'){
   root.name = 'operation-ink-enemy-' + index;
   root.userData = {
     id:index, weapon, health:100, state:'patrol', stateTime:0, fireCooldown:.6+Math.random(),
+    paintColor:ENEMY_COLORS[index%ENEMY_COLORS.length],colorMaterials:[],
     reposition:0, target:new THREE.Vector3(), lastKnown:new THREE.Vector3(),
     hitMeshes:[], dead:false, phase:Math.random()*Math.PI*2, stride:0,
     moveSpeed:.38+Math.random()*.55,pauseTimer:Math.random()*.7,justPaused:false,
@@ -241,11 +260,11 @@ export function createSoldier(index, weapon='ak'){
     fallbackVisual, visual:null, mixer:null, actions:{}, actionName:null, groundY:0
   };
 
-  const uniform = makeMat(0x161a1e);
-  const cloth = makeMat(0x282f36);
+  const uniform = makeMat(new THREE.Color(root.userData.paintColor).multiplyScalar(.7));
+  const cloth = makeMat(root.userData.paintColor);
   const skin = makeMat(0xa98a70);
   const dark = makeMat(0x050607,.55);
-  const vest = makeMat(0x30363c);
+  const vest = makeMat(new THREE.Color(root.userData.paintColor).multiplyScalar(.85));
 
   const pelvis = new THREE.Mesh(new THREE.BoxGeometry(.34,.24,.20),uniform);
   pelvis.position.y=.86;
@@ -301,15 +320,19 @@ export function createSoldier(index, weapon='ak'){
 
 function createPlayerWeapon(name){
   const dark = new THREE.MeshStandardMaterial({color:0x16191d,roughness:.42,metalness:.48});
-  const accent = new THREE.MeshStandardMaterial({color:0x303a43,roughness:.55,metalness:.20});
+  const color=WEAPONS[name].color;
+  const paint = new THREE.MeshStandardMaterial({color,roughness:.38,metalness:.08});
+  const accent = new THREE.MeshStandardMaterial({color:new THREE.Color(color).multiplyScalar(.65),roughness:.55,metalness:.10});
   const g = new THREE.Group();
   g.name='operation-ink-player-weapon';
+  g.userData.paintColor=color;
 
   const dims = {
     pistol:[.13,.12,.30], ak:[.16,.14,.62], smg:[.15,.15,.47], shotgun:[.15,.13,.70], sniper:[.14,.13,.78]
   }[name];
 
-  const body=new THREE.Mesh(new THREE.BoxGeometry(dims[0],dims[1],dims[2]),dark);
+  const body=new THREE.Mesh(new THREE.BoxGeometry(dims[0],dims[1],dims[2]),paint);
+  body.name='paint-colored-body';
   body.position.z=-dims[2]*.25;
   g.add(body);
 
@@ -364,15 +387,16 @@ export class OperationInkCombat {
     this.playerWeaponRoot.rotation.set(-.06,-.07,-.02);
     this.camera.add(this.playerWeaponRoot);
     this.setWeapon('ak',true);
-    loadSoldierAsset();
+    preloadSoldierAsset();
   }
 
   reset(anchor){
     this.paintballs.clear();
-    for(const enemy of this.enemies) this.scene.remove(enemy);
+    for(const enemy of this.enemies) this.removeEnemy(enemy);
     this.enemies.length=0; this.hitMeshes.length=0;
     this.anchor.copy(anchor); this.playerHealth=100; this.score=0; this.wave=0; this.alert=0;
-    this.running=true; this.nextWaveTimer=.35;
+    // Spawn on the first live update, with no extra post-placement delay.
+    this.running=true; this.nextWaveTimer=.001;
     for(const [name,rule] of Object.entries(WEAPONS)){
       this.magazines[name]=rule.capacity;
       this.reserve[name]=rule.capacity*4;
@@ -383,8 +407,26 @@ export class OperationInkCombat {
 
   dispose(){
     this.running=false;this.triggerUp();this.paintballs.dispose();
-    for(const enemy of this.enemies) this.scene.remove(enemy);
+    for(const enemy of this.enemies) this.removeEnemy(enemy);
+    this.clearPlayerWeapon();
     this.camera.remove(this.playerWeaponRoot);
+  }
+
+  removeEnemy(enemy){
+    enemy.removeFromParent();
+    for(const material of enemy.userData.colorMaterials)material.dispose();
+    enemy.userData.colorMaterials.length=0;
+  }
+
+  clearPlayerWeapon(){
+    const materials=new Set();
+    this.playerWeaponRoot.traverse(obj=>{
+      if(!obj.isMesh)return;
+      obj.geometry.dispose();
+      for(const material of [obj.material].flat())materials.add(material);
+    });
+    for(const material of materials)material.dispose();
+    this.playerWeaponRoot.clear();
   }
 
   setTracking(active){
@@ -395,7 +437,7 @@ export class OperationInkCombat {
   setWeapon(name,silent=false){
     if(!WEAPONS[name]) return false;
     this.weapon=name; this.reloadTimer=0; this.triggerHeld=false;
-    this.playerWeaponRoot.clear();
+    this.clearPlayerWeapon();
     const gun=createPlayerWeapon(name);
     gun.position.set(0,0,0);
     this.playerWeaponRoot.add(gun);
@@ -464,7 +506,7 @@ export class OperationInkCombat {
 
     this.playerWeaponRoot.rotation.x=-.06-rule.kick;
     setTimeout(()=>{ if(this.playerWeaponRoot) this.playerWeaponRoot.rotation.x=-.06; },55);
-    this.onEvent({type:'player-shot',weapon:this.weapon});
+    this.onEvent({type:'player-shot',weapon:this.weapon,color:rule.color});
 
     if(this.weapon==='shotgun'){
       for(let i=0;i<7;i++) this.castPlayerShot(rule,.026);
@@ -499,7 +541,7 @@ export class OperationInkCombat {
     }
     const muzzle=this.playerMuzzle.getWorldPosition(new THREE.Vector3());
     this.paintballs.fire(muzzle,end.sub(muzzle).normalize(),{
-      team:'player',weapon:this.weapon,damage:rule.damage,range:rule.range
+      team:'player',weapon:this.weapon,color:rule.color,damage:rule.damage,range:rule.range
     });
   }
 
@@ -609,7 +651,7 @@ export class OperationInkCombat {
 
     this.enemies=this.enemies.filter(e=>{
       if(!e.userData.dead) return true;
-      this.scene.remove(e);
+      this.removeEnemy(e);
       return false;
     });
 
@@ -735,8 +777,8 @@ export class OperationInkCombat {
     const up=forward.clone().cross(right).normalize(),angle=Math.random()*Math.PI*2;
     const spread=hit?Math.random()*.045:.26+Math.random()*.18;
     const target=eye.clone().addScaledVector(right,Math.cos(angle)*spread).addScaledVector(up,Math.sin(angle)*spread);
-    this.paintballs.fire(muzzle,target.sub(muzzle).normalize(),{team:'enemy',weapon:u.weapon,range:distance+2,speed:20});
-    this.onEvent({type:'enemy-shot',weapon:u.weapon,position:muzzle.clone(),hit});
+    this.paintballs.fire(muzzle,target.sub(muzzle).normalize(),{team:'enemy',weapon:u.weapon,color:u.paintColor,range:distance+2,speed:20});
+    this.onEvent({type:'enemy-shot',weapon:u.weapon,position:muzzle.clone(),color:u.paintColor,hit});
     u.fireCooldown=rule.gap*(.88+Math.random()*.45);
   }
 

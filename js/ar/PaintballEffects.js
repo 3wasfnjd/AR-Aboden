@@ -30,10 +30,10 @@ export class PaintballEffects{
     this.matrix=new THREE.Matrix4();this.rotation=new THREE.Quaternion();this.scale=new THREE.Vector3();this.color=new THREE.Color();
   }
 
-  fire(origin,direction,{team='player',speed=24,range=28,...shot}={}){
+  fire(origin,direction,{team='player',color=PAINT_COLORS[team],speed=24,range=28,...shot}={}){
     if(this.disposed || direction.lengthSq()<1e-10) return;
     if(this.balls.length>=PAINT_LIMITS.balls) this.balls.shift();
-    this.balls.push({...shot,team,color:PAINT_COLORS[team],origin:origin.clone(),position:origin.clone(),
+    this.balls.push({...shot,team,color,origin:origin.clone(),position:origin.clone(),
       direction:direction.clone().normalize(),speed,remaining:range,radius:.032});
   }
 
