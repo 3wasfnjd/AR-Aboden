@@ -22,7 +22,8 @@ export class ArenaAutopilot {
     carRadius=.25,
     random=Math.random,
     startAngle=0,
-    introLap=false
+    introLap=false,
+    profile=0
   }){
     if(!Number.isFinite(scale)||scale<=0||roadRadius<=carRadius+.1){
       throw new Error('Invalid show dimensions');
@@ -35,6 +36,7 @@ export class ArenaAutopilot {
     this.random=random;
 
     this.startAngle=startAngle;
+    this.profile=profile|0;
     this.introLap=!!introLap;
     this.lapActive=this.introLap;
     this.lapDirection=1;
@@ -42,10 +44,14 @@ export class ArenaAutopilot {
     this.lapTravel=0;
     this.lapPrevAngle=null;
 
-    this.state=this.lapActive?'LAP':'DRIFTING';
-    this.timer=4.5+this.random()*1.5;
+    this.state=this.lapActive?'LAP':(
+      this.profile===1?'DONUT':
+      this.profile===2?'SWEEP':
+      'DRIFTING'
+    );
+    this.timer=this.profile===1?3.4:this.profile===2?4.8:4.5+this.random()*1.5;
     this.sequence=0;
-    this.direction=this.random()<.5?-1:1;
+    this.direction=this.profile===2?-1:(this.random()<.5?-1:1);
     this.time=0;
 
     this.steer=0;
@@ -68,8 +74,23 @@ export class ArenaAutopilot {
   }
 
   pickTarget(){
-    const angle=this.random()*Math.PI*2;
-    const radius=this.limit*(.28+this.random()*.30);
+    let angle;
+    let radius;
+
+    if(this.profile===1){
+      // Yellow stays nearer the middle so donuts are obvious and controlled.
+      angle=this.random()*Math.PI*2;
+      radius=this.limit*(.16+this.random()*.20);
+    }else if(this.profile===2){
+      // Black alternates between wide opposing targets to create S-curves.
+      const side=(this.sequence%2===0)?1:-1;
+      angle=side*(Math.PI*.38)+this.random()*.28;
+      radius=this.limit*(.62+this.random()*.14);
+    }else{
+      angle=this.random()*Math.PI*2;
+      radius=this.limit*(.28+this.random()*.30);
+    }
+
     this.target={
       x:Math.cos(angle)*radius,
       z:Math.sin(angle)*radius
@@ -78,11 +99,30 @@ export class ArenaAutopilot {
 
   nextState(){
     this.sequence++;
-    this.state=['DRIFTING','DONUT','CRUISING'][this.sequence%3];
-    this.timer=this.state==='CRUISING'
-      ?1.8+this.random()*1.2
-      :3.2+this.random()*2.0;
-    this.direction=this.random()<.5?-1:1;
+
+    if(this.profile===1){
+      // Yellow: donut-heavy show with short drift exits between circles.
+      this.state=['DONUT','DONUT','DRIFTING','CRUISING'][this.sequence%4];
+      this.timer=this.state==='DONUT'
+        ?2.8+this.random()*1.4
+        :2.2+this.random()*1.2;
+    }else if(this.profile===2){
+      // Black: wide sweeping arcs / S-turns, minimal handbrake.
+      this.state=['SWEEP','CRUISING','SWEEP','DRIFTING'][this.sequence%4];
+      this.timer=this.state==='SWEEP'
+        ?4.2+this.random()*1.8
+        :2.6+this.random()*1.2;
+    }else{
+      // Red: mixed Hajwala-style drift show.
+      this.state=['DRIFTING','DONUT','CRUISING'][this.sequence%3];
+      this.timer=this.state==='CRUISING'
+        ?1.8+this.random()*1.2
+        :3.2+this.random()*2.0;
+    }
+
+    this.direction=this.profile===2
+      ?(this.sequence%2===0?-1:1)
+      :(this.random()<.5?-1:1);
     this.pickTarget();
   }
 
@@ -186,11 +226,10 @@ export class ArenaAutopilot {
     this.throttle=1;
 
     if(this.state==='DONUT'){
-      // Hajwala-style arcade handbrake turn: full steering authority while
-      // rear grip is released. Pulsing the handbrake keeps momentum alive.
-      this.steer=.82*this.direction;
-      this.handbrake=Math.sin(this.time*8)>-.20;
-      this.throttle=.95;
+      // Yellow spends longer here; red reaches it occasionally.
+      this.steer=(this.profile===1?.92:.82)*this.direction;
+      this.handbrake=Math.sin(this.time*(this.profile===1?7.0:8.0))>-.20;
+      this.throttle=this.profile===1?.82:.92;
     }else{
       const target=this.state==='AVOIDANCE'
         ?{x:0,z:0}
@@ -198,17 +237,23 @@ export class ArenaAutopilot {
       const targetHeading=Math.atan2(target.x-s.x,target.z-s.z);
       const error=wrap(targetHeading-s.heading);
 
-      if(this.state==='DRIFTING'){
-        this.steer=clamp(-error*3.4,-1,1);
-        this.handbrake=Math.abs(error)>.34;
-        this.throttle=1;
+      if(this.state==='SWEEP'){
+        // Black car: broad, smooth arcs with almost no handbrake.
+        this.steer=clamp(-error*1.65,-.72,.72);
+        this.handbrake=Math.abs(error)>1.05;
+        this.throttle=.78;
+      }else if(this.state==='DRIFTING'){
+        const gain=this.profile===1?3.9:this.profile===2?2.7:3.4;
+        this.steer=clamp(-error*gain,-1,1);
+        this.handbrake=Math.abs(error)>(this.profile===2?.58:.34);
+        this.throttle=this.profile===1?.88:this.profile===2?.80:1;
       }else if(this.state==='AVOIDANCE'){
         this.steer=clamp(-error*3.0,-1,1);
         this.handbrake=Math.abs(error)>.72;
-        this.throttle=Math.abs(error)>1.15?.18:.70;
+        this.throttle=Math.abs(error)>1.15?.18:.64;
       }else{
-        this.steer=clamp(-error*2.0,-1,1);
-        this.throttle=.90;
+        this.steer=clamp(-error*(this.profile===2?1.55:2.0),-1,1);
+        this.throttle=this.profile===2?.76:.86;
       }
     }
 
