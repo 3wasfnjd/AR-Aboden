@@ -39,3 +39,15 @@
 SandSkrit by UnintelligibleMaker, MIT License.
 
 SandSkrit remains the design reference and attribution source; the browser runtime no longer downloads or executes its Python code.
+
+
+## Automatic outline image tracing
+
+أضيف وضع **صورة** لتوليد مسارات الليزر مباشرة من صور Outline:
+
+- يدعم PNG / JPG / WebP.
+- مخصص للخطوط المضيئة أو البيضاء/الملونة على خلفية سوداء.
+- يتم تحويل سماكة الخط إلى **Centerline** باستخدام thinning داخل المتصفح، وليس استخراج حافتين متوازيتين.
+- يمكن التحكم في threshold، تنعيم المسار، حذف الأجزاء الصغيرة، ودقة التتبع.
+- الناتج SVG متعدد المسارات وجاهز لمرحلة SVG → ILDA مع blanking بين المسارات.
+- لا يتم رفع الصورة إلى خادم؛ المعالجة محلية داخل المتصفح.
