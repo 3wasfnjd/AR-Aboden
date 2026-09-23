@@ -89,8 +89,8 @@ export function createArenaPhysics(world, centerX = 0, centerZ = 0, options = {}
       objectLayer: world._OL_STATIC,
       position: [x, floorY + wallHeight * 0.5, z],
       quaternion: [0, Math.sin(yaw * 0.5), 0, Math.cos(yaw * 0.5)],
-      friction: 0.45,
-      restitution: 0.12,
+      friction: 0.0,
+      restitution: 0.1,
     });
 
     arena.walls.push(body);
@@ -138,10 +138,10 @@ export function createVehicleBody(world, position, radius = 0.13) {
     position,
     mass: Math.max(1000 * Math.pow(radius / 0.5, 3), 2),
     friction: 5.0,
-    restitution: 0.05,
-    linearDamping: 0.12,
+    restitution: 0.1,
+    linearDamping: 0.1,
     angularDamping: 4.0,
-    gravityFactor: 1.2,
+    gravityFactor: 1.5,
     motionQuality: MotionQuality.LINEAR_CAST,
     maxAngularVelocity,
   });
