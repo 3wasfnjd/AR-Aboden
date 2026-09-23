@@ -7,15 +7,21 @@ const wrap=a=>((a+Math.PI)%(2*Math.PI)+2*Math.PI)%(2*Math.PI)-Math.PI;
 
 // Spectator show speed is expressed relative to arena scale so every placement
 // size keeps the same apparent pace. Previous value was 0.65 and looked too slow.
-const SHOW_SPEED=1.25;
+const SHOW_SPEED=2.10;
 
 export class ArenaAutopilot {
-  constructor({center,roadY,scale=1,roadRadius=1.30,carRadius=.25,random=Math.random}) {
+  constructor({center,roadY,scale=1,roadRadius=1.30,carRadius=.25,random=Math.random,startAngle=0}) {
     if(!Number.isFinite(scale)||scale<=0 || roadRadius<=carRadius+.1) throw new Error('Invalid show dimensions');
     this.center={x:center.x,z:center.z};this.roadY=roadY;this.scale=scale;
     this.limit=(roadRadius-carRadius-.10)*scale;
-    this.random=random;this.x=0;this.z=0;this.vx=0;this.vz=0;
-    this.heading=0;this.speed=0;this.angularSpeed=0;this.time=0;
+    this.random=random;
+    const startRadius=this.limit*.42;
+    this.x=Math.cos(startAngle)*startRadius;
+    this.z=Math.sin(startAngle)*startRadius;
+    this.vx=0;this.vz=0;
+    // Start each car tangentially so multiple cars do not stack at the centre.
+    this.heading=wrap(startAngle+Math.PI*.5);
+    this.speed=0;this.angularSpeed=0;this.time=0;
     this.state='DRIFTING';this.timer=5;this.sequence=0;this.direction=1;
     this.steer=0;this.handbrake=false;this.boundaryCorrections=0;
     this.pickTarget();
