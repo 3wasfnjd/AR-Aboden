@@ -10,19 +10,28 @@ const wrap=a=>((a+Math.PI)%(2*Math.PI)+2*Math.PI)%(2*Math.PI)-Math.PI;
 const SHOW_SPEED=2.10;
 
 export class ArenaAutopilot {
-  constructor({center,roadY,scale=1,roadRadius=1.30,carRadius=.25,random=Math.random,startAngle=0}) {
+  constructor({center,roadY,scale=1,roadRadius=1.30,carRadius=.25,random=Math.random,startAngle=0,introLap=false}) {
     if(!Number.isFinite(scale)||scale<=0 || roadRadius<=carRadius+.1) throw new Error('Invalid show dimensions');
     this.center={x:center.x,z:center.z};this.roadY=roadY;this.scale=scale;
     this.limit=(roadRadius-carRadius-.10)*scale;
     this.random=random;
-    const startRadius=this.limit*.42;
+    this.introLap=!!introLap;
+    this.lapActive=this.introLap;
+    this.lapDirection=1;
+    this.lapAngle=startAngle;
+    this.lapTravel=0;
+    this.lapRadius=this.limit*.66;
+
+    const startRadius=this.lapActive?this.lapRadius:this.limit*.42;
     this.x=Math.cos(startAngle)*startRadius;
     this.z=Math.sin(startAngle)*startRadius;
     this.vx=0;this.vz=0;
-    // Start each car tangentially so multiple cars do not stack at the centre.
-    this.heading=wrap(startAngle+Math.PI*.5);
+
+    // Tangent heading for the circular intro lap. Non-lap cars use the same
+    // correct tangent start so none initially accelerate into the barrier.
+    this.heading=wrap(-startAngle);
     this.speed=0;this.angularSpeed=0;this.time=0;
-    this.state='DRIFTING';this.timer=5;this.sequence=0;this.direction=1;
+    this.state=this.lapActive?'LAP':'DRIFTING';this.timer=5;this.sequence=0;this.direction=1;
     this.steer=0;this.handbrake=false;this.boundaryCorrections=0;
     this.pickTarget();
   }
@@ -38,8 +47,52 @@ export class ArenaAutopilot {
     this.direction=this.random()<.5?-1:1;
     this.pickTarget();
   }
+
+  stepIntroLap(dt) {
+    const radius=Math.max(this.lapRadius,.05);
+    const lapSpeed=SHOW_SPEED*this.scale*.88;
+    const angular=(lapSpeed/radius)*this.lapDirection;
+    const previousAngle=this.lapAngle;
+
+    this.lapAngle+=angular*dt;
+    this.lapTravel+=Math.abs(this.lapAngle-previousAngle);
+
+    const angle=this.lapAngle;
+    this.x=Math.cos(angle)*radius;
+    this.z=Math.sin(angle)*radius;
+
+    // Analytical tangent velocity keeps the opening lap smooth and circular.
+    this.vx=-Math.sin(angle)*lapSpeed*this.lapDirection;
+    this.vz= Math.cos(angle)*lapSpeed*this.lapDirection;
+    this.speed=lapSpeed;
+    this.heading=wrap(this.lapDirection>0?-angle:Math.PI-angle);
+    this.angularSpeed=-angular;
+    this.steer=.24*this.lapDirection;
+    this.handbrake=false;
+
+    if(this.lapTravel>=Math.PI*2){
+      this.lapActive=false;
+      this.state='DRIFTING';
+      this.timer=4.5;
+      this.sequence=0;
+      this.direction=this.random()<.5?-1:1;
+      this.pickTarget();
+
+      // Preserve the lap's tangent velocity so transition into drift is
+      // continuous instead of visually stopping and restarting.
+      this.speed=Math.hypot(this.vx,this.vz);
+    }
+  }
+
   step(dt) {
-    this.time+=dt;this.timer-=dt;
+    this.time+=dt;
+
+    if(this.lapActive){
+      this.stepIntroLap(dt);
+      return;
+    }
+
+    this.timer-=dt;
     const radius=Math.hypot(this.x,this.z);
     const predicted=Math.hypot(this.x+this.vx*.65,this.z+this.vz*.65);
     if(radius>this.limit*.78 || predicted>this.limit*.9) this.state='AVOIDANCE';
