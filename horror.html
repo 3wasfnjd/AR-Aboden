@@ -169,10 +169,10 @@
     <div class="card">
       <div class="eyebrow">ABODEN AR · HORROR</div>
       <h1>الرعب المتجول</h1>
-      <p>ترول ضخم يظهر أمامك من مسافة آمنة، ثم يمشي باتجاه الجوال بحركة Walk أصلية ويتوقف قبل الاقتراب الشديد.</p>
+      <p>زومبي ببدلة Hazmat يظهر أمامك من مسافة آمنة، ثم يمشي باتجاه الجوال ويتوقف قبل الاقتراب الشديد.</p>
       <button class="start" id="startBtn" disabled>جاري تجهيز المحرك…</button>
       <div class="error" id="errorBox"></div>
-      <p class="tiny">يفضل مساحة فارغة نسبيًا وتحريك الجوال ببطء أثناء التتبع.<br>3D: The-Lord-Of-The-Rings-Troll-Walk · bensimulator2 / Sketchfab · CC BY 4.0</p>
+      <p class="tiny">يفضل مساحة فارغة نسبيًا وتحريك الجوال ببطء أثناء التتبع.<br>3D: Zombie Hazmat · LxNazarov / Sketchfab · CC Attribution</p>
     </div>
   </div>
 
@@ -343,7 +343,7 @@
             toneMapped:false
           });
 
-          mat.name=(m.name||'troll')+'_unlit';
+          mat.name=(m.name||'zombie')+'_unlit';
           return mat;
         });
 
@@ -400,19 +400,19 @@
     }
 
     async function loadCharacters(){
-      const trollGltf=await loadGLB('./assets/horror/troll_walk_ar_384.glb');
+      const zombieGltf=await loadGLB('./assets/horror/zombie_hazmat.glb');
 
-      // A troll should read substantially larger than a human in the room,
-      // but still remain believable relative to the AR floor.
-      const troll=normalizeModel(trollGltf.scene,{height:7.20,modelYaw:0});
+      // Keep the hazmat zombie slightly oversized for horror presence while
+      // remaining believable relative to the AR floor.
+      const zombie=normalizeModel(zombieGltf.scene,{height:3.20,modelYaw:0});
       let mixer=null;
       let action=null;
 
-      if(trollGltf.animations?.length){
-        mixer=new THREE.AnimationMixer(troll);
-        const clip=trollGltf.animations.find(a=>/^walk$/i.test(a.name))
-          || trollGltf.animations.find(a=>/walk/i.test(a.name))
-          || trollGltf.animations[0];
+      if(zombieGltf.animations?.length){
+        mixer=new THREE.AnimationMixer(zombie);
+        const clip=zombieGltf.animations.find(a=>/^walk$/i.test(a.name))
+          || zombieGltf.animations.find(a=>/walk/i.test(a.name))
+          || zombieGltf.animations[0];
 
         action=mixer.clipAction(clip);
         action.setLoop(THREE.LoopRepeat,Infinity);
@@ -421,7 +421,7 @@
         action.paused=true;
       }
 
-      createActor(troll,{
+      createActor(zombie,{
         speed:.18,
         turnRate:.92,
         forwardOffset:0,
@@ -482,7 +482,7 @@
 
           if(!a.action.paused){
             // The model has a genuine Walk clip. Keep it deliberate and
-            // synchronize the cycle with the troll's actual approach speed.
+            // synchronize the cycle with the zombie's actual approach speed.
             const targetTimeScale=.34+.18*speedRatio;
             a.action.timeScale=THREE.MathUtils.lerp(
               a.action.timeScale,
@@ -543,7 +543,7 @@
 
       renderer.shadowMap.enabled=false;
 
-      // Troll materials are deliberately unlit so no scene light can cast
+      // Zombie materials are deliberately unlit so no scene light can cast
       // or paint visible shadows onto the model in camera passthrough.
 
       try{
@@ -551,8 +551,8 @@
       }catch(err){
         console.error(err);
         errorBox.style.display='block';
-        errorBox.textContent='تعذر تحميل موديل الترول. تأكد من وجود troll_walk_ar_384.glb داخل assets/horror.';
-        notify('موديل الترول غير موجود في المستودع');
+        errorBox.textContent='تعذر تحميل موديل الزومبي. تأكد من وجود zombie_hazmat.glb داخل assets/horror.';
+        notify('موديل الزومبي غير موجود في المستودع');
       }
 
       // XR8 owns the tracked camera pose and projection. Do not overwrite
@@ -606,7 +606,7 @@
       placed=true;
       guide.classList.add('hidden');
       placeBtn.textContent='نقل المنطقة';
-      setStatus('الترول يقترب ببطء',true);
+      setStatus('الزومبي يقترب ببطء',true);
       notify('تم تثبيت منطقة الرعب');
       if(navigator.vibrate)navigator.vibrate(25);
     }
@@ -631,7 +631,7 @@
       }
       setPlayFrameFromCamera(playOrigin);
       distributeActors();
-      notify('تم تغيير موقع الترول');
+      notify('تم تغيير موقع الزومبي');
     }
 
     function tick(){
@@ -664,7 +664,7 @@
         },
         // Runs inside XR8's own per-frame pipeline (same tick that just
         // updated the AR camera pose) instead of a detached
-        // requestAnimationFrame loop, so the reticle/troll no longer lag a
+        // requestAnimationFrame loop, so the reticle/zombie no longer lag a
         // frame behind fast camera movement.
         onUpdate:tick,
         onException:error=>{
