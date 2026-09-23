@@ -163,7 +163,7 @@
   <div id="intro">
     <div class="card">
       <h1>عرض هجولة AR</h1>
-      <p>اختر مكان الحلبة وحجمها ثم ثبّتها. تبدأ السيارة عرض الدرفت تلقائيًا، ويمكنك مشاهدتها من أي زاوية.</p>
+      <p>اختر مكان الحلبة وحجمها ثم ثبّتها. تبدأ ثلاث سيارات عرض الدرفت تلقائيًا، ويمكنك مشاهدتها من أي زاوية.</p>
       <div class="loadBox" id="loadBox" aria-live="polite">
         <div class="loadMeta">
           <span id="loadLabel">جاري تجهيز التجربة…</span>
@@ -175,7 +175,7 @@
       </div>
       <button class="start" id="startBtn" disabled>جاري تجهيز المحرك…</button>
       <div class="error" id="errorBox"></div>
-      <p class="tiny">تجربة مشاهدة بدون تحكم بالسيارة. يتوقف العرض مؤقتًا عند ضعف التتبع.</p>
+      <p class="tiny">ثلاث سيارات بألوان مختلفة في عرض درفت تلقائي. يتوقف العرض مؤقتًا عند ضعف التتبع.</p>
     </div>
   </div>
 
@@ -184,7 +184,7 @@
     import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
     import { Vehicle } from './js/Vehicle.js?v=drift-show-1';
-    import { ArenaAutopilot } from './js/ar/ArenaAutopilot.js?v=2';
+    import { ArenaAutopilot } from './js/ar/ArenaAutopilot.js?v=3';
     import { SmokeTrails } from './js/Particles.js?v=drift-show-1';
     import { DriftMarks } from './js/DriftMarks.js?v=drift-show-1';
 
@@ -263,6 +263,8 @@
     let autopilot = null;
     let carFootprint = .20;
     let vehicle = null;
+    const vehicles = [];
+    const autopilots = [];
     let smokeTrails = null;
     let driftMarks = null;
     let placed = false;
@@ -600,6 +602,36 @@
       return model;
     }
 
+    function createCarVariant(baseModel,tint,name){
+      const model=baseModel.clone(true);
+      model.name=name;
+
+      model.traverse(obj=>{
+        if(!obj.isMesh)return;
+
+        const partName=(obj.name||'').toLowerCase();
+        const keepOriginal=/(wheel|tire|tyre|glass|window|light|lamp|chrome|black)/i.test(partName);
+        const materials=Array.isArray(obj.material)?obj.material:[obj.material];
+
+        const cloned=materials.map(material=>{
+          if(!material)return material;
+          const mat=material.clone();
+
+          // Preserve tyres, glass and lamps. Tint body/interior painted parts
+          // while retaining texture maps and their original detail.
+          if(!keepOriginal && mat.color){
+            mat.color.set(tint);
+          }
+
+          return mat;
+        });
+
+        obj.material=Array.isArray(obj.material)?cloned:cloned[0];
+      });
+
+      return model;
+    }
+
     async function setupScene(){
       const xrScene = XR8.Threejs.xrScene();
       scene = xrScene.scene;
@@ -659,15 +691,29 @@
 
 
       const carModel = await loadCar();
-      vehicle = new Vehicle();
-      const carRoot = vehicle.init(carModel);
-      const carBounds = new THREE.Box3().setFromObject(carRoot);
-      carFootprint = Math.hypot(Math.max(Math.abs(carBounds.min.x),Math.abs(carBounds.max.x)),
-        Math.max(Math.abs(carBounds.min.z),Math.abs(carBounds.max.z)));
-      carRoot.visible = false;
-      scene.add(carRoot);
+      const carModels = [
+        createCarVariant(carModel,0xffffff,'arena-car-white'),
+        createCarVariant(carModel,0xe53935,'arena-car-red'),
+        createCarVariant(carModel,0x1976d2,'arena-car-blue')
+      ];
 
-      // Same effects used in hajwala, scaled down for this tabletop-size AR car.
+      for(const model of carModels){
+        const car=new Vehicle();
+        const carRoot=car.init(model);
+        carRoot.visible=false;
+        scene.add(carRoot);
+        vehicles.push(car);
+      }
+
+      vehicle=vehicles[0];
+
+      const carBounds = new THREE.Box3().setFromObject(vehicle.container);
+      carFootprint = Math.hypot(
+        Math.max(Math.abs(carBounds.min.x),Math.abs(carBounds.max.x)),
+        Math.max(Math.abs(carBounds.min.z),Math.abs(carBounds.max.z))
+      );
+
+      // Keep smoke and tyre marks on the lead car only to protect mobile FPS.
       smokeTrails = new SmokeTrails(scene, AR_EFFECT_SCALE, 0.55);
       driftMarks = new DriftMarks(scene, 'ar-aboden-arena', AR_EFFECT_SCALE, 9);
 
@@ -843,8 +889,15 @@
           arena:arenaGroup.position.toArray(),placed});
         if(diagnostics.length>240) diagnostics.shift();
       }
-      if(!canDrive || !autopilot) return;
-      vehicle.updateAutonomous(autopilot.update(dt),dt);
+      if(!canDrive || !autopilots.length) return;
+
+      for(let i=0;i<vehicles.length;i++){
+        const car=vehicles[i];
+        const ai=autopilots[i];
+        if(!car||!ai)continue;
+        car.updateAutonomous(ai.update(dt),dt);
+      }
+
       smokeTrails?.update(dt,vehicle);
       driftMarks?.update(dt,vehicle);
     }
@@ -889,15 +942,36 @@
         arenaCenter.z
       );
 
-      vehicle.container.scale.setScalar(scale);
-      vehicle.sphereRadius = scaledVehicleRadius;
       applyEffectScale(scale);
       smokeTrails?.reset();
       driftMarks?.reset();
-      autopilot = new ArenaAutopilot({center:arenaCenter,roadY,scale,
-        roadRadius:ARENA_ROAD_RADIUS,carRadius:carFootprint});
-      vehicle.place(spawn,0);
-      vehicle.updateAutonomous(autopilot.update(0),0);
+
+      autopilots.length=0;
+      const startAngles=[0,(Math.PI*2)/3,(Math.PI*4)/3];
+
+      for(let i=0;i<vehicles.length;i++){
+        const car=vehicles[i];
+        car.container.scale.setScalar(scale);
+        car.sphereRadius=scaledVehicleRadius;
+
+        const ai=new ArenaAutopilot({
+          center:arenaCenter,
+          roadY,
+          scale,
+          roadRadius:ARENA_ROAD_RADIUS,
+          carRadius:carFootprint,
+          startAngle:startAngles[i]||0
+        });
+
+        autopilots.push(ai);
+
+        // place() initializes all Vehicle visual state, then the AI pose
+        // immediately moves each car to its own staggered starting position.
+        car.place(spawn,startAngles[i]||0);
+        car.updateAutonomous(ai.update(0),0);
+      }
+
+      autopilot=autopilots[0]||null;
 
       placed = true;
       resetCameraStabilizer();
@@ -926,10 +1000,13 @@
 
 
       autopilot = null;
+      autopilots.length=0;
       smokeTrails?.reset();
       driftMarks?.reset();
 
-      if (vehicle) vehicle.container.visible = false;
+      for(const car of vehicles){
+        if(car?.container)car.container.visible=false;
+      }
       if (arenaGroup) arenaGroup.visible = false;
       if (shadowPlane) shadowPlane.visible = false;
 
