@@ -96,6 +96,9 @@
       backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)
     }
     .action.primary{background:#eee;color:#090a0b}
+    .action:disabled{opacity:.42;filter:saturate(.5)}
+    .placement.placed #placeBtn{display:none}
+    .placement.placed #resetBtn{background:rgba(4,5,6,.70)}
     .reticle{
       position:absolute;left:50%;top:50%;width:26px;height:26px;
       transform:translate(-50%,-50%);border:1px solid rgba(255,255,255,.82);
@@ -152,16 +155,16 @@
     </div>
 
     <div class="guide" id="guide">
-      <b>حدد أرضية الغرفة</b>
-      حرّك الجوال ببطء حتى يستقر المؤشر، ثم ثبّت منطقة التجربة.
+      <b>امسح أرضية الغرفة</b>
+      وجّه الكاميرا نحو الأرض وحرّك الجوال ببطء. عندما يثبت المؤشر على الأرض اضغط «ثبّت الأرض».
     </div>
 
     <div class="reticle" id="reticle"></div>
     <div class="toast" id="toast"></div>
 
-    <div class="placement">
-      <button class="action primary" id="placeBtn">ثبّت المنطقة</button>
-      <button class="action" id="resetBtn">إعادة توزيع</button>
+    <div class="placement" id="placementControls">
+      <button class="action primary" id="placeBtn" disabled>ثبّت الأرض</button>
+      <button class="action" id="resetBtn">إعادة مسح</button>
     </div>
   </div>
 
@@ -193,6 +196,7 @@
     const toast=document.getElementById('toast');
     const placeBtn=document.getElementById('placeBtn');
     const resetBtn=document.getElementById('resetBtn');
+    const placementControls=document.getElementById('placementControls');
 
     let xrReady=false;
     let xrStarted=false;
@@ -202,6 +206,19 @@
     let surfaceReady=false;
     let stableMs=0;
     let lastTime=performance.now();
+
+    // Ground calibration uses XR8 SLAM world points instead of assuming Y=0.
+    // We collect a stable horizontal cluster while the user scans the floor,
+    // then lock all actor movement to that calibrated Y level.
+    let floorY=null;
+    let floorEstimate=null;
+    let floorJitter=Infinity;
+    let floorPointCount=0;
+    const floorSamples=[];
+    const FLOOR_SAMPLE_WINDOW=26;
+    const FLOOR_MIN_POINTS=14;
+    const FLOOR_BIN_SIZE=.055;
+    const FLOOR_BAND=.085;
 
     const raycaster=new THREE.Raycaster();
     const centerNdc=new THREE.Vector2(0,0);
@@ -283,6 +300,110 @@
       out.y=0;
       if(out.lengthSq()<.0001) out.set(0,0,-1);
       return out.normalize();
+    }
+
+    function median(values){
+      if(!values.length)return null;
+      const sorted=values.slice().sort((a,b)=>a-b);
+      const m=Math.floor(sorted.length/2);
+      return sorted.length%2?sorted[m]:(sorted[m-1]+sorted[m])*.5;
+    }
+
+    function resetFloorCalibration(){
+      floorY=null;
+      floorEstimate=null;
+      floorJitter=Infinity;
+      floorPointCount=0;
+      floorSamples.length=0;
+      stableMs=0;
+      surfaceReady=false;
+      floorPlane.constant=0;
+      stablePoint.set(0,0,0);
+      prevHit.set(999,999,999);
+      placeBtn.disabled=true;
+    }
+
+    function estimateFloorFromWorldPoints(worldPoints){
+      if(!camera||!Array.isArray(worldPoints)||!worldPoints.length){
+        floorPointCount=0;
+        return false;
+      }
+
+      const camPos=camera.getWorldPosition(new THREE.Vector3());
+      const camForward=camera.getWorldDirection(new THREE.Vector3()).normalize();
+      const candidates=[];
+      const bins=new Map();
+
+      // Cap work per frame on mobile while keeping the point cloud spatially broad.
+      const stride=Math.max(1,Math.ceil(worldPoints.length/700));
+
+      for(let i=0;i<worldPoints.length;i+=stride){
+        const wp=worldPoints[i];
+        const p=wp?.position;
+        if(!p||!Number.isFinite(p.x)||!Number.isFinite(p.y)||!Number.isFinite(p.z))continue;
+        if(Number.isFinite(wp.confidence)&&wp.confidence<.20)continue;
+
+        const dx=p.x-camPos.x;
+        const dy=p.y-camPos.y;
+        const dz=p.z-camPos.z;
+        const d=Math.hypot(dx,dy,dz);
+        if(d<.18||d>6.5)continue;
+
+        // While scanning the floor, keep points in the camera's broad forward cone
+        // and below the camera. This rejects most ceiling / behind-camera points.
+        const alignment=(dx*camForward.x+dy*camForward.y+dz*camForward.z)/d;
+        if(alignment<.20||p.y>camPos.y-.08)continue;
+
+        const key=Math.round(p.y/FLOOR_BIN_SIZE);
+        let bucket=bins.get(key);
+        if(!bucket){
+          bucket=[];
+          bins.set(key,bucket);
+        }
+        bucket.push(p.y);
+        candidates.push(p);
+      }
+
+      if(candidates.length<FLOOR_MIN_POINTS){
+        floorPointCount=candidates.length;
+        return false;
+      }
+
+      let bestKey=null;
+      let bestCount=0;
+      for(const [key,bucket] of bins){
+        if(bucket.length>bestCount){
+          bestKey=key;
+          bestCount=bucket.length;
+        }
+      }
+
+      if(bestKey===null||bestCount<FLOOR_MIN_POINTS){
+        floorPointCount=bestCount;
+        return false;
+      }
+
+      const bucketY=bestKey*FLOOR_BIN_SIZE;
+      const bandValues=[];
+      for(const p of candidates){
+        if(Math.abs(p.y-bucketY)<=FLOOR_BAND)bandValues.push(p.y);
+      }
+
+      const frameFloor=median(bandValues);
+      if(frameFloor===null||bandValues.length<FLOOR_MIN_POINTS){
+        floorPointCount=bandValues.length;
+        return false;
+      }
+
+      floorPointCount=bandValues.length;
+      floorSamples.push(frameFloor);
+      if(floorSamples.length>FLOOR_SAMPLE_WINDOW)floorSamples.shift();
+
+      floorEstimate=median(floorSamples);
+      const deviations=floorSamples.map(v=>Math.abs(v-floorEstimate));
+      floorJitter=median(deviations)??Infinity;
+
+      return floorSamples.length>=10 && floorJitter<.035;
     }
 
     async function loadGLB(path){
@@ -558,89 +679,134 @@
       // XR8 owns the tracked camera pose and projection. Do not overwrite
       // camera.position or its projection matrix here; doing so offsets the
       // virtual characters from the real camera on iPhone.
-      setStatus('امسح الأرض',true);
+      resetFloorCalibration();
+      setStatus('امسح الأرض ببطء',false);
       lastTime=performance.now();
     }
 
-    function updatePlacement(dt){
+    function updatePlacement(dt,reality){
       if(placed){
         reticleEl.classList.remove('on');
         return;
       }
 
-      raycaster.setFromCamera(centerNdc,camera);
-      const hit=raycaster.ray.intersectPlane(floorPlane,hitPoint);
+      const trackingOk=reality?.trackingStatus==='NORMAL'
+        && reality?.trackingReason!=='INITIALIZING';
 
-      if(!hit||hit.distanceTo(camera.position)>7){
+      if(!trackingOk){
         reticleEl.classList.remove('on');
         stableMs=0;
         surfaceReady=false;
-        setStatus('ابحث عن الأرض',false);
+        placeBtn.disabled=true;
+        setStatus('ثبّت التتبع أولًا',false);
+        return;
+      }
+
+      const floorStable=estimateFloorFromWorldPoints(reality.worldPoints);
+
+      if(floorEstimate===null){
+        reticleEl.classList.remove('on');
+        stableMs=0;
+        surfaceReady=false;
+        placeBtn.disabled=true;
+        const count=Math.min(99,Math.round((floorPointCount/FLOOR_MIN_POINTS)*100));
+        setStatus(floorPointCount?'امسح الأرض '+count+'%':'وجّه الجوال للأرض',false);
+        return;
+      }
+
+      floorPlane.constant=-floorEstimate;
+      raycaster.setFromCamera(centerNdc,camera);
+      const hit=raycaster.ray.intersectPlane(floorPlane,hitPoint);
+      const camPos=camera.getWorldPosition(new THREE.Vector3());
+
+      if(!hit||hit.distanceTo(camPos)>.18&&hit.distanceTo(camPos)>7){
+        reticleEl.classList.remove('on');
+        stableMs=Math.max(0,stableMs-dt*900);
+        surfaceReady=false;
+        placeBtn.disabled=true;
+        setStatus('وجّه المؤشر نحو الأرض',false);
         return;
       }
 
       const delta=prevHit.distanceTo(hit);
-      if(delta<.018) stableMs+=dt*1000;
-      else stableMs=0;
       prevHit.copy(hit);
 
-      if(stablePoint.lengthSq()===0) stablePoint.copy(hit);
-      else stablePoint.lerp(hit,.16);
+      if(stablePoint.lengthSq()===0)stablePoint.copy(hit);
+      else stablePoint.lerp(hit,.22);
 
       reticleEl.classList.add('on');
+
+      // Floor confidence comes from repeated horizontal world-point clusters.
+      // Small reticle motion is allowed so the user can keep scanning naturally.
+      if(floorStable&&delta<.45)stableMs+=dt*1000;
+      else stableMs=Math.max(0,stableMs-dt*700);
+
       surfaceReady=stableMs>650;
-      setStatus(surfaceReady?'السطح مستقر':'ثبّت الجوال قليلًا',surfaceReady);
+      placeBtn.disabled=!surfaceReady;
+
+      if(surfaceReady){
+        setStatus('تم اكتشاف الأرض',true);
+      }else{
+        const samplePct=Math.min(99,Math.round((floorSamples.length/FLOOR_SAMPLE_WINDOW)*100));
+        setStatus('مسح الأرض '+samplePct+'%',false);
+      }
     }
 
     function placeArea(){
       if(!xrStarted)return;
-      if(!surfaceReady){
-        notify('انتظر حتى يستقر السطح');
+      if(!surfaceReady||floorEstimate===null){
+        notify('أكمل مسح الأرض أولًا');
         return;
       }
 
+      floorY=floorEstimate;
+      stablePoint.y=floorY;
+      floorPlane.constant=-floorY;
+
       setPlayFrameFromCamera(stablePoint);
+      playOrigin.y=floorY;
       distributeActors();
-      actors.forEach(a=>a.root.visible=true);
+      actors.forEach(a=>{
+        a.baseY=floorY;
+        a.root.position.y=floorY;
+        a.root.visible=true;
+      });
 
       placed=true;
       guide.classList.add('hidden');
-      placeBtn.textContent='نقل المنطقة';
-      setStatus('الزومبي يقترب ببطء',true);
-      notify('تم تثبيت منطقة الرعب');
+      placementControls.classList.add('placed');
+      resetBtn.textContent='إعادة مسح الأرض';
+      setStatus('مثبّت على الأرض',true);
+      notify('تم تثبيت الأرض والزومبي عليها');
       if(navigator.vibrate)navigator.vibrate(25);
     }
 
     function resetPlacement(){
       placed=false;
-      surfaceReady=false;
-      stableMs=0;
-      prevHit.set(999,999,999);
-      stablePoint.set(0,0,0);
       actors.forEach(a=>a.root.visible=false);
+      resetFloorCalibration();
+      placementControls.classList.remove('placed');
       guide.classList.remove('hidden');
-      placeBtn.textContent='ثبّت المنطقة';
-      setStatus('أعد مسح الأرض',true);
+      placeBtn.textContent='ثبّت الأرض';
+      resetBtn.textContent='إعادة مسح';
+      setStatus('امسح الأرض ببطء',false);
       try{XR8.XrController.recenter()}catch(err){console.warn(err)}
     }
 
     function redistribute(){
-      if(!placed){
-        resetPlacement();
-        return;
-      }
-      setPlayFrameFromCamera(playOrigin);
-      distributeActors();
-      notify('تم تغيير موقع الزومبي');
+      // In the calibrated flow the secondary button is reserved for a fresh
+      // floor scan so a bad calibration can be corrected immediately.
+      resetPlacement();
     }
 
-    function tick(){
+    function tick({processCpuResult}={}){
       if(!camera||!scene)return;
       const now=performance.now();
       const dt=Math.min(1/30,(now-lastTime)/1000||.016);
       lastTime=now;
 
-      updatePlacement(dt);
+      const reality=processCpuResult?.reality||null;
+      updatePlacement(dt,reality);
       if(placed)updateActors(dt);
     }
 
