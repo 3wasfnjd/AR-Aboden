@@ -78,9 +78,10 @@ export function createWaterPool(renderer,quality='light'){
   space.add(interior,water,sphere);
   const shellMaterial=new THREE.MeshStandardMaterial({color:0xe4e4da,roughness:.55,metalness:.06});
   function block(x,y,z,w,h,d){const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),shellMaterial);m.position.set(x,y,z);space.add(m);}
-  block(0,-1.04,0,2.16,.08,2.16);
-  block(-1.04,-.44,0,.08,1.20,2.16);block(1.04,-.44,0,.08,1.20,2.16);
-  block(0,-.44,-1.04,2,1.20,.08);block(0,-.44,1.04,2,1.20,.08);
+  // Leave a small gap behind the shader-defined interior to avoid coplanar z-fighting.
+  block(0,-1.05,0,2.20,.06,2.20);
+  block(-1.06,-.43,0,.08,1.22,2.20);block(1.06,-.43,0,.08,1.22,2.20);
+  block(0,-.43,-1.06,2.04,1.22,.08);block(0,-.43,1.06,2.04,1.22,.08);
   block(-1.04,.18,0,.12,.06,2.20);block(1.04,.18,0,.12,.06,2.20);
   block(0,.18,-1.04,2,.06,.12);block(0,.18,1.04,2,.06,.12);
   const materials=[poolMaterial,waterMaterial,sphereMaterial];
