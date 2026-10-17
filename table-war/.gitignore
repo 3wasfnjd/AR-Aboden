@@ -1,0 +1,7 @@
+# Godot editor / import caches
+.godot/
+*.import
+*.tmp
+# exported builds
+build/
+*.apk

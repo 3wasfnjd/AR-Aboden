@@ -1,0 +1,178 @@
+class_name Room
+extends Node3D
+## Stand-in for passthrough: a wooden table in a softly lit living room.
+## Lighting: warm "window" sun with soft PCF shadows + cool fill + sky ambient.
+
+var sun: DirectionalLight3D
+var fill: DirectionalLight3D
+var env: Environment
+
+
+func _ready() -> void:
+	_environment()
+	_lights()
+	_table()
+	_room_shell()
+	_table_clutter()
+
+
+func _environment() -> void:
+	var sky_mat := ProceduralSkyMaterial.new()
+	sky_mat.sky_top_color = Color(0.93, 0.91, 0.87)
+	sky_mat.sky_horizon_color = Color(0.86, 0.80, 0.72)
+	sky_mat.ground_horizon_color = Color(0.55, 0.46, 0.37)
+	sky_mat.ground_bottom_color = Color(0.30, 0.24, 0.19)
+	sky_mat.sun_angle_max = 1.0
+	sky_mat.sky_energy_multiplier = 1.0
+	var sky := Sky.new()
+	sky.sky_material = sky_mat
+	env = Environment.new()
+	env.background_mode = Environment.BG_SKY
+	env.sky = sky
+	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
+	env.ambient_light_energy = 0.32
+	env.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
+	env.tonemap_mode = Environment.TONE_MAPPER_AGX
+	env.tonemap_exposure = 1.05
+	env.tonemap_white = 6.0
+	env.glow_enabled = true
+	env.glow_intensity = 0.25
+	env.glow_bloom = 0.02
+	env.glow_hdr_threshold = 2.2
+	env.adjustment_enabled = true
+	env.adjustment_saturation = 1.12
+	env.adjustment_contrast = 1.1
+	var we := WorldEnvironment.new()
+	we.environment = env
+	add_child(we)
+
+
+func _lights() -> void:
+	sun = DirectionalLight3D.new()
+	sun.name = "WindowSun"
+	sun.light_color = Color(1.0, 0.94, 0.84)
+	sun.light_energy = 1.05
+	sun.rotation = Vector3(deg_to_rad(-47.0), deg_to_rad(-38.0), 0)
+	sun.shadow_enabled = true
+	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
+	sun.directional_shadow_max_distance = 3.0
+	sun.directional_shadow_split_1 = 0.25
+	sun.shadow_bias = 0.03
+	sun.shadow_normal_bias = 1.1
+	sun.shadow_blur = 1.6
+	add_child(sun)
+	fill = DirectionalLight3D.new()
+	fill.name = "Fill"
+	fill.light_color = Color(0.80, 0.86, 1.0)
+	fill.light_energy = 0.28
+	fill.rotation = Vector3(deg_to_rad(-30.0), deg_to_rad(150.0), 0)
+	fill.shadow_enabled = false
+	add_child(fill)
+
+
+func _wood(light: Color, dark: Color, plank: float, gloss: float, scale := 1.0) -> ShaderMaterial:
+	var m := ShaderMaterial.new()
+	m.shader = load("res://island/wood.gdshader")
+	m.set_shader_parameter("col_light", light)
+	m.set_shader_parameter("col_dark", dark)
+	m.set_shader_parameter("plank", plank)
+	m.set_shader_parameter("gloss", gloss)
+	m.set_shader_parameter("scale", scale)
+	return m
+
+
+func _table() -> void:
+	var top := MeshInstance3D.new()
+	top.name = "TableTop"
+	var bm := BoxMesh.new()
+	bm.size = Vector3(2.6, 0.045, 1.5)
+	top.mesh = bm
+	top.position = Vector3(0, -0.0225, 0.05)
+	top.material_override = _wood(Color(0.66, 0.48, 0.32), Color(0.44, 0.29, 0.18), 0.19, 0.45, 1.0)
+	add_child(top)
+	for lx in [-1.2, 1.2]:
+		for lz in [-0.62, 0.72]:
+			var leg := MeshInstance3D.new()
+			var lm := BoxMesh.new()
+			lm.size = Vector3(0.07, 0.72, 0.07)
+			leg.mesh = lm
+			leg.position = Vector3(lx, -0.405, lz)
+			leg.material_override = top.material_override
+			add_child(leg)
+
+
+func _room_shell() -> void:
+	var floor_mi := MeshInstance3D.new()
+	var pm := PlaneMesh.new()
+	pm.size = Vector2(12, 12)
+	floor_mi.mesh = pm
+	floor_mi.position = Vector3(0, -0.77, 0)
+	floor_mi.material_override = _wood(Color(0.42, 0.30, 0.22), Color(0.28, 0.19, 0.13), 0.14, 0.3, 1.0)
+	add_child(floor_mi)
+	var rug := MeshInstance3D.new()
+	var rm := PlaneMesh.new()
+	rm.size = Vector2(3.4, 2.4)
+	rug.mesh = rm
+	rug.position = Vector3(0, -0.768, 0.1)
+	var rmat := StandardMaterial3D.new()
+	rmat.albedo_color = Color(0.55, 0.38, 0.30)
+	rmat.roughness = 1.0
+	rug.material_override = rmat
+	add_child(rug)
+	var wall_mat := StandardMaterial3D.new()
+	wall_mat.albedo_color = Color(0.86, 0.82, 0.76)
+	wall_mat.roughness = 0.95
+	for w in [[Vector3(0, 0.6, -3.0), Vector3(0, 0, 0)], [Vector3(-3.4, 0.6, 0), Vector3(0, PI * 0.5, 0)], [Vector3(3.4, 0.6, 0), Vector3(0, -PI * 0.5, 0)], [Vector3(0, 0.6, 3.4), Vector3(0, PI, 0)]]:
+		var mi := MeshInstance3D.new()
+		var qm := QuadMesh.new()
+		qm.size = Vector2(8, 3)
+		mi.mesh = qm
+		mi.position = w[0]
+		mi.rotation = w[1]
+		mi.material_override = wall_mat
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(mi)
+	# skirting + a window glow panel on the left wall (where the sun comes from)
+	var win := MeshInstance3D.new()
+	var wq := QuadMesh.new()
+	wq.size = Vector2(1.6, 1.3)
+	win.mesh = wq
+	win.position = Vector3(-3.39, 0.9, -0.6)
+	win.rotation = Vector3(0, PI * 0.5, 0)
+	var wmat := StandardMaterial3D.new()
+	wmat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	wmat.albedo_color = Color(1.0, 0.98, 0.92)
+	win.material_override = wmat
+	win.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(win)
+
+
+func _table_clutter() -> void:
+	# a ceramic mug and a closed notebook: instant real-world scale cues
+	var mb := MeshBuilder.new()
+	var c := Color(0.90, 0.88, 0.84)
+	mb.cylinder(Vector3(0, 0, 0), 0.041, 0.043, 0.095, 28, c, true, Color(0.25, 0.16, 0.10))
+	mb.cylinder(Vector3(0, 0.0, 0), 0.036, 0.036, 0.003, 28, c)
+	# handle
+	for k in 10:
+		var a0 := PI * (k / 10.0) - PI * 0.5
+		var a1 := PI * ((k + 1) / 10.0) - PI * 0.5
+		var p0 := Vector3(0.043 + cos(a0) * 0.024, 0.048 + sin(a0) * 0.028, 0)
+		var p1 := Vector3(0.043 + cos(a1) * 0.024, 0.048 + sin(a1) * 0.028, 0)
+		mb.box((p0 + p1) * 0.5, Vector3(0.008, (p1 - p0).length() + 0.002, 0.009) if absf(cos((a0 + a1) * 0.5)) > 0.7 else Vector3((p1 - p0).length() + 0.002, 0.008, 0.009), c)
+	var mug := MeshInstance3D.new()
+	mug.name = "Mug"
+	mug.mesh = mb.commit(null, MeshBuilder.vc_material(0.25))
+	mug.position = Vector3(0.78, 0, -0.42)
+	add_child(mug)
+	var nb := MeshBuilder.new()
+	nb.box(Vector3(0.002, 0.006, 0.0), Vector3(0.203, 0.0105, 0.146), Color(0.92, 0.90, 0.84))
+	nb.box(Vector3(-0.1045, 0.006, 0.0), Vector3(0.003, 0.0125, 0.152), Color(0.20, 0.30, 0.36))
+	nb.box(Vector3(0.0, 0.0115, 0.0), Vector3(0.212, 0.0012, 0.152), Color(0.20, 0.30, 0.36))
+	nb.box(Vector3(0.0, 0.0006, 0.0), Vector3(0.212, 0.0012, 0.152), Color(0.20, 0.30, 0.36))
+	var book := MeshInstance3D.new()
+	book.name = "Notebook"
+	book.mesh = nb.commit(null, MeshBuilder.vc_material(0.7))
+	book.position = Vector3(-0.80, 0, 0.55)
+	book.rotation.y = 0.35
+	add_child(book)
