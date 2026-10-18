@@ -111,10 +111,18 @@ static func _unshaded(c: Color, transparent: bool) -> StandardMaterial3D:
 
 
 ## Starts OpenXR; false on desktop / headless (no runtime), where nothing changes.
+## Eye-buffer resolution x the panel default (1.0). The cartoon scene is light on the
+## GPU, so it can afford ~1.56x the pixels for clean edges.
+const SUPERSAMPLE := 1.25
+
+
 func start() -> bool:
 	xr_interface = XRServer.find_interface("OpenXR") as OpenXRInterface
 	if xr_interface == null:
 		return false
+	# render above the panel's native resolution (supersampling: smoother edges and
+	# text); must be set before the session starts. Light foveation only.
+	xr_interface.render_target_size_multiplier = SUPERSAMPLE
 	if not xr_interface.is_initialized() and not xr_interface.initialize():
 		return false
 	xr_active = true
@@ -122,8 +130,7 @@ func start() -> bool:
 	vp.use_xr = true
 	# Tile GPU: 4x MSAA is cheap and keeps the millimetre-scale model crisp.
 	vp.msaa_3d = Viewport.MSAA_4X
-	xr_interface.render_target_size_multiplier = 1.0
-	xr_interface.foveation_level = 2
+	xr_interface.foveation_level = 1
 	xr_interface.foveation_dynamic = true
 	# Quest refresh rate: keep the runtime default (72 Hz).
 	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)

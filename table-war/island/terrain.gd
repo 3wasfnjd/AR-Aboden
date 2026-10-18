@@ -528,7 +528,7 @@ func face_color(cen: Vector3, ny: float, lu: float, sc: float, a_o: float, seed:
 		c = c.lerp(rockc, rocky)
 		c = c.lerp(C_CLIFF, smoothstep(0.72, 0.55, ny))
 		c = c.lerp(C_PEAK, smoothstep(0.036, 0.05, hs) * smoothstep(0.6, 0.85, ny))
-	var j := 1.0 + (_hash(seed) - 0.5) * 0.09
+	var j := 1.0 + (_hash(seed) - 0.5) * 0.03   # cartoon: calm facets, no salt-and-pepper
 	if hs > 0.002:
 		j *= 1.0 + clampf(_face_n.x * 0.7 - _face_n.z * 0.4, -0.25, 0.25) * 0.35
 	c = Color(c.r * j, c.g * j, c.b * j)
