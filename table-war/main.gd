@@ -52,7 +52,7 @@ static func apply_quest_profile() -> void:
 	DebrisSystem.cap = 80              # live GDScript debris; settled ones are baked
 	PhysicsTest.ejecta_scale = 0.35    # fewer soil chunks per blast
 	IslandTerrain.defer_meshes = true  # crater chunk meshes over the next frames
-	DebrisSystem.max_awake = 36        # CPU budget: older awake ones freeze + bake
+	DebrisSystem.max_awake = 28        # CPU budget: older awake ones freeze + bake
 	DebrisSystem.max_age = 2.5
 	IslandProps.max_chunks = 20        # fracture pieces per building
 	FxSystem.cap = 220                 # smoke / dust / water puffs
@@ -285,7 +285,7 @@ func _physics_shots() -> void:
 	# target: the tallest downtown tower; the shot leaves the player's hand
 	var best: Dictionary = {}
 	for s in island.props.structures:
-		if s.kind in ["tower", "midrise"] and (best.is_empty() or s.size.y > best.size.y):
+		if s.kind in ["skyscraper", "midrise"] and (best.is_empty() or s.size.y > best.size.y):
 			best = s
 	var tp: Vector3 = best.pos if not best.is_empty() else Vector3(0.1, 0.09, 0.12)
 	var tgt := Vector3(tp.x, island.height_at(tp.x, tp.z), tp.z)
@@ -383,9 +383,16 @@ func _run_mr_preview() -> void:
 	x.locked = tgt
 	x.ammo["ballistic"] = 4
 	x.cooldown["cruise"] = 1.2
-	x.panel.update_state(x.ammo, {"ballistic": 0.0, "cruise": 0.4, "artillery": 0.0}, "مقفل 0.86 م · 2.4 ث\nLOCKED 0.86 m · 2.4 s", false)
+	x.panel.update_state(x.ammo, {"ballistic": 0.0, "cruise": 0.4, "artillery": 0.0}, "LOCKED  RNG 0.86 m  ·  T+2.4 s   ·   مقفل", false)
+	# some damage for the destruction meter
+	var k := 0
+	for st in island.props.structures:
+		if st.alive and IslandProps.TARGETS.has(st.kind) and k % 4 == 0:
+			st.alive = false
+		k += 1
+	x.panel.update_destruction(island.props.destruction())
 	x.panel.hit(eye, (x.panel.button_center("reset") - eye).normalized())
-	cam.global_transform = Transform3D(Basis.looking_at((ppos + Vector3(0.05, 0.05, -0.1) - eye).normalized(), Vector3.UP), eye)
-	cam.fov = 55.0
+	cam.global_transform = Transform3D(Basis.looking_at((ppos - eye).normalized(), Vector3.UP), eye)
+	cam.fov = 40.0
 	await _capture("x_panel")
 	get_tree().quit()

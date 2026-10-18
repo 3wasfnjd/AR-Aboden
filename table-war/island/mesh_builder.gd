@@ -174,6 +174,9 @@ static func vc_material(rough := 0.85, cull := true) -> StandardMaterial3D:
 	m.vertex_color_is_srgb = true
 	m.roughness = rough
 	m.metallic_specular = 0.35
+	# build 3 cartoon look: banded light everywhere (terrain, vegetation, props)
+	m.diffuse_mode = BaseMaterial3D.DIFFUSE_TOON
+	m.specular_mode = BaseMaterial3D.SPECULAR_TOON
 	if not cull:
 		m.cull_mode = BaseMaterial3D.CULL_DISABLED
 	return m

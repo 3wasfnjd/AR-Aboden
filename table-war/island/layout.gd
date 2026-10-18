@@ -14,8 +14,8 @@ var blobs: Array[Vector4] = [
 ]
 
 # Ridge spine (x,z) with peak height above sea (m)
-var ridge := PackedVector2Array([Vector2(-0.03, -0.14), Vector2(0.10, -0.19), Vector2(0.23, -0.17), Vector2(0.31, -0.11), Vector2(0.37, -0.04)])
-var ridge_peak := 0.052
+var ridge := PackedVector2Array([Vector2(0.10, -0.19), Vector2(0.23, -0.17), Vector2(0.31, -0.11), Vector2(0.37, -0.04)])
+var ridge_peak := 0.047
 var ridge_width := 0.055
 
 # small hills: (x, z, radius, height)
@@ -131,6 +131,26 @@ func _init() -> void:
 			pts[k] *= sv
 		roads[r] = pts
 	roads.append(PackedVector2Array([Vector2(0.255, 0.094), Vector2(0.262, 0.118), Vector2(0.27, 0.141)]))
+	# build 3: a full toy city with a street grid (absolute table coordinates); the old
+	# town roads stop at the city edge, the grid takes over inside
+	town_center = CITY_C
+	town_radius = CITY_R
+	var kept: Array[PackedVector2Array] = []
+	for r in roads:
+		kept.append_array(_clip_outside(r, CITY_C, CITY_R * 0.97))
+	roads = kept
+	for k in range(-5, 6):
+		for axis in 2:
+			var off := k * CITY_PITCH
+			var half := sqrt(maxf(CITY_R * CITY_R * 1.02 - off * off, 0.0))
+			if half < 0.03:
+				continue
+			var a := CITY_C + (Vector2(off, -half) if axis == 0 else Vector2(-half, off))
+			var b := CITY_C + (Vector2(off, half) if axis == 0 else Vector2(half, off))
+			roads.append(PackedVector2Array([a, a.lerp(b, 0.5), b]))
+	# refinery -> main road, desalination plant spur, army camp road
+	roads.append(PackedVector2Array([Vector2(0.30, 0.067), Vector2(0.32, 0.07)]))
+	roads.append(PackedVector2Array([Vector2(-0.07, -0.10), Vector2(-0.05, -0.13), Vector2(-0.04, -0.14)]))
 
 
 # --- realism pass: world-coordinate features (not scaled) -------------------------------
@@ -144,9 +164,19 @@ const WADI_W := 0.009
 # offshore sandbar (capsule) south-west of the lagoon mouth
 var sandbar_a := Vector2(-0.31, 0.215)
 var sandbar_b := Vector2(-0.235, 0.30)
-# coastal power + desalination plant (south-east coast)
+# coastal power plant (south-east coast)
 var plant_center := Vector2(0.272, 0.150)
 var plant_size := Vector2(0.074, 0.044)
+# build 3: toy city, oil refinery (east cape), desalination plant, army camp (north)
+const CITY_C := Vector2(0.07, 0.055)
+const CITY_R := 0.125
+const CITY_PITCH := 0.03          # street grid: 3 cm blocks
+var refinery_center := Vector2(0.335, 0.026)
+var refinery_size := Vector2(0.076, 0.062)
+var desal_center := Vector2(0.334, 0.111)
+var desal_size := Vector2(0.046, 0.028)
+var army_center := Vector2(-0.03, -0.16)
+var army_size := Vector2(0.06, 0.05)
 # desert tyre tracks (pairs of ruts)
 var tracks: Array[PackedVector2Array] = [
 	PackedVector2Array([Vector2(-0.10, -0.075), Vector2(-0.06, -0.10), Vector2(-0.02, -0.115), Vector2(0.03, -0.11)]),
@@ -277,9 +307,54 @@ func infrastructure_distance(p: Vector2) -> float:
 	d = minf(d, _rect_dist(p, apron_center, rd, apron_size * 0.5))
 	d = minf(d, _rect_dist(p, runway_center + Vector2(rd.y, -rd.x) * taxi_offset, rd, Vector2(runway_len * 0.5, taxi_w * 0.5 + 0.002)))
 	d = minf(d, _rect_dist(p, plant_center, Vector2.RIGHT, plant_size * 0.5 + Vector2(0.003, 0.003)))
+	for z in industry_pads():
+		d = minf(d, _rect_dist(p, z[0], Vector2.RIGHT, (z[1] as Vector2) * 0.5 + Vector2(0.003, 0.003)))
 	d = minf(d, _rect_dist(p, silo_center, rd, Vector2(0.035, 0.024)))
 	d = minf(d, _rect_dist(p, Vector2((harbour_x0 + harbour_x1) * 0.5, (quay_land_z + quay_z) * 0.5), Vector2.RIGHT, Vector2((harbour_x1 - harbour_x0) * 0.5, (quay_z - quay_land_z) * 0.5 + 0.004)))
 	return d
+
+
+## The parts of a polyline outside a circle (cut exactly at the circle); pieces
+## shorter than 1 cm are dropped.
+static func _clip_outside(pts: PackedVector2Array, c: Vector2, r: float) -> Array[PackedVector2Array]:
+	var out: Array[PackedVector2Array] = []
+	var cur := PackedVector2Array()
+	for i in pts.size():
+		var p := pts[i]
+		var inside := p.distance_to(c) < r
+		if i > 0:
+			var q := pts[i - 1]
+			var was := q.distance_to(c) < r
+			if inside != was:
+				# crossing point by bisection
+				var lo := q if was else p
+				var hi := p if was else q
+				for _k in 30:
+					var m := (lo + hi) * 0.5
+					if m.distance_to(c) < r:
+						lo = m
+					else:
+						hi = m
+				cur.append(hi)
+				if inside:
+					out.append(cur)
+					cur = PackedVector2Array()
+		if not inside:
+			cur.append(p)
+	out.append(cur)
+	var res: Array[PackedVector2Array] = []
+	for pl in out:
+		var length := 0.0
+		for k in range(1, pl.size()):
+			length += pl[k].distance_to(pl[k - 1])
+		if pl.size() >= 2 and length > 0.01:
+			res.append(pl)
+	return res
+
+
+## [centre, size, pad height above the sea] of the build-3 industrial / military zones.
+func industry_pads() -> Array:
+	return [[refinery_center, refinery_size, 0.0042], [desal_center, desal_size, 0.0032], [army_center, army_size, 0.0055]]
 
 
 static func _rect_dist(p: Vector2, c: Vector2, dir: Vector2, half: Vector2) -> float:
@@ -324,6 +399,11 @@ func apply_pads(t: IslandTerrain) -> void:
 			var pw := rect_weight(p, plant_center, Vector2.RIGHT, plant_size * 0.5 + Vector2(0.004, 0.004), 0.02)
 			if pw > 0.0:
 				h = lerpf(h, sea + 0.0032, pw)
+			# refinery / desalination / army camp pads (only where there is land)
+			for z in industry_pads():
+				var zw := rect_weight(p, z[0], Vector2.RIGHT, (z[1] as Vector2) * 0.5 + Vector2(0.004, 0.004), 0.02)
+				if zw > 0.0 and h > sea - 0.002:
+					h = lerpf(h, sea + float(z[2]), zw)
 			# town: soften relief
 			var td := p.distance_to(town) / town_radius
 			if td < 1.3:

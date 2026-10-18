@@ -110,22 +110,36 @@ func _initialize() -> void:
 			if txt.contains(f):
 				src_hits.append("%s:%s" % [path.get_file(), f])
 	check("no religious building generators in source", src_hits.is_empty(), str(src_hits))
-	var has_souq := false
+	# --- build 3: a full city + industry, every target destroyable --------------------
+	var kinds := {}
 	for st in island.props.structures:
-		if st.kind == "souq":
-			has_souq = true
-	check("civic souq replaces the old landmark", has_souq)
+		kinds[st.kind] = int(kinds.get(st.kind, 0)) + 1
+	var need := ["skyscraper", "midrise", "house", "crude_tank", "column", "flare", "power_hall", "chimney", "cooling_tower", "desal", "water_tank", "sam", "tanker", "cargo", "frigate", "boat", "sts_crane", "jet", "has"]
+	var missing := []
+	for k in need:
+		if int(kinds.get(k, 0)) == 0:
+			missing.append(k)
+	check("city, refinery, power, desalination, army and ships are all on the island", missing.is_empty() and int(kinds.get("skyscraper", 0)) >= 15 and int(kinds.get("house", 0)) >= 60, "missing %s, %s" % [missing, kinds])
+	var untargeted := []
+	for st in island.props.structures:
+		if st.fragile and not IslandProps.TARGETS.has(st.kind):
+			untargeted.append(st.kind)
+		if IslandProps.TARGETS.has(st.kind) and not st.fragile:
+			untargeted.append("solid " + st.kind)
+	check("every destroyable structure counts for the destruction meter", untargeted.is_empty(), str(untargeted))
+	var d0 := island.props.destruction()
+	check("destruction meter starts at 0 %", d0.pct == 0.0 and int(d0.left) > 250, str(d0))
 
 	# --- scale consistency (1:2000) -------------------------------------------------
 	var rl := island.layout.runway_len * Scale.RATIO
 	check("runway 600 m x 25 m", absf(rl - 600.0) < 1.0 and absf(island.layout.runway_w * Scale.RATIO - 25.0) < 0.5, "%.0f m x %.1f m" % [rl, island.layout.runway_w * Scale.RATIO])
 	var storey_bad := 0
 	for st in island.props.structures:
-		if st.kind in ["house", "courtyard", "midrise", "tower"]:
-			var n: float = st.size.y / Scale.storeys(1.0)
-			if absf(n - round(n)) > 0.01 or n < 1.0 or n > 16.5:
+		if st.kind in ["house", "villa", "midrise", "skyscraper"]:
+			var n: float = st.size.y / Toon.STOREY
+			if absf(n - round(n)) > 0.01 or n < 0.99 or n > 30.5:
 				storey_bad += 1
-	check("buildings are whole storeys (3.5 m)", storey_bad == 0, "%d off-grid" % storey_bad)
+	check("buildings are whole toy storeys", storey_bad == 0, "%d off-grid" % storey_bad)
 	var palm_h := []
 	var sp: Dictionary = island.props.species["palm"]
 	for xf in (sp.xf as Array).slice(0, 50):
@@ -217,7 +231,7 @@ func _initialize() -> void:
 	# building fracture
 	var tower: Dictionary = {}
 	for s in island.props.structures:
-		if s.alive and s.kind in ["tower", "house"] and s.pos.x > 0.0:
+		if s.alive and s.kind in ["skyscraper", "house"] and s.pos.x > 0.0:
 			tower = s
 			break
 	var nb := phys.debris.bodies.size()
@@ -228,6 +242,21 @@ func _initialize() -> void:
 		phys.advance(1.0 / 60.0)
 		guard += 1
 	check("hit building breaks into fragments", not tower.alive, "debris %d -> %d" % [nb, phys.debris.bodies.size()])
+	var d1 := island.props.destruction()
+	check("destruction meter rises after a hit", d1.pct > 0.0 and int(d1.left) < int(d0.left) and int(d1.cats.city[0]) > 0, "%.2f %%, left %d" % [d1.pct, d1.left])
+	# a ship is a target too
+	var ship: Dictionary = {}
+	for s in island.props.structures:
+		if s.alive and s.kind == "frigate":
+			ship = s
+			break
+	var sp3: Vector3 = ship.pos
+	phys.fire(Vector3(sp3.x, IslandTerrain.SEA, sp3.z))
+	guard = 0
+	while phys.flying and guard < 2000:
+		phys.advance(1.0 / 60.0)
+		guard += 1
+	check("a warship hit at sea is destroyed (splash, no crater)", not ship.alive and phys.last_impact_kind == "water", "kind %s" % phys.last_impact_kind)
 
 	await _xr_tests(island, phys)
 
@@ -326,8 +355,10 @@ func _xr_tests(island: Island, phys: PhysicsTest) -> void:
 	xg.setup(room, dio2, island, phys)
 	var started := xg.start()
 	await process_frame
-	check("XR rig loads headless (no runtime -> start() false, nodes built)", not started and xg.rig.is_inside_tree() and xg.rig.camera != null and xg.rig.hands.size() == 2 and xg.hint != null and xg.fps_label != null and xg.surfaces != null)
-	check("hint panel texts (Arabic + English)", XRGame.HINT_PLACE_AR.contains("الزناد للتثبيت") and XRGame.HINT_PLAY_EN.contains("slow motion") and XRGame.ui_font() != null)
+	check("XR rig loads headless (no runtime -> start() false, nodes built)", not started and xg.rig.is_inside_tree() and xg.rig.camera != null and xg.rig.hands.size() == 2 and xg.fps_label != null and xg.surfaces != null)
+	var hint_nodes := xg.rig.camera.find_children("*", "Label3D", true, false)
+	var uf := XRGame.ui_font() as FontFile
+	check("no explanatory text in the view; UI font is MSDF (sharp) with Arabic", hint_nodes.is_empty() and uf != null and uf.multichannel_signed_distance_field and uf.fallbacks.size() == 1, "%d labels on the camera" % hint_nodes.size())
 	var m := xg.set_mode("mr")
 	var vp := xg.get_viewport()
 	check("MR hides the fake room (table, walls, mug) and its sky", m == "mr" and not room.set_root.visible and room.env.background_mode == Environment.BG_COLOR and room.env.background_color.a == 0.0 and vp.transparent_bg and not room.env.glow_enabled and not room.fill.visible and room.find_child("Mug", true, false) != null)
@@ -537,7 +568,7 @@ func _xr_tests(island: Island, phys: PhysicsTest) -> void:
 	var k2 := qd.global_transform.basis.get_scale().x
 	check("XR placing: stick shrinks and turns the model", k2 < 0.5 and k2 >= 0.4 and absf(xg2.user_yaw) > 1.0, "scale %.2f, turn %.2f rad" % [k2, xg2.user_yaw])
 	xg2._on_button("right", "trigger", true)
-	check("XR: trigger pins the model, panel shown", xg2.state == "pinned" and not xg2.ghost.visible and XRGame.HINT_PLAY_AR in xg2.hint.text and xg2.panel.visible)
+	check("XR: trigger pins the model, panel shown", xg2.state == "pinned" and not xg2.ghost.visible and xg2.panel.visible)
 
 	# pin stability: head and both controllers wander for 300 frames, nothing else
 	var cam := xg2.rig.camera
@@ -630,7 +661,7 @@ func _xr_tests(island: Island, phys: PhysicsTest) -> void:
 	xg2.panel.press("reset")
 	check("panel reset island clears craters and the lock", qi.props.craters.is_empty() and xg2.locked == null)
 	xg2._on_button("right", "by", true)
-	check("B un-pins (place again)", xg2.state == "placing" and XRGame.HINT_PLACE_EN in xg2.hint.text and not xg2.panel.visible)
+	check("B un-pins (place again)", xg2.state == "placing" and not xg2.panel.visible)
 	xg2.rig.sim = false
 	xg2.set_mode("vr")
 	xg2.queue_free()

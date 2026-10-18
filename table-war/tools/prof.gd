@@ -11,7 +11,9 @@ func _initialize() -> void:
 	dio.add_child(phys)
 	phys.setup(island)
 	phys.manual = true
-	await process_frame
+	# idle frames after loading (the ruin meshes are prepared then)
+	for k in 90:
+		await process_frame
 	var hand := Vector3(-0.28, 0.42, 0.66)
 	for wid in ["ballistic", "cruise", "artillery"]:
 		var tgt: Vector3 = Vector3(0.08, 0, 0.07)

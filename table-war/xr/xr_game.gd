@@ -22,10 +22,6 @@ extends Node3D
 ##   left stick Y (flick)       next / previous weapon;  X: rotate the island
 ##   A slow motion · B re-place · left stick click FPS panel · left menu = B
 
-const HINT_PLACE_AR := "وجّه اليد اليمنى للطاولة، العصا للحجم والدوران، الزناد للتثبيت"
-const HINT_PLACE_EN := "Point at your table, stick to size/rotate, trigger to pin"
-const HINT_PLAY_AR := "الزناد: أطلق قذيفة · A: حركة بطيئة · B: نقل الجزيرة"
-const HINT_PLAY_EN := "Trigger: fire · grip: lock target · A: slow motion · B: move island"
 const ROT_RATE := 1.2            # rad/s at full left stick
 const ROT_TICK := PI / 12.0      # haptic tick every 15 degrees
 const ROT_STEP := PI / 12.0      # panel rotate buttons
@@ -61,12 +57,11 @@ var _grab := {}
 var _rot_acc := 0.0
 var _flick_armed := true
 var _panel_hit := {}
+var _destruction_dirty := true
 
 var ghost: MeshInstance3D
 var ghost_mat: StandardMaterial3D
 var contact: MeshInstance3D
-var hint: Label3D
-var hint_status: Label3D
 var fps_label: Label3D
 var _fps_acc := 0.0
 var _fps_frames := 0
@@ -113,7 +108,6 @@ func start() -> bool:
 	rig.recentered.connect(_on_recentered)
 	set_mode("mr")
 	state = "placing"
-	_update_hint()
 	return true
 
 
@@ -200,9 +194,18 @@ static func ui_font() -> Font:
 	var arabic: FontFile = load("res://assets/fonts/cairo-arabic-500-normal.woff2")
 	if latin == null:
 		return null
+	# multichannel SDF glyphs: text stays sharp at any size / distance (bitmap glyphs
+	# at these tiny pixel sizes were blurry in the headset)
 	var f := latin.duplicate() as FontFile
+	f.multichannel_signed_distance_field = true
+	f.msdf_pixel_range = 8
+	f.msdf_size = 48
 	if arabic:
-		f.fallbacks = [arabic]
+		var a := arabic.duplicate() as FontFile
+		a.multichannel_signed_distance_field = true
+		a.msdf_pixel_range = 8
+		a.msdf_size = 48
+		f.fallbacks = [a]
 	return f
 
 
@@ -224,17 +227,7 @@ func _label(size: int, px: float) -> Label3D:
 
 
 func _build_labels() -> void:
-	hint = _label(40, 0.00028)
-	hint.name = "Hint"
-	hint.position = Vector3(0, -0.15, -0.6)
-	hint.rotation.x = deg_to_rad(12.0)
-	rig.camera.add_child(hint)
-	hint_status = _label(28, 0.00028)
-	hint_status.name = "HintStatus"
-	hint_status.modulate = Color(1, 0.86, 0.55, 0.85)
-	hint_status.position = Vector3(0, -0.188, -0.6)
-	hint_status.rotation.x = deg_to_rad(12.0)
-	rig.camera.add_child(hint_status)
+	# build 3: no explanatory text in the view (the ghost ring and the panel say enough)
 	fps_label = _label(30, 0.00025)
 	fps_label.name = "FpsPanel"
 	fps_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
@@ -247,10 +240,6 @@ func _build_labels() -> void:
 func _set_text(l: Label3D, t: String) -> void:
 	if l.text != t:
 		l.text = t
-
-
-func _update_hint() -> void:
-	_set_text(hint, HINT_PLACE_AR + "\n" + HINT_PLACE_EN if state == "placing" else HINT_PLAY_AR + "\n" + HINT_PLAY_EN)
 
 
 # ------------------------------------------------------------------------------------
@@ -332,6 +321,7 @@ func reset_island() -> void:
 		ammo[id] = int(WeaponTable.get_weapon(id).ammo)
 		cooldown[id] = 0.0
 	_aim_key = Vector4(INF, INF, INF, INF)
+	_destruction_dirty = true
 
 
 ## Turn the pinned island about its own vertical axis: only the yaw changes, the base
@@ -356,8 +346,8 @@ func pin() -> void:
 	ghost.visible = false
 	contact.visible = mode == "mr"
 	panel.visible = true
+	_destruction_dirty = true
 	rig.pulse("right", 0.6, 0.06)
-	_update_hint()
 
 
 func unpin() -> void:
@@ -367,7 +357,6 @@ func unpin() -> void:
 	locked = null
 	panel.visible = false
 	phys.hide_preview()
-	_update_hint()
 
 
 ## World launch point: just above / ahead of the right controller.
@@ -397,6 +386,7 @@ func fire() -> bool:
 func _on_impact(_point: Vector3, _kind: String) -> void:
 	rig.pulse("right", 0.5 if _kind == "land" else 0.25, 0.08)
 	_aim_key = Vector4(INF, INF, INF, INF)   # preview + (locked) marker again
+	_destruction_dirty = true
 
 
 func _hand_angle() -> float:
@@ -464,8 +454,6 @@ func place_toward(hit: Dictionary, head: Transform3D, stick: Vector2, dt: float)
 		ghost.transform = Transform3D(Basis(Vector3.UP, cur_yaw).scaled(Vector3(k, k, k)), cur_p + Vector3.UP * 0.0015)
 		ghost_mat.albedo_color = Color(1, 1, 1, 0.5) if not surface_label.begins_with("virtual") else Color(1.0, 0.75, 0.4, 0.5)
 	contact.visible = on and mode == "mr"
-	var where := {"table": "طاولة حقيقية · real table", "floor": "الأرض · floor", "virtual_table": "طاولة افتراضية 0.75 م · virtual table", "virtual_floor": "أرض افتراضية · virtual floor"}
-	_set_text(hint_status, "%s   ×%.2f" % [where.get(surface_label, surface_label if on else "-"), Placement.clamp_scale(place_scale)])
 
 
 func _step_pinned(dt: float) -> void:
@@ -508,7 +496,6 @@ func _step_pinned(dt: float) -> void:
 		aim_at(Vector3.ZERO, Vector3.ZERO)
 	rig.set_pointer("right", world_hit, true)
 	_update_panel()
-	_set_text(hint_status, "×%.2f%s" % [Placement.clamp_scale(place_scale), "   · slow-mo" if phys.slow_motion else ""])
 
 
 ## The tablet in the left hand, turned toward the eyes.
@@ -529,12 +516,15 @@ func _update_panel() -> void:
 	for id in WeaponTable.IDS:
 		cool[id] = float(cooldown[id]) / maxf(float(WeaponTable.get_weapon(id).cooldown), 0.01)
 	var tgt: Variant = locked if locked != null else aim_target
-	var txt := "الهدف: - · Target: -"
+	var txt := "TGT  ---   ·   الهدف: لا يوجد"
 	if tgt != null:
 		var dist_m := (diorama.global_transform * (tgt as Vector3)).distance_to(launch_point_world())
 		var T: float = phys.last_aim_T if phys.last_aim_T > 0.0 else 0.0
-		txt = "%s %.2f م · %.1f ث\n%s %.2f m · %.1f s" % ["مقفل" if locked != null else "الهدف", dist_m, T, "LOCKED" if locked != null else "Target", dist_m, T]
+		txt = "%s  RNG %.2f m  ·  T+%.1f s   ·   %s" % ["LOCKED" if locked != null else "TGT", dist_m, T, "مقفل" if locked != null else "الهدف"]
 	panel.update_state(ammo, cool, txt, phys.slow_motion)
+	if _destruction_dirty:
+		_destruction_dirty = false
+		panel.update_destruction(island.props.destruction())
 
 
 ## Pinned: a world ray on the island sets aim_target (island-local). The preview runs

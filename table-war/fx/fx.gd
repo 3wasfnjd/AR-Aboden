@@ -98,6 +98,17 @@ func explosion(p: Vector3, scale := 1.0) -> void:
 		puff(p + Vector3(0, 0.002 + k * 0.0012, 0), d * rng.randf_range(0.02, 0.06) * scale, 0.004 * scale, 0.022 * scale, rng.randf_range(2.0, 3.6), c, 3, 0.012, 1.5)
 
 
+## A ship hit: short fireball on the hull and a black oil-smoke column (no ground dust).
+func ship_fire(p: Vector3, scale := 1.0) -> void:
+	puff(p + Vector3(0, 0.003, 0), Vector3.ZERO, 0.008 * scale, 0.022 * scale, 0.1, Color(1.0, 0.92, 0.7), 1, 0.0, 0.0)
+	for k in 10:
+		var d := Vector3(rng.randf_range(-1, 1), rng.randf_range(0.3, 1.0), rng.randf_range(-1, 1)).normalized()
+		puff(p + d * 0.002 + Vector3(0, 0.002, 0), d * rng.randf_range(0.03, 0.07) * scale, 0.004 * scale, 0.011 * scale, rng.randf_range(0.35, 0.55), Color(1.0, rng.randf_range(0.6, 0.8), 0.3, 1.0), 2, 0.015, 6.0)
+	for k in 14:
+		var d2 := Vector3(rng.randf_range(-0.3, 0.3), 1.0, rng.randf_range(-0.3, 0.3))
+		puff(p + Vector3(0, 0.003 + k * 0.0012, 0), d2 * rng.randf_range(0.02, 0.05) * scale, 0.004 * scale, 0.02 * scale, rng.randf_range(2.0, 3.4), Color(0.12, 0.11, 0.11, 0.85), 3, 0.012, 1.5)
+
+
 func splash(p: Vector3, scale := 1.0) -> void:
 	for k in int(10 * scale) + 3:
 		var d := Vector3(rng.randf_range(-0.5, 0.5), 1.0, rng.randf_range(-0.5, 0.5))

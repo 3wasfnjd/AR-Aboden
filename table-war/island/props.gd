@@ -51,13 +51,16 @@ func build(t: IslandTerrain, lay: IslandLayout) -> void:
 	struct_mat.shader = load("res://island/structure.gdshader")
 	_place_air_base()
 	_place_harbour()
-	_place_town()
-	_place_lighthouse()
 	_place_plant()
+	_place_refinery()
+	_place_desal()
+	_place_army()
+	_place_ships()
+	_place_city()
+	_place_lighthouse()
 	_rebuild_structures()
 	_build_drapes()
 	_place_vegetation()
-	_place_boats()
 	_place_buoys()
 	_snapshot()
 
@@ -142,6 +145,10 @@ func add_structure(kind: String, c: Vector2, rot: float, size: Vector3, col: Col
 # air base
 # ======================================================================================
 
+## Air-base buildings and aircraft are drawn this much bigger than 1:2000 (toy look).
+const TOY := 1.5
+
+
 func _place_air_base() -> void:
 	var L := layout
 	var rd := L.runway_dir()
@@ -152,22 +159,22 @@ func _place_air_base() -> void:
 	for k in 4:
 		var along := -Scale.m(130.0) + k * Scale.m(100.0)
 		var c := L.base_world(along, has_lat + (k % 2) * Scale.m(10.0))
-		var st := add_structure("has", c, rot + PI, Vector3(Scale.m(30.0), Scale.m(11.0), Scale.m(36.0)), Color(0.71, 0.67, 0.58))
+		var st := add_structure("has", c, rot + PI, Vector3(Scale.m(30.0), Scale.m(11.0), Scale.m(36.0)) * TOY, Color(0.80, 0.76, 0.64))
 		st["link"] = [L.base_world(along, has_lat - Scale.m(20.0)), L.base_world(along, L.taxi_offset + L.taxi_w * 0.5 + Scale.m(20.0) + L.apron_size.y - Scale.m(2.0))]
 	# fighters on the apron (15 m long, 10 m span)
 	for k in 5:
 		var c4 := L.base_world(-Scale.m(90.0) + k * Scale.m(40.0), L.taxi_offset + L.taxi_w * 0.5 + Scale.m(20.0) + L.apron_size.y * 0.55)
-		add_structure("jet", c4, rot - PI * 0.5, Vector3(Scale.m(10.0), Scale.m(5.0), Scale.m(15.0)), Color(0.60, 0.63, 0.65))
+		add_structure("jet", c4, rot - PI * 0.5, Vector3(Scale.m(10.0), Scale.m(5.0), Scale.m(15.0)) * TOY, Color(0.62, 0.70, 0.78))
 	# tower, operations, barracks east end (inside the fence)
 	var east := L.runway_len * 0.5 - Scale.m(40.0)
-	add_structure("ctower", L.base_world(east, L.taxi_offset + Scale.m(40.0)), rot, Vector3(Scale.m(10.0), Scale.m(25.0), Scale.m(10.0)), Color(0.86, 0.84, 0.78))
-	add_structure("house", L.base_world(east - Scale.m(30.0), L.taxi_offset + Scale.m(48.0)), rot, Vector3(Scale.m(34.0), Scale.storeys(2.0), Scale.m(16.0)), Color(0.80, 0.76, 0.64))
+	add_structure("ctower", L.base_world(east, L.taxi_offset + Scale.m(40.0)), rot, Vector3(Scale.m(10.0), Scale.m(25.0), Scale.m(10.0)) * TOY, Color(0.96, 0.94, 0.88))
+	add_structure("barracks", L.base_world(east - Scale.m(30.0), L.taxi_offset + Scale.m(48.0)), rot, Vector3(Scale.m(34.0), Toon.storeys(2.0), Scale.m(16.0)), Color(0.90, 0.86, 0.74))
 	for k in 3:
-		add_structure("barracks", L.base_world(east - Scale.m(20.0) - k * Scale.m(46.0), has_lat + Scale.m(62.0)), rot, Vector3(Scale.m(40.0), Scale.storeys(1.0), Scale.m(12.0)), Color(0.78, 0.73, 0.60))
+		add_structure("barracks", L.base_world(east - Scale.m(20.0) - k * Scale.m(46.0), has_lat + Scale.m(62.0)), rot, Vector3(Scale.m(40.0), Toon.storeys(1.0), Scale.m(14.0)), Color(0.88, 0.84, 0.70))
 	# fuel farm with bunds near the west end
 	for k in 3:
 		var c2 := L.base_world(Scale.m(0.0) + k * Scale.m(34.0), has_lat + Scale.m(70.0))
-		add_structure("tank", c2, 0.0, Vector3(Scale.m(20.0), Scale.m(12.0), Scale.m(20.0)), Color(0.88, 0.88, 0.86))
+		add_structure("tank", c2, 0.0, Vector3(Scale.m(20.0), Scale.m(12.0), Scale.m(20.0)) * TOY, Color(0.96, 0.96, 0.94))
 	# missile silos on the silo pad
 	for k in 3:
 		var c3 := L.silo_center + rd * (-Scale.m(36.0) + k * Scale.m(36.0)) + Vector2(rd.y, -rd.x) * Scale.m(10.0)
@@ -298,21 +305,13 @@ func _place_harbour() -> void:
 	structures.append({
 		"kind": "pier", "pos": Vector3(L.pier_x, sea + Scale.m(4.2), (pz0 + pz1) * 0.5), "rot": 0.0,
 		"size": Vector3(Scale.m(8.0), Scale.m(1.2), pz1 - pz0), "col": Color(0.55, 0.42, 0.30), "seed": 2,
-		"alive": true, "fragile": false, "sink": 0.0, "ruin": false,
+		"alive": true, "fragile": true, "sink": 0.0, "ruin": false,
 	})
 	placed.append({"kind": "pier", "pos": Vector3(L.pier_x, sea, pz1), "water_ok": true, "sink": 0.0, "ground_min": 0.0})
 	# ship-to-shore cranes on the quay edge, booms over the berth
 	var crane_z := L.quay_z - Scale.m(17.0)
 	for k in 2:
 		add_structure("sts_crane", Vector2(x0 + Scale.m(70.0) + k * Scale.m(56.0), crane_z), 0.0, Vector3(Scale.m(20.0), Scale.m(58.0), Scale.m(32.0)), Color(0.88, 0.70, 0.18), true, true)
-	# feeder ship alongside (140 x 22 m)
-	var ship := {
-		"kind": "ship", "pos": Vector3(x0 + Scale.m(95.0), sea, L.quay_z + Scale.m(13.0)), "rot": 0.0,
-		"size": Vector3(Scale.m(140.0), Scale.m(22.0), Scale.m(22.0)), "col": Color(0.2, 0.27, 0.36), "seed": 77,
-		"alive": true, "fragile": true, "sink": 0.0, "ruin": false,
-	}
-	structures.append(ship)
-	placed.append({"kind": "ship", "pos": ship.pos, "water_ok": true, "sink": 0.0, "ground_min": 0.0})
 	# container yard: 2 rows x 3 blocks, RTG over one block
 	var yard_z0 := L.quay_land_z + Scale.m(8.0)
 	var block := Vector3(Scale.m(40.0), Scale.m(11.0), Scale.m(14.0))
@@ -344,55 +343,73 @@ func breakwater_points() -> PackedVector2Array:
 # town
 # ======================================================================================
 
-func _place_town() -> void:
+## Build 3 toy city on a street grid: skyscrapers downtown, mid-rise blocks, a mall,
+## a stadium and a TV tower in the ring, houses and villas outside. One lot grid per
+## block (2 x 2 downtown / ring, 3 x 3 houses outside).
+func _place_city() -> void:
 	var L := layout
-	var tc := L.town_center
-	# landmarks: the old fort and the souq (civic market hall)
-	add_structure("fort", L.fort_pos, deg_to_rad(8.0), Vector3(Scale.m(56.0), Scale.m(9.0), Scale.m(56.0)), Color(0.76, 0.65, 0.50))
-	add_structure("souq", tc + Vector2(-0.024, -0.024), 0.0, Vector3(Scale.m(64.0), Scale.m(8.5), Scale.m(26.0)), Color(0.90, 0.85, 0.74))
-	var modern_c := tc + Vector2(0.034, 0.03)
-	var pitch := Scale.m(26.0)
-	var nxz := 10
-	for gz in range(-nxz, nxz + 1):
-		for gx in range(-nxz, nxz + 1):
-			# a street every two lots in the old town, every lot pair in the new grid
-			var sx: float = gx * pitch + floor(gx / 2.0) * Scale.m(10.0)
-			var sz: float = gz * pitch + floor(gz / 2.0) * Scale.m(10.0)
-			var c := tc + Vector2(sx, sz) + Vector2(rng.randf_range(-0.0008, 0.0008), rng.randf_range(-0.0008, 0.0008))
-			var dn := c.distance_to(tc) / L.town_radius
-			if dn > 1.0 + rng.randf_range(-0.2, 0.05):
+	var C := L.town_center
+	var P := IslandLayout.CITY_PITCH
+	var inner := P - IslandLayout.ROAD_W - 0.002
+	var specials := ["stadium", "mall", "tv_tower", "mall"]
+	add_structure("fort", L.fort_pos, deg_to_rad(8.0), Vector3(Scale.m(56.0), Scale.m(9.0), Scale.m(56.0)), Color(0.86, 0.70, 0.48))
+	for gz in range(-5, 5):
+		for gx in range(-5, 5):
+			var bc := C + Vector2((gx + 0.5) * P, (gz + 0.5) * P)
+			var dn := bc.distance_to(C) / L.town_radius
+			if dn > 1.0:
 				continue
-			if rng.randf() < 0.05:
-				continue
-			var modern := 1.0 - smoothstep(0.0, 0.05, c.distance_to(modern_c))
-			var kind := "house"
-			var size := Vector3(Scale.m(rng.randf_range(15.0, 22.0)), 0.0, Scale.m(rng.randf_range(15.0, 22.0)))
-			var col: Color = Arch.PLASTER[rng.randi() % Arch.PLASTER.size()]
-			if rng.randf() < modern * 0.9:
-				if rng.randf() < 0.35 and modern > 0.5:
-					kind = "tower"
-					size = Vector3(Scale.m(rng.randf_range(24.0, 30.0)), Scale.storeys(rng.randi_range(10, 16)), Scale.m(rng.randf_range(24.0, 30.0)))
-					col = [Color(0.72, 0.80, 0.84), Color(0.86, 0.88, 0.88), Color(0.64, 0.72, 0.78)][rng.randi() % 3]
-				else:
-					kind = "midrise"
-					size = Vector3(Scale.m(rng.randf_range(22.0, 28.0)), Scale.storeys(rng.randi_range(5, 8)), Scale.m(rng.randf_range(16.0, 22.0)))
-					col = [Color(0.90, 0.88, 0.84), Color(0.84, 0.80, 0.72), Color(0.78, 0.76, 0.72), Color(0.88, 0.82, 0.70)][rng.randi() % 4]
-			elif rng.randf() < 0.55:
-				kind = "courtyard"
-				size = Vector3(Scale.m(rng.randf_range(20.0, 24.0)), Scale.storeys(2.0), Scale.m(rng.randf_range(20.0, 24.0)))
-			else:
-				size.y = Scale.storeys(1.0 if rng.randf() < 0.45 else 2.0)
-			var half_diag := Vector2(size.x, size.z).length() * 0.5
-			if L.road_distance(c) < half_diag * 0.8 + IslandLayout.ROAD_W * 0.5 + 0.0008:
-				continue
-			if L.infrastructure_distance(c) < half_diag:
-				continue
-			if not _footprint_clear(c, half_diag * 0.6):
-				continue
-			var g := _ground(c, 0.0, Vector2(size.x, size.z) * 0.5)
-			if g.x - IslandTerrain.SEA < 0.0018 or g.y - g.x > 0.006:
-				continue
-			add_structure(kind, c, 0.0, size, col)
+			var zone := 0 if dn < 0.46 else (1 if dn < 0.72 else 2)
+			if zone == 1 and not specials.is_empty() and rng.randf() < 0.22:
+				var kind: String = specials.pop_front()
+				var ssz := Vector3(inner, Toon.storeys(4.0), inner * 0.8) if kind != "tv_tower" else Vector3(0.006, 0.075, 0.006)
+				if kind == "mall":
+					ssz = Vector3(inner, Toon.storeys(3.0), inner * 0.7)
+				if _city_lot(bc, ssz):
+					add_structure(kind, bc, 0.0, ssz, Color(0.95, 0.55, 0.30) if kind == "stadium" else Toon.pastel(rng))
+					continue
+				specials.push_front(kind)
+			var n := 3 if zone == 2 else 2
+			var lot := inner / n
+			for iz in n:
+				for ix in n:
+					var c := bc + Vector2((ix + 0.5) * lot - inner * 0.5, (iz + 0.5) * lot - inner * 0.5)
+					var kind := "house"
+					var size: Vector3
+					var col: Color = Toon.pastel(rng)
+					if zone == 0 and rng.randf() < 0.9:
+						kind = "skyscraper"
+						var f := lot * rng.randf_range(0.72, 0.86)
+						# taller towards the centre
+						var top := lerpf(28.0, 13.0, clampf(c.distance_to(C) / (L.town_radius * 0.46), 0.0, 1.0))
+						size = Vector3(f, Toon.storeys(float(rng.randi_range(int(top * 0.6), int(top)))), f)
+						col = Toon.GLASS[rng.randi() % Toon.GLASS.size()]
+					elif zone <= 1:
+						kind = "midrise"
+						var f2 := lot * rng.randf_range(0.7, 0.84)
+						size = Vector3(f2, Toon.storeys(float(rng.randi_range(4, 8))), f2 * rng.randf_range(0.8, 1.0))
+					elif rng.randf() < 0.25:
+						kind = "villa"
+						size = Vector3(lot * 0.85, Toon.storeys(2.0), lot * 0.85)
+					else:
+						size = Vector3(lot * rng.randf_range(0.6, 0.78), Toon.storeys(1.0 if rng.randf() < 0.4 else 2.0), lot * rng.randf_range(0.6, 0.78))
+					if rng.randf() < 0.06:
+						continue
+					if _city_lot(c, size):
+						add_structure(kind, c, 0.0, size, col)
+
+
+## A lot is buildable: dry, fairly flat, off roads and infrastructure, no overlap.
+func _city_lot(c: Vector2, size: Vector3) -> bool:
+	var half_diag := Vector2(size.x, size.z).length() * 0.5
+	if layout.road_distance(c) < half_diag * 0.72 + IslandLayout.ROAD_W * 0.5 + 0.0004:
+		return false
+	if layout.infrastructure_distance(c) < half_diag:
+		return false
+	if not _footprint_clear(c, half_diag * 0.55):
+		return false
+	var g := _ground(c, 0.0, Vector2(size.x, size.z) * 0.5)
+	return g.x - IslandTerrain.SEA >= 0.0018 and g.y - g.x <= 0.007
 
 
 # ======================================================================================
@@ -402,21 +419,20 @@ func _place_town() -> void:
 func _place_lighthouse() -> void:
 	var p := layout.lighthouse_pos
 	add_structure("lighthouse", p, 0.0, Vector3(Scale.m(9.0), Scale.m(30.0), Scale.m(9.0)), Color(0.95, 0.94, 0.92))
-	add_structure("house", p + Vector2(-Scale.m(20.0), Scale.m(12.0)), 0.2, Vector3(Scale.m(14.0), Scale.storeys(1.0), Scale.m(10.0)), Color(0.93, 0.92, 0.88))
+	add_structure("house", p + Vector2(-Scale.m(20.0), Scale.m(12.0)), 0.2, Vector3(0.007, Toon.storeys(1.0), 0.005), Color(0.93, 0.92, 0.88))
 
 
-## Coastal combined power + desalination plant (south-east coast).
+## Coastal gas power station (south-east coast): halls, chimneys, cooling towers,
+## transformer yard.
 func _place_plant() -> void:
 	var L := layout
 	var c := L.plant_center
-	add_structure("turbine_hall", c + Vector2(-Scale.m(20.0), Scale.m(4.0)), 0.0, Vector3(Scale.m(84.0), Scale.m(22.0), Scale.m(26.0)), Color(0.76, 0.79, 0.82))
-	for k in 4:
-		add_structure("stack", c + Vector2(-Scale.m(60.0) + k * Scale.m(26.0), -Scale.m(30.0)), 0.0, Vector3(Scale.m(6.0), Scale.m(85.0), Scale.m(6.0)), Arch.CONCRETE)
-	for k in 2:
-		add_structure("desal", c + Vector2(Scale.m(14.0), Scale.m(26.0) + k * Scale.m(11.0)), 0.0, Vector3(Scale.m(84.0), Scale.m(7.0), Scale.m(10.0)), Color(0.86, 0.86, 0.84))
+	add_structure("power_hall", c + Vector2(-0.012, 0.004), 0.0, Vector3(0.034, 0.011, 0.014), Color(0.88, 0.90, 0.92))
 	for k in 3:
-		add_structure("water_tank", c + Vector2(Scale.m(50.0), -Scale.m(22.0) + k * Scale.m(20.0)), 0.0, Vector3(Scale.m(16.0), Scale.m(10.0), Scale.m(16.0)), Color(0.80, 0.84, 0.86))
-	add_structure("house", c + Vector2(Scale.m(55.0), Scale.m(30.0)), 0.0, Vector3(Scale.m(18.0), Scale.storeys(2.0), Scale.m(12.0)), Color(0.86, 0.84, 0.80))
+		add_structure("chimney", c + Vector2(-0.026 + k * 0.012, -0.012), 0.0, Vector3(0.0045, 0.05, 0.0045), Toon.WHITE)
+	for k in 2:
+		add_structure("cooling_tower", c + Vector2(0.022, -0.010 + k * 0.02), 0.0, Vector3(0.016, 0.026, 0.016), Toon.WHITE)
+	add_structure("transformer", c + Vector2(-0.012, 0.018), 0.0, Vector3(0.022, 0.006, 0.008), Toon.STEEL)
 	# intake jetty straight out to sea
 	var jx := c.x - Scale.m(10.0)
 	var jz0 := c.y + L.plant_size.y * 0.5
@@ -427,8 +443,141 @@ func _place_plant() -> void:
 	var sea := IslandTerrain.SEA
 	structures.append({"kind": "jetty", "pos": Vector3(jx, sea + Scale.m(3.0), (jz0 + jz1) * 0.5), "rot": 0.0,
 		"size": Vector3(Scale.m(6.0), Scale.m(1.0), jz1 - jz0), "col": Arch.CONCRETE, "seed": 9,
-		"alive": true, "fragile": false, "sink": 0.0, "ruin": false})
+		"alive": true, "fragile": true, "sink": 0.0, "ruin": false})
 	placed.append({"kind": "jetty", "pos": Vector3(jx, sea, jz1), "water_ok": true, "sink": 0.0, "ground_min": 0.0})
+
+
+## Oil refinery on the east cape: crude tank farm, distillation columns, cracking
+## units, LPG spheres, flare stacks, pipe racks, and a tanker jetty to the sea.
+func _place_refinery() -> void:
+	var L := layout
+	var c := L.refinery_center
+	var sz := L.refinery_size
+	for i in 3:
+		for j in 2:
+			add_structure("crude_tank", c + Vector2(-sz.x * 0.32 + i * 0.019, -sz.y * 0.28 + j * 0.019), 0.0, Vector3(0.016, 0.0075, 0.016), Toon.WHITE)
+	for k in 3:
+		add_structure("column", c + Vector2(sz.x * 0.08 + k * 0.008, -sz.y * 0.30), 0.0, Vector3(0.003, 0.030 + k * 0.006, 0.003), Toon.STEEL)
+	for k in 2:
+		add_structure("cracker", c + Vector2(sz.x * 0.18 + k * 0.016, sz.y * 0.02), 0.0, Vector3(0.013, 0.013, 0.011), Toon.STEEL)
+	for k in 3:
+		add_structure("sphere_tank", c + Vector2(-sz.x * 0.30 + k * 0.012, sz.y * 0.33), 0.0, Vector3(0.009, 0.009, 0.009), Toon.WHITE)
+	add_structure("flare", c + Vector2(sz.x * 0.42, sz.y * 0.36), 0.0, Vector3(0.002, 0.04, 0.002), Toon.WHITE)
+	add_structure("flare", c + Vector2(sz.x * 0.30, sz.y * 0.40), 0.0, Vector3(0.002, 0.032, 0.002), Toon.WHITE)
+	add_structure("pipe_rack", c + Vector2(sz.x * 0.05, sz.y * 0.20), 0.0, Vector3(sz.x * 0.8, 0.004, 0.004), Toon.STEEL)
+	# tanker jetty: east from the refinery into deep water, the tanker alongside
+	var jz := c.y - sz.y * 0.05
+	var jx0 := c.x + sz.x * 0.5
+	var jx1 := jx0
+	while jx1 < jx0 + 0.09 and _hs(jx1, jz) > -0.006:
+		jx1 += 0.002
+	jx1 += 0.004
+	var sea := IslandTerrain.SEA
+	structures.append({"kind": "jetty", "pos": Vector3((jx0 + jx1) * 0.5, sea + 0.0018, jz), "rot": PI * 0.5,
+		"size": Vector3(0.004, 0.0008, jx1 - jx0), "col": Arch.CONCRETE, "seed": 19,
+		"alive": true, "fragile": true, "sink": 0.0, "ruin": false})
+	placed.append({"kind": "jetty", "pos": Vector3(jx1, sea, jz), "water_ok": true, "sink": 0.0, "ground_min": 0.0})
+	_add_ship("tanker", Vector2(jx1 + 0.022, jz - 0.012), PI * 0.5, Vector3(0.09, 0.006, 0.016))
+
+
+## Desalination plant beside the power station: process trains + blue water tanks.
+func _place_desal() -> void:
+	var c := layout.desal_center
+	for k in 2:
+		add_structure("desal", c + Vector2(-0.006, -0.007 + k * 0.012), 0.0, Vector3(0.03, 0.005, 0.010), Toon.WHITE)
+	for k in 2:
+		add_structure("water_tank", c + Vector2(0.017, -0.006 + k * 0.012), 0.0, Vector3(0.009, 0.007, 0.009), Toon.WATER_BLUE)
+
+
+## Army camp on the north plain: SAM batteries, bunkers, tanks, barracks.
+func _place_army() -> void:
+	var c := layout.army_center
+	for k in 3:
+		add_structure("barracks", c + Vector2(-0.018 + k * 0.016, -0.014), 0.0, Vector3(0.013, Toon.storeys(1.0), 0.006), Color(0.86, 0.82, 0.68))
+	for k in 3:
+		add_structure("sam", c + Vector2(-0.02 + k * 0.02, 0.006), deg_to_rad(-30.0 + k * 30.0), Vector3(0.008, 0.003, 0.004), Toon.OLIVE)
+	for k in 4:
+		add_structure("tank_vehicle", c + Vector2(-0.022 + k * 0.012, 0.018), deg_to_rad(90.0), Vector3(0.0068, 0.003, 0.0042), Toon.OLIVE)
+	for k in 2:
+		add_structure("bunker", c + Vector2(0.024, -0.012 + k * 0.016), 0.0, Vector3(0.010, 0.0035, 0.010), Color(0.70, 0.68, 0.62))
+	add_structure("radar_sphere", c + Vector2(-0.026, 0.0), 0.0, Vector3(0.007, 0.009, 0.007), Toon.WHITE)
+
+
+## Ships on the sea (static, destroyable): harbour cargo ships, warships offshore,
+## fishing / patrol boats. Each is placed only where the sea is deep enough.
+func _place_ships() -> void:
+	var L := layout
+	_add_ship("cargo", Vector2(L.harbour_x0 + Scale.m(95.0), L.quay_z + Scale.m(13.0)), 0.0, Vector3(0.085, 0.006, 0.015))
+	_add_ship("cargo", Vector2(0.24, 0.33), deg_to_rad(-20.0), Vector3(0.09, 0.006, 0.016))
+	_add_ship("frigate", Vector2(-0.06, 0.34), deg_to_rad(15.0), Vector3(0.06, 0.006, 0.010))
+	_add_ship("frigate", Vector2(0.06, -0.33), deg_to_rad(170.0), Vector3(0.065, 0.006, 0.011))
+	_add_ship("frigate", Vector2(-0.40, -0.18), deg_to_rad(120.0), Vector3(0.055, 0.006, 0.0095))
+	var small := [[Vector2(L.pier_x - Scale.m(9.0), L.quay_z + Scale.m(30.0)), deg_to_rad(90), Color(0.95, 0.95, 0.93)],
+		[Vector2(L.pier_x + Scale.m(11.0), L.quay_z + Scale.m(60.0)), deg_to_rad(-90), Color(0.92, 0.35, 0.25)],
+		[Vector2(0.06, 0.29), deg_to_rad(30), Color(0.95, 0.75, 0.30)],
+		[Vector2(-0.30, 0.25), deg_to_rad(-60), Color(0.30, 0.60, 0.95)],
+		[Vector2(0.40, -0.18), deg_to_rad(150), Color(0.55, 0.62, 0.66)],
+		[Vector2(-0.18, -0.30), deg_to_rad(40), Color(0.95, 0.95, 0.93)]]
+	for b in small:
+		_add_ship("boat", b[0], b[1], Vector3(0.016, 0.003, 0.005), b[2])
+
+
+func _add_ship(kind: String, c: Vector2, rot: float, size: Vector3, col: Color = Toon.NAVY) -> void:
+	var b := Basis(Vector3.UP, rot)
+	for f in [Vector3(0.5, 0, 0), Vector3(-0.5, 0, 0), Vector3(0, 0, 0.5), Vector3(0, 0, -0.5), Vector3.ZERO]:
+		var q: Vector3 = b * (f * size)
+		if not terrain.is_inside(c.x + q.x, c.y + q.z, 0.01) or _hs(c.x + q.x, c.y + q.z) > -0.003:
+			return
+	var st := {"kind": kind, "pos": Vector3(c.x, IslandTerrain.SEA, c.y), "rot": rot, "size": size, "col": col,
+		"seed": rng.randi(), "alive": true, "fragile": true, "sink": 0.0, "ruin": false}
+	structures.append(st)
+	placed.append({"kind": kind, "pos": st.pos, "water_ok": true, "sink": 0.0, "ground_min": 0.0})
+
+
+# ======================================================================================
+# targets: everything that can be destroyed, by category, for the destruction meter
+# ======================================================================================
+
+## kind -> [category, value]. Category ids: city oil power water port military navy.
+const TARGETS := {
+	"house": ["city", 1], "villa": ["city", 1], "midrise": ["city", 2], "skyscraper": ["city", 5],
+	"mall": ["city", 4], "stadium": ["city", 4], "tv_tower": ["city", 4], "fort": ["city", 3], "lighthouse": ["city", 2],
+	"crude_tank": ["oil", 4], "column": ["oil", 4], "cracker": ["oil", 5], "sphere_tank": ["oil", 3], "flare": ["oil", 2], "pipe_rack": ["oil", 2],
+	"power_hall": ["power", 6], "chimney": ["power", 3], "cooling_tower": ["power", 4], "transformer": ["power", 3],
+	"desal": ["water", 5], "water_tank": ["water", 3],
+	"sts_crane": ["port", 3], "rtg": ["port", 2], "containers": ["port", 1], "warehouse": ["port", 2], "pier": ["port", 1], "jetty": ["port", 1], "beacon": ["port", 1],
+	"has": ["military", 4], "jet": ["military", 3], "ctower": ["military", 4], "barracks": ["military", 2], "tank": ["military", 3],
+	"silo": ["military", 4], "silo_open": ["military", 4], "launcher_truck": ["military", 3], "radar_base": ["military", 2], "mast": ["military", 2],
+	"sam": ["military", 4], "bunker": ["military", 3], "tank_vehicle": ["military", 2], "radar_sphere": ["military", 4], "house_mil": ["military", 1],
+	"cargo": ["navy", 5], "tanker": ["navy", 6], "frigate": ["navy", 7], "boat": ["navy", 1],
+}
+const CATEGORIES := ["city", "oil", "power", "water", "port", "military", "navy"]
+const SHIP_KINDS := ["cargo", "tanker", "frigate", "boat"]
+
+
+## Destruction state: pct (0-100, by value), targets left, and per category
+## {cat: [destroyed, total]}.
+func destruction() -> Dictionary:
+	var tot := 0
+	var hit := 0
+	var left := 0
+	var cats := {}
+	for c in CATEGORIES:
+		cats[c] = [0, 0]
+	for st in structures:
+		if not TARGETS.has(st.kind):
+			continue
+		var t: Array = TARGETS[st.kind]
+		var v: int = t[1]
+		tot += v
+		var cc: Array = cats[t[0]]
+		cc[1] = int(cc[1]) + 1
+		if not st.alive:
+			hit += v
+			cc[0] = int(cc[0]) + 1
+		else:
+			left += 1
+	return {"pct": 100.0 * hit / maxf(tot, 1), "left": left, "cats": cats}
 
 
 # ======================================================================================
@@ -445,14 +594,14 @@ func _rebuild_colliders() -> void:
 	col_boxes.clear()
 	col_hash.clear()
 	for st in structures:
-		if not st.alive or st.kind in ["quay", "pier", "jetty"]:
+		if not st.alive or st.kind in ["quay", "pier", "jetty", "boat"]:
 			continue
 		var sz: Vector3 = st.size
 		var xf := structure_xform(st)
 		var top: float = sz.y
-		if st.kind == "ship":
-			top = Scale.m(6.0)
-		var box := {"inv": xf.affine_inverse(), "basis": xf.basis, "hx": sz.x * 0.5, "hz": sz.z * 0.5, "top": top, "bottom": -float(st.sink) - 0.002}
+		if st.kind in SHIP_KINDS:
+			top = 0.003
+		var box := {"inv": xf.affine_inverse(), "basis": xf.basis, "hx": sz.x * 0.5, "hz": sz.z * 0.5, "top": top, "bottom": -float(st.sink) - 0.002, "st": st}
 		var idx := col_boxes.size()
 		col_boxes.append(box)
 		var r := Vector2(sz.x, sz.z).length() * 0.5
@@ -473,6 +622,8 @@ func collide_point(p: Vector3, r: float) -> Array:
 		return []
 	for i in (col_hash[key] as Array):
 		var b: Dictionary = col_boxes[i]
+		if not (b.st as Dictionary).alive:
+			continue    # destroyed since the last full rebuild
 		var lp: Vector3 = (b.inv as Transform3D) * p
 		var px: float = b.hx + r - absf(lp.x)
 		var pz: float = b.hz + r - absf(lp.z)
@@ -493,7 +644,7 @@ func collide_point(p: Vector3, r: float) -> Array:
 
 ## The merged structures mesh, split into STRUCT_TILES x STRUCT_TILES tiles so a blast
 ## rebuilds only the tile(s) it touched (the whole 31k-triangle mesh took ~20 ms).
-const STRUCT_TILES := 6       # 6 x 6 tiles: a hit re-uploads ~1/36 of the buildings
+const STRUCT_TILES := 8       # 8 x 8 tiles: a hit re-uploads ~1/64 of the buildings
 var _struct_tile_mi := {}     # tile index -> MeshInstance3D
 var _struct_tile_tris := {}
 ## Per-structure mesh arrays (index = structure id), built once: a tile rebuild only
@@ -501,6 +652,24 @@ var _struct_tile_tris := {}
 ## the new ruin of the hit building plus the upload of its tile.
 var _arr_alive := {}
 var _arr_ruin := {}
+
+
+var _warm_next := 0
+
+
+## Prepare the ruin meshes a few per frame after the build, so a hit only concatenates.
+func _warm_ruins(n: int) -> void:
+	while n > 0 and _warm_next < structures.size():
+		var st: Dictionary = structures[_warm_next]
+		_warm_next += 1
+		if st.fragile and not _arr_ruin.has(st.id):
+			var mb := MeshBuilder.new()
+			var was: bool = st.alive
+			st.alive = false
+			_gen_structure(mb, st)
+			st.alive = was
+			_arr_ruin[st.id] = [mb.verts, mb.norms, mb.cols, mb.uvs, mb.uv2s]
+			n -= 1
 
 
 func _struct_tile(st: Dictionary) -> int:
@@ -521,7 +690,11 @@ func _struct_arrays(st: Dictionary) -> Array:
 
 
 func _rebuild_structures(tiles: Array = []) -> void:
-	_rebuild_colliders()
+	# a blast only kills boxes (collide_point skips dead structures): the collider grid
+	# is rebuilt on the full rebuilds (build, reset)
+	if tiles.is_empty():
+		_rebuild_colliders()
+		_warm_next = 0
 	for i in structures.size():
 		structures[i]["id"] = i
 	var parts := {}
@@ -568,6 +741,18 @@ func structure_xform(s: Dictionary) -> Transform3D:
 	return Transform3D(Basis(Vector3.UP, s.rot), s.pos)
 
 
+## Build-3 kinds drawn by the cartoon kit (island/toon.gd): kind -> Toon function.
+const TOON_GEN := {
+	"house": "house", "villa": "villa", "midrise": "midrise", "skyscraper": "skyscraper", "mall": "mall",
+	"stadium": "stadium", "tv_tower": "tv_tower", "crude_tank": "crude_tank", "column": "column",
+	"cracker": "cracker", "flare": "flare", "sphere_tank": "sphere_tank", "pipe_rack": "pipe_rack",
+	"power_hall": "power_hall", "chimney": "chimney", "cooling_tower": "cooling_tower",
+	"transformer": "transformer", "desal": "desal", "water_tank": "water_tank", "sam": "sam",
+	"bunker": "bunker", "tank_vehicle": "tank_vehicle", "barracks": "barracks", "radar_sphere": "radar_sphere",
+	"tanker": "tanker", "cargo": "cargo", "frigate": "frigate", "boat": "boat",
+}
+
+
 func _gen_structure(mb: MeshBuilder, s: Dictionary) -> void:
 	mb.xform = structure_xform(s)
 	var r := RandomNumberGenerator.new()
@@ -579,8 +764,12 @@ func _gen_structure(mb: MeshBuilder, s: Dictionary) -> void:
 	if not s.alive:
 		_gen_ruin(mb, s, r)
 		return
+	if TOON_GEN.has(kind):
+		Callable(Toon, TOON_GEN[kind]).call(mb, sz, sink, col, r)
+		mb.xform = Transform3D.IDENTITY
+		return
 	match kind:
-		"house", "barracks", "radar_base":
+		"radar_base":
 			Arch.house(mb, sz, sink, col, r)
 		"courtyard":
 			Arch.courtyard(mb, sz, sink, col, r)
@@ -654,8 +843,9 @@ func _gen_structure(mb: MeshBuilder, s: Dictionary) -> void:
 				mb.cylinder(Vector3(0, sz.y - 0.0005, 0), 0.0011, 0.0011, 0.0012, 10, Color(0.92, 0.92, 0.9))
 				mb.cylinder(Vector3(0, sz.y + 0.0007, 0), 0.0011, 0.0, 0.0022, 10, Color(0.80, 0.22, 0.18))
 		"jet":
-			# mesh authored nose +x, 6.2 mm long / 7.2 mm span -> 15 m x 10 m
-			mb.xform = mb.xform * Transform3D(Basis.from_scale(Vector3(1.21, 1.0, 0.69)), Vector3.ZERO)
+			# mesh authored nose +x, 6.2 mm long / 7.2 mm span -> 15 m x 10 m (x the toy factor)
+			var jk := sz.z / Scale.m(15.0)
+			mb.xform = mb.xform * Transform3D(Basis.from_scale(Vector3(1.21, 1.0, 0.69) * jk), Vector3.ZERO)
 			_jet(mb, col)
 		"mast":
 			mb.cylinder(Vector3(0, -sink, 0), 0.0011, 0.0006, sz.y + sink, 6, col)
@@ -808,29 +998,32 @@ func _gen_ruin(mb: MeshBuilder, s: Dictionary, r: RandomNumberGenerator) -> void
 	var sz: Vector3 = s.size
 	var col: Color = (s.col as Color).darkened(0.45)
 	var stub := minf(sz.y * 0.28, 0.0028)
-	if s.kind in ["tank", "water_tank", "silo", "silo_open", "mast", "lighthouse", "stack", "beacon"]:
+	if s.kind in ["tank", "water_tank", "silo", "silo_open", "mast", "lighthouse", "stack", "beacon", "crude_tank", "column", "flare",
+			"chimney", "cooling_tower", "tv_tower", "sphere_tank", "bunker", "radar_sphere"]:
 		mb.cylinder(Vector3(0, -s.sink, 0), sz.x * 0.5, sz.x * 0.45, s.sink + stub, 10, col)
-	elif s.kind in ["jet", "containers", "launcher_truck", "crane", "sts_crane", "rtg"]:
+	elif s.kind in ["jet", "containers", "launcher_truck", "crane", "sts_crane", "rtg", "sam", "tank_vehicle", "pipe_rack", "transformer", "cracker", "jetty", "pier"]:
 		mb.box(Vector3(0, 0.0003, 0), Vector3(sz.x * 0.7, 0.0006, sz.z * 0.7), Color(0.12, 0.11, 0.10))
-	elif s.kind == "ship":
-		# burnt hull settled at the waterline
-		mb.box(Vector3(0, -Scale.m(1.0), 0), Vector3(sz.x * 0.9, Scale.m(5.0), sz.z * 0.85), Color(0.12, 0.11, 0.10))
+	elif s.kind in SHIP_KINDS:
+		# burnt hull settled at the waterline, broken in two
+		mb.box(Vector3(sz.x * 0.22, 0.0002, 0), Vector3(sz.x * 0.42, 0.0012, sz.z * 0.8), Color(0.12, 0.11, 0.10))
+		mb.box(Vector3(-sz.x * 0.25, -0.0002, 0), Vector3(sz.x * 0.4, 0.0010, sz.z * 0.8), Color(0.16, 0.14, 0.12))
 	else:
-		# jagged broken walls
+		# broken wall stubs (two per side, uneven) on a dark rubble floor
 		var hx := sz.x * 0.5
 		var hz := sz.z * 0.5
-		var t := 0.0006
-		for k in 6:
-			var f0 := k / 6.0
-			var hh := stub * r.randf_range(0.3, 1.0)
-			mb.box(Vector3(-hx + sz.x * (f0 + 1.0 / 12.0), (hh - s.sink) * 0.5, -hz + t * 0.5), Vector3(sz.x / 6.0, hh + s.sink, t), col)
-			hh = stub * r.randf_range(0.3, 1.0)
-			mb.box(Vector3(-hx + sz.x * (f0 + 1.0 / 12.0), (hh - s.sink) * 0.5, hz - t * 0.5), Vector3(sz.x / 6.0, hh + s.sink, t), col)
-			hh = stub * r.randf_range(0.3, 1.0)
-			mb.box(Vector3(-hx + t * 0.5, (hh - s.sink) * 0.5, -hz + sz.z * (f0 + 1.0 / 12.0)), Vector3(t, hh + s.sink, sz.z / 6.0), col)
-			hh = stub * r.randf_range(0.3, 1.0)
-			mb.box(Vector3(hx - t * 0.5, (hh - s.sink) * 0.5, -hz + sz.z * (f0 + 1.0 / 12.0)), Vector3(t, hh + s.sink, sz.z / 6.0), col)
-		mb.box(Vector3(0, 0.0002 - s.sink * 0.5, 0), Vector3(sz.x * 0.95, 0.0004 + s.sink, sz.z * 0.95), Color(0.16, 0.14, 0.12))
+		var t := 0.0007
+		for k in 2:
+			var f0 := (k + 0.5) * 0.5
+			var hh := stub * r.randf_range(0.35, 1.0)
+			mb.box(Vector3(-hx + sz.x * f0 * 0.5 + sz.x * 0.25 * k, (hh - s.sink) * 0.5, -hz + t * 0.5), Vector3(sz.x * 0.45, hh + s.sink, t), col)
+			hh = stub * r.randf_range(0.35, 1.0)
+			mb.box(Vector3(-hx + sz.x * f0 * 0.5 + sz.x * 0.25 * k, (hh - s.sink) * 0.5, hz - t * 0.5), Vector3(sz.x * 0.45, hh + s.sink, t), col)
+			hh = stub * r.randf_range(0.35, 1.0)
+			mb.box(Vector3(-hx + t * 0.5, (hh - s.sink) * 0.5, -hz + sz.z * f0 * 0.5 + sz.z * 0.25 * k), Vector3(t, hh + s.sink, sz.z * 0.45), col)
+			hh = stub * r.randf_range(0.35, 1.0)
+			mb.box(Vector3(hx - t * 0.5, (hh - s.sink) * 0.5, -hz + sz.z * f0 * 0.5 + sz.z * 0.25 * k), Vector3(t, hh + s.sink, sz.z * 0.45), col)
+		mb.box(Vector3(0, 0.0003 - s.sink * 0.5, 0), Vector3(sz.x * 0.95, 0.0006 + s.sink, sz.z * 0.95), Color(0.16, 0.14, 0.12))
+		mb.box(Vector3(sz.x * 0.1, 0.0009, -sz.z * 0.1), Vector3(sz.x * 0.5, 0.0012, sz.z * 0.45), col.darkened(0.3))
 
 
 # ======================================================================================
@@ -1830,85 +2023,6 @@ func _spacing_ok(list: Array[Transform3D], p: Vector2, d: float) -> bool:
 # boats
 # ======================================================================================
 
-func _boat_mesh(kind: int, col: Color) -> ArrayMesh:
-	var mb := MeshBuilder.new()
-	# fishing boat 12 m, patrol boat 30 m, dhow 20 m
-	var L := Scale.m(12.0) if kind == 0 else (Scale.m(30.0) if kind == 1 else Scale.m(20.0))
-	var W := L * 0.30
-	var deck := Scale.m(1.6) if kind != 1 else Scale.m(2.4)
-	var keel := -Scale.m(1.6)
-	var hull := [Vector2(-L * 0.5, -W * 0.42), Vector2(L * 0.2, -W * 0.5), Vector2(L * 0.5, 0), Vector2(L * 0.2, W * 0.5), Vector2(-L * 0.5, W * 0.42)]
-	var n := hull.size()
-	var hc := col
-	var stripe := Color(0.2, 0.3, 0.5) if kind != 2 else Color(0.35, 0.22, 0.12)
-	for k in n:
-		var a: Vector2 = hull[k]
-		var b: Vector2 = hull[(k + 1) % n]
-		var A := Vector3(a.x, deck, a.y)
-		var B := Vector3(b.x, deck, b.y)
-		var Ab := Vector3(a.x * 0.85, keel, a.y * 0.55)
-		var Bb := Vector3(b.x * 0.85, keel, b.y * 0.55)
-		var outd := Vector3((a.x + b.x) * 0.5, 0, (a.y + b.y) * 0.5)
-		mb.tri_out(A, B, Bb, hc, outd)
-		mb.tri_out(A, Bb, Ab, hc, outd)
-		# stripe
-		var As := Vector3(a.x * 1.003, deck - 0.00008, a.y * 1.003)
-		var Bs := Vector3(b.x * 1.003, deck - 0.00008, b.y * 1.003)
-		mb.tri_out(As, Bs, Bs + Vector3(0, -0.00022, 0), stripe, outd)
-		mb.tri_out(As, Bs + Vector3(0, -0.00022, 0), As + Vector3(0, -0.00022, 0), stripe, outd)
-	var deck_c := Color(0.85, 0.80, 0.70) if kind != 2 else Color(0.60, 0.45, 0.30)
-	for k in range(1, n - 1):
-		var a: Vector2 = hull[0]
-		var b: Vector2 = hull[k]
-		var c: Vector2 = hull[k + 1]
-		mb.tri_out(Vector3(a.x, deck, a.y), Vector3(b.x, deck, b.y), Vector3(c.x, deck, c.y), deck_c, Vector3.UP)
-	if kind == 0:
-		mb.box(Vector3(-L * 0.12, deck + Scale.m(1.2), 0), Vector3(L * 0.32, Scale.m(2.4), W * 0.6), Color(0.95, 0.95, 0.93))
-		mb.box(Vector3(-L * 0.02, deck + Scale.m(1.8), 0), Vector3(Scale.m(0.4), Scale.m(1.0), W * 0.5), Color(0.2, 0.28, 0.35))
-	elif kind == 1:
-		mb.box(Vector3(-L * 0.25, deck + Scale.m(1.8), 0), Vector3(L * 0.25, Scale.m(3.6), W * 0.7), Color(0.62, 0.64, 0.64))
-		mb.box(Vector3(-L * 0.22, deck + Scale.m(4.2), 0), Vector3(L * 0.15, Scale.m(1.4), W * 0.6), Color(0.2, 0.3, 0.38))
-		mb.cylinder(Vector3(-L * 0.2, deck, 0), Scale.m(0.25), Scale.m(0.25), Scale.m(9.0), 4, Color(0.3, 0.3, 0.3))
-		mb.box(Vector3(L * 0.28, deck + Scale.m(0.8), 0), Vector3(Scale.m(2.0), Scale.m(1.0), Scale.m(1.0)), Color(0.3, 0.3, 0.3))
-	else:
-		# dhow: mast + lateen sail
-		mb.cylinder(Vector3(L * 0.08, deck, 0), Scale.m(0.3), Scale.m(0.2), Scale.m(15.0), 4, Color(0.35, 0.25, 0.15))
-		var s0 := Vector3(L * 0.45, deck + Scale.m(2.4), 0)
-		var s1 := Vector3(-L * 0.42, deck + Scale.m(17.0), 0)
-		var s2 := Vector3(L * 0.05, deck + Scale.m(1.6), 0)
-		var sail := Color(0.95, 0.92, 0.84)
-		mb.tri_out(s0, s1, s2, sail, Vector3.BACK)
-		mb.tri_out(s0, s1, s2, sail.darkened(0.08), Vector3.FORWARD)
-	return mb.commit()
-
-
-func _place_boats() -> void:
-	var L := layout
-	var defs := [
-		[Vector2(L.pier_x - Scale.m(9.0), L.quay_z + Scale.m(30.0)), deg_to_rad(90), 0, Color(0.95, 0.95, 0.93)],
-		[Vector2(L.pier_x - Scale.m(9.0), L.quay_z + Scale.m(48.0)), deg_to_rad(92), 0, Color(0.85, 0.88, 0.92)],
-		[Vector2(L.pier_x + Scale.m(11.0), L.quay_z + Scale.m(60.0)), deg_to_rad(-90), 1, Color(0.62, 0.64, 0.64)],
-		[Vector2(L.pier_x - Scale.m(11.0), L.quay_z + Scale.m(80.0)), deg_to_rad(95), 2, Color(0.55, 0.40, 0.25)],
-		[Vector2(L.pier_x + Scale.m(10.0), L.quay_z + Scale.m(100.0)), deg_to_rad(-85), 2, Color(0.50, 0.36, 0.22)],
-		[Vector2(0.06, 0.29), deg_to_rad(30), 2, Color(0.50, 0.36, 0.22)],
-		[Vector2(-0.30, 0.25), deg_to_rad(-60), 0, Color(0.92, 0.92, 0.9)],
-		[Vector2(0.40, -0.18), deg_to_rad(150), 1, Color(0.42, 0.45, 0.42)],
-	]
-	var mat := MeshBuilder.vc_material(0.6)
-	for d in defs:
-		var p: Vector2 = d[0]
-		if _hs(p.x, p.y) > -0.0025:
-			continue
-		var mi := MeshInstance3D.new()
-		mi.mesh = _boat_mesh(d[2], d[3])
-		mi.material_override = mat
-		mi.position = Vector3(p.x, IslandTerrain.SEA, p.y)
-		mi.rotation.y = d[1]
-		add_child(mi)
-		boats.append({"node": mi, "phase": rng.randf() * TAU, "rot": float(d[1])})
-		placed.append({"kind": "boat", "pos": mi.position, "water_ok": true, "sink": 0.0, "ground_min": 0.0})
-
-
 func _place_buoys() -> void:
 	# IALA region A: red to port, green to starboard when entering (heading north)
 	var L := layout
@@ -1940,6 +2054,7 @@ func _place_buoys() -> void:
 func _process(_delta: float) -> void:
 	if not _pending_drapes.is_empty():
 		_build_drapes([_pending_drapes.pop_front()])
+	_warm_ruins(6)
 	var t := Time.get_ticks_msec() * 0.001
 	for b in boats:
 		var n: Node3D = b.node

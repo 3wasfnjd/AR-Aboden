@@ -426,6 +426,13 @@ func _impact(p: Vector3, w: Dictionary) -> void:
 		fx.water_splash(ps, b)
 		sfx.play("thump", ps, 0.5 + 0.35 * b)
 		debris.wake_near(ps, BLAST_R * b)   # floating debris rocks in the wave
+		# ships are targets: a hit near one wrecks it (fire on the hull, pieces flying)
+		var sfrags := island.props.blast(ps, BLAST_R * b)
+		if not sfrags.is_empty():
+			fx.ship_fire(ps, b)
+			sfx.play("boom", ps, 0.5 + 0.3 * b)
+			for f in sfrags:
+				debris.spawn(f.pos, f.basis, f.half, f.vel, f.ang, f.col, 1)
 		impacted.emit(ps, last_impact_kind)
 		return
 	if depth > 0.0:
