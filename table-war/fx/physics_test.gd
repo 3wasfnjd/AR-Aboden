@@ -347,6 +347,8 @@ func advance(dt: float) -> void:
 	for _j in ds:
 		debris.step(dt / ds)
 		fx.step(dt / ds)
+	if island.life:
+		island.life.step(dt)
 	_step_marks(dt)
 
 
@@ -454,6 +456,8 @@ func _impact(p: Vector3, w: Dictionary) -> void:
 	sfx.play("boom", p, 0.6 + 0.3 * b)
 	debris.wake_near(p, BLAST_R * b * 2.5)
 	var frags := island.props.blast(p, BLAST_R * b)
+	if island.life:
+		island.life.on_blast(p, BLAST_R * b)
 	for f in frags:
 		debris.spawn(f.pos, f.basis, f.half, f.vel, f.ang, f.col, 1)
 	var burnt := island.props.on_crater(p, cr)

@@ -130,6 +130,36 @@ func _initialize() -> void:
 	var d0 := island.props.destruction()
 	check("destruction meter starts at 0 %", d0.pct == 0.0 and int(d0.left) > 250, str(d0))
 
+	# --- city life: cars + people move, die in a blast, flee from it ---------------
+	var life := island.life
+	var lb_c0 := life.a_pos.duplicate()
+	for k in 60:
+		life.step(1.0 / 60.0)
+	var lb_moved := 0
+	for i in life.agent_count():
+		if life.a_pos[i].distance_to(lb_c0[i]) > 0.002:
+			lb_moved += 1
+	check("city life: cars and people move along the streets", life.nodes.size() > 30 and lb_moved > life.agent_count() * 0.8, "%d crossings, %d / %d moved" % [life.nodes.size(), lb_moved, life.agent_count()])
+	var lb_p := life.a_pos[0]
+	var lb_near := []
+	for i in life.agent_count():
+		var dd := Vector2(life.a_pos[i].x - lb_p.x, life.a_pos[i].z - lb_p.z).length()
+		if dd > 0.03 and dd < 0.08:
+			lb_near.append([i, dd])
+	var lb_alive0 := life.alive_count()
+	life.on_blast(lb_p, PhysicsTest.BLAST_R * 1.45)
+	var lb_killed := lb_alive0 - life.alive_count()
+	for k in 120:
+		life.step(1.0 / 60.0)
+	var lb_fled := 0
+	for e in lb_near:
+		var i2: int = e[0]
+		if life.a_alive[i2] == 1 and Vector2(life.a_pos[i2].x - lb_p.x, life.a_pos[i2].z - lb_p.z).length() > float(e[1]):
+			lb_fled += 1
+	check("city life: the blast kills inside and the rest flee away from it", lb_killed >= 1 and life.a_alive[0] == 0 and lb_fled >= int(lb_near.size() * 0.6), "killed %d, fled %d / %d" % [lb_killed, lb_fled, lb_near.size()])
+	life.spawn()
+	check("city life: reset brings everyone back", life.alive_count() == life.agent_count())
+
 	# --- scale consistency (1:2000) -------------------------------------------------
 	var rl := island.layout.runway_len * Scale.RATIO
 	check("runway 600 m x 25 m", absf(rl - 600.0) < 1.0 and absf(island.layout.runway_w * Scale.RATIO - 25.0) < 0.5, "%.0f m x %.1f m" % [rl, island.layout.runway_w * Scale.RATIO])

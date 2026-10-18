@@ -8,6 +8,7 @@ var terrain: IslandTerrain
 var props: IslandProps
 var water: IslandWater
 var base: DioramaBase
+var life: CityLife
 var build_ms := 0
 
 
@@ -35,6 +36,10 @@ func build() -> void:
 	base.name = "Base"
 	add_child(base)
 	base.build(terrain)
+	life = CityLife.new()
+	life.name = "CityLife"
+	add_child(life)
+	life.build(self)
 	build_ms = Time.get_ticks_msec() - t0
 
 
@@ -42,6 +47,7 @@ func build() -> void:
 func reset_damage() -> void:
 	terrain.reset_damage()
 	props.reset_damage()
+	life.spawn()
 
 
 func height_at(x: float, z: float) -> float:
