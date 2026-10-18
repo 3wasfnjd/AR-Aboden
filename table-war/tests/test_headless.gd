@@ -488,10 +488,42 @@ func _xr_tests(island: Island, phys: PhysicsTest) -> void:
 			while qp.flying and st2 < 4000:
 				qp.advance(1.0 / 72.0)
 				st2 += 1
-			var e := Vector2(qp.last_impact.x - tg.x, qp.last_impact.z - tg.z).length()
+			# salvo / cluster weapons scatter on purpose: measured against their spread
+			var e := Vector2(qp.last_impact.x - tg.x, qp.last_impact.z - tg.z).length() - float(WeaponTable.get_weapon(id).get("spread", 0.0))
 			worst = maxf(worst, e)
 			weapon_info.append("%s %.1fs %.4f" % [id, pl.T, e])
-	check("every weapon lands within 2 cm of the locked target (from the hand)", worst < 0.02 and weapon_info.size() == 12, "worst %.4f m: %s" % [worst, weapon_info])
+	check("every weapon lands within 2 cm of the locked target (spread weapons within their pattern)", worst < 0.02 and weapon_info.size() == WeaponTable.IDS.size() * 4, "worst %.4f m: %s" % [worst, weapon_info])
+	# behaviours of the new weapons
+	qp.reset_island()
+	var tgw := Vector3(0.10, 0, 0.10)
+	tgw.y = qi.height_at(tgw.x, tgw.z)
+	var n_imp := qp.impact_count
+	qp.fire(tgw, hand_l, "mlrs")
+	var sw := 0
+	var max_air := 0
+	while qp.flying and sw < 4000:
+		qp.advance(1.0 / 72.0)
+		max_air = maxi(max_air, qp.flights.size())
+		sw += 1
+	check("MLRS fires a salvo of 8 rockets", qp.impact_count - n_imp == 8 and max_air >= 4, "%d impacts, %d in the air at once" % [qp.impact_count - n_imp, max_air])
+	n_imp = qp.impact_count
+	qp.fire(tgw, hand_l, "cluster")
+	sw = 0
+	while qp.flying and sw < 4000:
+		qp.advance(1.0 / 72.0)
+		sw += 1
+	check("cluster missile opens and its 10 bomblets land", qp.impact_count - n_imp == 10, "%d impacts" % (qp.impact_count - n_imp))
+	var t_h := float(qp.plan(tgw, hand_l, "hypersonic").T)
+	var t_d := float(qp.plan(tgw, hand_l, "drone").T)
+	check("hypersonic is the fastest, the drone the slowest", t_h < 1.2 and t_d > 3.0, "hypersonic %.2f s, drone %.2f s" % [t_h, t_d])
+	var h0 := qi.height_at(tgw.x + 0.06, tgw.z)
+	var tb := Vector3(tgw.x + 0.06, h0, tgw.z)
+	qp.fire(tb, hand_l, "bunker")
+	sw = 0
+	while qp.flying and sw < 4000:
+		qp.advance(1.0 / 72.0)
+		sw += 1
+	check("bunker buster digs a deep crater", h0 - qi.height_at(tb.x, tb.z) > 0.009, "%.4f m deep" % (h0 - qi.height_at(tb.x, tb.z)))
 	check("cruise missile stays above the terrain along its path", cruise_low == 0, "%d low samples" % cruise_low)
 	var fts := {}
 	for id in WeaponTable.IDS:

@@ -21,7 +21,7 @@ const G := 0.5
 const CRATER_R := 0.016
 const CRATER_D := 0.0055
 const BLAST_R := 0.022
-const MAX_FLIGHTS := 6
+const MAX_FLIGHTS := 24          # MLRS salvos and cluster bomblets fly together
 const SHALLOW := 0.0015          # water shallower than this: shore splash + wet sand
 const WET_MARKS := 8
 ## Desktop "player hand": in front of the table at the hero camera's side, ~0.4 m up.
@@ -42,7 +42,10 @@ var weapon := "ballistic"      # used when fire() / aim() get no weapon id
 var flights: Array[Dictionary] = []   # {plan, t, w, node, glow, trail_acc}
 var flying: bool:
 	get:
-		return not flights.is_empty()
+		return not flights.is_empty() or not _pending.is_empty()
+## Queued launches of a salvo: {delay, origin, tgt, wid}
+var _pending: Array[Dictionary] = []
+var _rng := RandomNumberGenerator.new()
 ## Last shot fired (tests / screenshots).
 var shell: Node3D
 var p0 := Vector3.ZERO
@@ -152,8 +155,9 @@ func _shell_mesh(w: Dictionary) -> Mesh:
 	mb.xform = Transform3D(Basis(Vector3(0, 0, 1), -PI * 0.5), Vector3(-L * 0.5, 0, 0))
 	mb.cylinder(Vector3.ZERO, r, r, L * 0.7, 8, w.col)
 	mb.cylinder(Vector3(0, L * 0.7, 0), r, 0.0, L * 0.3, 8, (w.col as Color).lightened(0.2))
-	if id == "cruise":
-		mb.box(Vector3(0, L * 0.45, 0), Vector3(L * 0.9, L * 0.12, r * 0.4), w.col)   # wings
+	if bool(w.get("wings", false)):
+		var span := 1.5 if id == "drone" else 0.9
+		mb.box(Vector3(0, L * 0.45, 0), Vector3(L * span, L * 0.12, r * 0.4), w.col)   # wings
 	_meshes[id] = mb.commit(null, MeshBuilder.vc_material(0.5))
 	return _meshes[id]
 
@@ -280,6 +284,23 @@ func hide_preview() -> void:
 func fire(tgt: Vector3, origin := Vector3.INF, wid := "") -> Dictionary:
 	var w := WeaponTable.get_weapon(wid if wid != "" else weapon)
 	var o := origin if origin != Vector3.INF else default_origin()
+	# MLRS: the rest of the salvo follows a rocket every 90 ms, scattered round the target
+	for k in range(1, int(w.get("salvo", 1))):
+		_pending.append({"delay": k * 0.09, "origin": o, "tgt": _scatter(tgt, float(w.spread)), "wid": w.id})
+	return _launch(w, o, tgt)
+
+
+## A point within `r` of `tgt`, on the surface there.
+func _scatter(tgt: Vector3, r: float) -> Vector3:
+	var a := _rng.randf() * TAU
+	var d := sqrt(_rng.randf()) * r
+	var p := tgt + Vector3(cos(a) * d, 0.0, sin(a) * d)
+	var su := surface(p.x, p.z)
+	p.y = su if su > -INF else tgt.y
+	return p
+
+
+func _launch(w: Dictionary, o: Vector3, tgt: Vector3, quiet := false) -> Dictionary:
 	var pl := WeaponFlight.plan(w, o, tgt, surface, G)
 	if flights.size() >= MAX_FLIGHTS:
 		_end_flight(0)
@@ -293,7 +314,7 @@ func fire(tgt: Vector3, origin := Vector3.INF, wid := "") -> Dictionary:
 	(slot.glow_mat as StandardMaterial3D).albedo_color = Color(1.0, 0.75, 0.35)
 	node.position = o
 	node.visible = true
-	var f := {"plan": pl, "t": 0.0, "w": w, "slot": slot, "trail_acc": 0.0}
+	var f := {"plan": pl, "t": 0.0, "w": w, "slot": slot, "trail_acc": 0.0, "tgt": tgt, "split": false}
 	flights.append(f)
 	_orient(f)
 	last_plan = pl
@@ -302,8 +323,9 @@ func fire(tgt: Vector3, origin := Vector3.INF, wid := "") -> Dictionary:
 	v0 = WeaponFlight.velocity_at(pl, 0.0)
 	flight_T = pl.T
 	target = tgt
-	fx.muzzle(o, v0.normalized())
-	sfx.play("launch", o, 0.6)
+	if not quiet:
+		fx.muzzle(o, v0.normalized())
+		sfx.play("launch", o, 0.6)
 	return pl
 
 
@@ -337,6 +359,15 @@ func _physics_process(delta: float) -> void:
 ## Advance the whole simulation by dt seconds of game time.
 func advance(dt: float) -> void:
 	sim_time += dt
+	var k := 0
+	while k < _pending.size():
+		var q: Dictionary = _pending[k]
+		q.delay -= dt
+		if q.delay <= 0.0:
+			_pending.remove_at(k)
+			_launch(WeaponTable.get_weapon(q.wid), q.origin, q.tgt)
+			continue
+		k += 1
 	var steps := maxi(1, int(ceil(dt / (1.0 / 120.0))))
 	var h := dt / steps
 	for _i in steps:
@@ -383,6 +414,17 @@ func _step_flights(dt: float) -> void:
 			_end_flight(i)   # missed the table: gone
 			continue
 		(f.slot.node as Node3D).position = p
+		var nsplit := int((f.w as Dictionary).get("split", 0))
+		if nsplit > 0 and not f.split and t >= float(pl.T) * 0.62:
+			# cluster missile: the case opens, the bomblets fall over the target area
+			f.split = true
+			var aim: Vector3 = f.tgt
+			var spread: float = f.w.spread
+			_end_flight(i)
+			fx.splash(p, 0.6)
+			for _b in nsplit:
+				_launch(WeaponTable.get_weapon("submunition"), p, _scatter(aim, spread), true)
+			continue
 		_orient(f)
 		_trail(f, p, dt)
 		i += 1
@@ -451,7 +493,7 @@ func _impact(p: Vector3, w: Dictionary) -> void:
 	rng.seed = impact_count * 977
 	var cr := CRATER_R * b
 	var soil := terr.color_at(p.x, p.z)
-	terr.crater(p, cr, CRATER_D * pow(b, 0.8))
+	terr.crater(p, cr, CRATER_D * pow(b, 0.8) * float(w.get("crater_k", 1.0)))
 	fx.explosion(p, b)
 	sfx.play("boom", p, 0.6 + 0.3 * b)
 	debris.wake_near(p, BLAST_R * b * 2.5)
@@ -542,6 +584,7 @@ func _step_marks(dt: float) -> void:
 
 ## "Reset island": craters, buildings, vegetation, roads back; debris, smoke, shots gone.
 func reset_island() -> void:
+	_pending.clear()
 	while not flights.is_empty():
 		_end_flight(0)
 	hide_preview()

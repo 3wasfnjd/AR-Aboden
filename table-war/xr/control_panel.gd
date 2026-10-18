@@ -16,7 +16,8 @@ extends Node3D
 signal pressed(id: String)
 
 const W := 0.21
-const H := 0.125
+const H := 0.17
+const CARD_H := 0.026
 const BG := Color(0.035, 0.05, 0.04)
 const FRAME := Color(0.40, 0.85, 0.45, 0.95)
 const FRAME_DIM := Color(0.20, 0.38, 0.22)
@@ -35,7 +36,9 @@ const CAT_INFO := {
 	"city": ["مدينة", "CITY"], "oil": ["نفط", "OIL"], "power": ["كهرباء", "POWER"], "water": ["تحلية", "WATER"],
 	"port": ["ميناء", "PORT"], "military": ["عسكري", "MIL"], "navy": ["سفن", "NAVY"],
 }
-const CODES := {"ballistic": "BM-1  BALLISTIC", "cruise": "CM-2  CRUISE", "artillery": "AR-3  ARTILLERY"}
+const CODES := {"ballistic": "BM-1  BALLISTIC", "cruise": "CM-2  CRUISE", "artillery": "AR-3  ARTILLERY",
+	"mlrs": "RS-4  MLRS x8", "cluster": "CL-5  CLUSTER", "hypersonic": "HG-6  HYPERSONIC",
+	"bunker": "BB-7  BUNKER BUSTER", "drone": "UV-8  KAMIKAZE DRONE", "antiship": "AS-9  ANTI-SHIP"}
 
 var buttons: Array[Dictionary] = []   # {id, rect: Rect2 (panel-local, metres), bg, mat, kind}
 var hover := ""
@@ -93,37 +96,42 @@ func _ready() -> void:
 		add_child(bar)
 		_cat_ui[c] = {"label": lb, "bar": bar, "w": bw, "cx": cx}
 	_line(Vector2(-W * 0.5 + 0.004, cy - 0.0062), Vector2(W * 0.5 - 0.004, cy - 0.0062), FRAME_DIM)
-	# --- weapon cards (right to left) ---------------------------------------------
+	# --- weapon cards: 3 x 3 grid, right to left, top to bottom -----------------------
 	var n: int = WeaponTable.IDS.size()
+	var cols := 3
 	var gap := 0.003
-	var bw2 := (W - 0.012 - gap * (n - 1)) / n
-	var wy := cy - 0.0062 - 0.0215
+	var bw2 := (W - 0.012 - gap * (cols - 1)) / cols
+	var ch := CARD_H
+	var row0 := cy - 0.0062 - 0.0015 - ch * 0.5
 	for i in n:
 		var id: String = WeaponTable.IDS[i]
 		var w := WeaponTable.get_weapon(id)
-		var cx2 := W * 0.5 - 0.006 - bw2 * 0.5 - i * (bw2 + gap)
-		_button("w_" + id, Rect2(cx2 - bw2 * 0.5, wy - 0.02, bw2, 0.04), "card")
-		_frame(Rect2(cx2 - bw2 * 0.5, wy - 0.02, bw2, 0.04), FRAME_DIM, 0.0003)
+		var cx2 := W * 0.5 - 0.006 - bw2 * 0.5 - (i % cols) * (bw2 + gap)
+		var wy := row0 - (i / cols) * (ch + gap)
+		_button("w_" + id, Rect2(cx2 - bw2 * 0.5, wy - ch * 0.5, bw2, ch), "card")
+		_frame(Rect2(cx2 - bw2 * 0.5, wy - ch * 0.5, bw2, ch), FRAME_DIM, 0.0003)
 		var icon := _icon(id)
-		icon.position = Vector3(cx2 - bw2 * 0.28, wy + 0.008, 0.0006)
+		icon.position = Vector3(cx2 - bw2 * 0.33, wy + 0.0035, 0.0006)
+		icon.scale = Vector3.ONE * 0.62
 		add_child(icon)
-		_text(String(w.name_ar), Vector3(cx2 + bw2 * 0.42, wy + 0.012, 0.0006), 30, TEXT, HORIZONTAL_ALIGNMENT_RIGHT)
-		_text(String(CODES.get(id, id.to_upper())), Vector3(cx2 + bw2 * 0.42, wy + 0.0055, 0.0006), 20, TEXT_DIM, HORIZONTAL_ALIGNMENT_RIGHT)
-		# ammo pips
+		_text(String(w.name_ar), Vector3(cx2 + bw2 * 0.45, wy + 0.0075, 0.0006), 26, TEXT, HORIZONTAL_ALIGNMENT_RIGHT)
+		_text(String(CODES.get(id, id.to_upper())), Vector3(cx2 + bw2 * 0.45, wy + 0.0025, 0.0006), 17, TEXT_DIM, HORIZONTAL_ALIGNMENT_RIGHT)
+		# ammo pips (one per round, or per tenth of a big magazine)
 		var pips: Array = []
 		var np := mini(int(w.ammo), PIP_MAX)
-		var pw := (bw2 - 0.016) / PIP_MAX
+		var pw := (bw2 * 0.62) / PIP_MAX
 		for k in np:
-			var pip := _quad(Vector2(pw * 0.7, 0.0024), AMBER, Vector3(cx2 + bw2 * 0.5 - 0.004 - pw * (k + 0.5), wy - 0.004, 0.0006))
+			var pip := _quad(Vector2(pw * 0.7, 0.0018), AMBER, Vector3(cx2 + bw2 * 0.45 - pw * (k + 0.5), wy - 0.003, 0.0006))
 			add_child(pip)
 			pips.append(pip)
-		var ammo_txt := _text("×%d" % int(w.ammo), Vector3(cx2 - bw2 * 0.5 + 0.004, wy - 0.004, 0.0006), 22, AMBER, HORIZONTAL_ALIGNMENT_LEFT)
-		var rb := bw2 - 0.008
-		add_child(_quad(Vector2(rb, 0.0016), Color(0, 0, 0), Vector3(cx2, wy - 0.0105, 0.0004)))
-		var bar2 := _quad(Vector2(rb, 0.0016), FRAME, Vector3(cx2, wy - 0.0105, 0.0006))
+		var ammo_txt := _text("×%d" % int(w.ammo), Vector3(cx2 - bw2 * 0.45, wy - 0.003, 0.0006), 19, AMBER, HORIZONTAL_ALIGNMENT_LEFT)
+		var rb := bw2 * 0.55
+		var bx := cx2 + bw2 * 0.45 - rb * 0.5
+		add_child(_quad(Vector2(rb, 0.0013), Color(0, 0, 0), Vector3(bx, wy - 0.0085, 0.0004)))
+		var bar2 := _quad(Vector2(rb, 0.0013), FRAME, Vector3(bx, wy - 0.0085, 0.0006))
 		add_child(bar2)
-		var st := _text("READY · جاهز", Vector3(cx2, wy - 0.0155, 0.0006), 20, FRAME)
-		_weapon_ui[id] = {"pips": pips, "ammo": ammo_txt, "bar": bar2, "bw": rb, "cx": cx2, "state": st, "max": int(w.ammo)}
+		var st := _text("READY · جاهز", Vector3(cx2 - bw2 * 0.45, wy - 0.0085, 0.0006), 15, FRAME, HORIZONTAL_ALIGNMENT_LEFT)
+		_weapon_ui[id] = {"pips": pips, "ammo": ammo_txt, "bar": bar2, "bw": rb, "cx": bx, "state": st, "max": int(w.ammo)}
 	# --- target readout ------------------------------------------------------------
 	var ty := -H * 0.5 + 0.0235
 	target_label = _text("-", Vector3(0, ty, 0.0006), 26, AMBER)
@@ -238,6 +246,41 @@ func _icon(id: String) -> MeshInstance3D:
 			tri.call(Vector2(s * 0.2, s * 0.2), Vector2(-s * 0.35, s * 0.95), Vector2(-s * 0.35, s * 0.2))
 			tri.call(Vector2(s * 0.2, -s * 0.2), Vector2(-s * 0.35, -s * 0.2), Vector2(-s * 0.35, -s * 0.95))
 			tri.call(Vector2(-s * 1.1, s * 0.2), Vector2(-s * 1.45, s * 0.6), Vector2(-s * 1.4, s * 0.2))
+		"mlrs":
+			for ox in [-s * 0.6, 0.0, s * 0.6]:
+				tri.call(Vector2(ox, s * 1.2), Vector2(ox - s * 0.16, s * 0.75), Vector2(ox + s * 0.16, s * 0.75))
+				tri.call(Vector2(ox - s * 0.16, s * 0.75), Vector2(ox - s * 0.16, -s * 0.9), Vector2(ox + s * 0.16, s * 0.75))
+				tri.call(Vector2(ox + s * 0.16, s * 0.75), Vector2(ox - s * 0.16, -s * 0.9), Vector2(ox + s * 0.16, -s * 0.9))
+		"cluster":
+			tri.call(Vector2(0, s * 1.4), Vector2(-s * 0.3, s * 0.8), Vector2(s * 0.3, s * 0.8))
+			tri.call(Vector2(-s * 0.3, s * 0.8), Vector2(-s * 0.3, -s * 0.2), Vector2(s * 0.3, s * 0.8))
+			tri.call(Vector2(s * 0.3, s * 0.8), Vector2(-s * 0.3, -s * 0.2), Vector2(s * 0.3, -s * 0.2))
+			for d in [Vector2(-0.6, -0.6), Vector2(0.0, -0.8), Vector2(0.6, -0.6), Vector2(-0.3, -1.15), Vector2(0.3, -1.15)]:
+				var c: Vector2 = d * s
+				tri.call(c + Vector2(0, s * 0.14), c + Vector2(-s * 0.13, -s * 0.1), c + Vector2(s * 0.13, -s * 0.1))
+		"hypersonic":
+			tri.call(Vector2(s * 1.7, 0), Vector2(-s * 1.2, s * 0.35), Vector2(-s * 1.2, -s * 0.35))
+			tri.call(Vector2(-s * 0.6, s * 0.2), Vector2(-s * 1.3, s * 0.7), Vector2(-s * 1.2, s * 0.15))
+			tri.call(Vector2(-s * 0.6, -s * 0.2), Vector2(-s * 1.2, -s * 0.15), Vector2(-s * 1.3, -s * 0.7))
+		"bunker":
+			var n := 12
+			for k in n:
+				var a0 := TAU * k / n
+				var a1 := TAU * (k + 1) / n
+				tri.call(Vector2(0, s * 0.2), Vector2(cos(a1) * s * 0.5, sin(a1) * s * 0.85 + s * 0.2), Vector2(cos(a0) * s * 0.5, sin(a0) * s * 0.85 + s * 0.2))
+			tri.call(Vector2(-s * 0.18, -s * 0.5), Vector2(-s * 0.6, -s * 1.2), Vector2(s * 0.6, -s * 1.2))
+			tri.call(Vector2(-s * 0.18, -s * 0.5), Vector2(s * 0.6, -s * 1.2), Vector2(s * 0.18, -s * 0.5))
+		"drone":
+			tri.call(Vector2(s * 1.2, 0), Vector2(-s * 0.9, s * 1.1), Vector2(-s * 0.5, 0))
+			tri.call(Vector2(s * 1.2, 0), Vector2(-s * 0.5, 0), Vector2(-s * 0.9, -s * 1.1))
+		"antiship":
+			tri.call(Vector2(s * 1.5, 0), Vector2(s * 0.9, s * 0.2), Vector2(s * 0.9, -s * 0.2))
+			tri.call(Vector2(s * 0.9, s * 0.2), Vector2(-s * 1.2, s * 0.2), Vector2(s * 0.9, -s * 0.2))
+			tri.call(Vector2(s * 0.9, -s * 0.2), Vector2(-s * 1.2, s * 0.2), Vector2(-s * 1.2, -s * 0.2))
+			tri.call(Vector2(0, s * 0.2), Vector2(-s * 0.4, s * 0.7), Vector2(-s * 0.4, s * 0.2))
+			tri.call(Vector2(0, -s * 0.2), Vector2(-s * 0.4, -s * 0.2), Vector2(-s * 0.4, -s * 0.7))
+			# waves under it
+			tri.call(Vector2(-s * 1.4, -s * 0.85), Vector2(s * 1.4, -s * 0.85), Vector2(0, -s * 0.6))
 		_:
 			tri.call(Vector2(0, s * 1.2), Vector2(-s * 0.42, s * 0.3), Vector2(s * 0.42, s * 0.3))
 			tri.call(Vector2(-s * 0.42, s * 0.3), Vector2(-s * 0.42, -s * 0.9), Vector2(s * 0.42, s * 0.3))
