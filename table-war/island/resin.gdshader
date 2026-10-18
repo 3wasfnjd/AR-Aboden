@@ -20,6 +20,8 @@ void fragment() {
 	float men = smoothstep(0.0012, 0.0, sea_y - wp.y);
 	c = mix(c, vec3(0.75, 0.95, 0.93), men * 0.6);
 	ALBEDO = c;
+	// light scattered inside the cast resin (cheap subsurface impression)
+	EMISSION = c * (0.10 + 0.25 * (1.0 - smoothstep(0.0, 0.5, d)));
 	ALPHA = mix(0.62, 0.9, d);
 	ROUGHNESS = 0.04;
 	SPECULAR = 0.7;

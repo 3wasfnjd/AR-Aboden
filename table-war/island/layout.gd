@@ -33,10 +33,12 @@ var channel_b := Vector2(-0.075, 0.30)
 var channel_w := 0.013
 
 # Air base
-var runway_center := Vector2(-0.305, -0.005)
+var runway_center := Vector2(-0.285, 0.0)
 var runway_angle := deg_to_rad(-9.0)   # rotation about +y of the runway axis from +x
-var runway_len := 0.27
-var runway_w := 0.017
+var runway_len := Scale.m(600.0)      # short tactical strip 600 x 25 m
+var runway_w := Scale.m(25.0)
+var taxi_w := Scale.m(15.0)
+var taxi_offset := Scale.m(60.0)      # parallel taxiway centreline, north of runway
 var apron_center := Vector2(-0.30, -0.062)
 var apron_size := Vector2(0.15, 0.034)
 var base_height := 0.0062
@@ -49,11 +51,11 @@ var town_radius := 0.092
 var harbour_x0 := 0.035
 var harbour_x1 := 0.165
 var quay_z := 0.192          # quay wall line
-var quay_land_z := 0.165     # flattened apron behind quay
+var quay_land_z := 0.150     # flattened port apron behind the quay
 var basin_z := 0.25
 var quay_height := 0.0028
 var pier_x := 0.13
-var pier_len := 0.05
+var pier_len := Scale.m(120.0)
 var fort_pos := Vector2(0.215, 0.035)
 var lighthouse_pos := Vector2(0.468, 0.08)
 
@@ -68,7 +70,7 @@ var groves: Array[Vector3] = [
 var sabkha_center := Vector2(-0.33, 0.115)
 var sabkha_radius := 0.085
 
-const ROAD_W := 0.0042
+const ROAD_W := 0.004          # 8 m two-lane road at 1:2000
 
 # Road polylines (smoothed with Catmull-Rom).
 var roads: Array[PackedVector2Array] = [
@@ -101,8 +103,13 @@ func _init() -> void:
 	channel_a *= sv
 	channel_b *= sv
 	runway_center *= sv
-	runway_len *= 0.92
-	apron_center *= sv
+	# apron north of the parallel taxiway (derived, not scaled)
+	var rd0 := runway_dir()
+	var north0 := Vector2(rd0.y, -rd0.x)
+	apron_size = Vector2(Scale.m(260.0), Scale.m(70.0))
+	apron_center = runway_center + rd0 * Scale.m(10.0) + north0 * (taxi_offset + taxi_w * 0.5 + Scale.m(10.0) + apron_size.y * 0.5)
+	# missile pad in the far north-west corner of the base
+	silo_center = runway_center + rd0 * Scale.m(-205.0) + north0 * Scale.m(236.0)
 	silo_center *= sv
 	radar_pos *= sv
 	town_center *= sv
@@ -123,6 +130,61 @@ func _init() -> void:
 		for k in pts.size():
 			pts[k] *= sv
 		roads[r] = pts
+	roads.append(PackedVector2Array([Vector2(0.255, 0.094), Vector2(0.262, 0.118), Vector2(0.27, 0.141)]))
+
+
+# --- realism pass: world-coordinate features (not scaled) -------------------------------
+# wadis: dry stream beds from the ridge to the coast / lagoon
+var wadis: Array[PackedVector2Array] = [
+	PackedVector2Array([Vector2(0.235, -0.095), Vector2(0.28, -0.04), Vector2(0.33, 0.01), Vector2(0.38, 0.035), Vector2(0.425, 0.045)]),
+	PackedVector2Array([Vector2(0.02, -0.12), Vector2(-0.02, -0.07), Vector2(-0.05, -0.01), Vector2(-0.075, 0.05), Vector2(-0.11, 0.105)]),
+	PackedVector2Array([Vector2(0.10, -0.205), Vector2(0.09, -0.245), Vector2(0.085, -0.285)]),
+]
+const WADI_W := 0.009
+# offshore sandbar (capsule) south-west of the lagoon mouth
+var sandbar_a := Vector2(-0.31, 0.215)
+var sandbar_b := Vector2(-0.235, 0.30)
+# coastal power + desalination plant (south-east coast)
+var plant_center := Vector2(0.272, 0.150)
+var plant_size := Vector2(0.074, 0.044)
+# desert tyre tracks (pairs of ruts)
+var tracks: Array[PackedVector2Array] = [
+	PackedVector2Array([Vector2(-0.10, -0.075), Vector2(-0.06, -0.10), Vector2(-0.02, -0.115), Vector2(0.03, -0.11)]),
+	PackedVector2Array([Vector2(-0.36, 0.09), Vector2(-0.31, 0.12), Vector2(-0.26, 0.16), Vector2(-0.21, 0.19)]),
+	PackedVector2Array([Vector2(0.12, 0.03), Vector2(0.16, -0.02), Vector2(0.22, -0.05), Vector2(0.27, -0.045), Vector2(0.31, -0.02)]),
+	PackedVector2Array([Vector2(0.34, 0.06), Vector2(0.36, 0.11), Vector2(0.33, 0.15)]),
+]
+
+
+## Base perimeter (runway frame): along [-a0, a1], lateral north [s0, s1]
+func base_frame() -> Dictionary:
+	return {"along0": -runway_len * 0.5 - 0.022, "along1": runway_len * 0.5 + 0.012, "lat0": -runway_w * 0.5 - 0.016, "lat1": 0.15}
+
+
+func base_local(p: Vector2) -> Vector2:
+	var rd := runway_dir()
+	var north := Vector2(rd.y, -rd.x)
+	var d := p - runway_center
+	return Vector2(d.dot(rd), d.dot(north))
+
+
+func base_world(along: float, lat: float) -> Vector2:
+	var rd := runway_dir()
+	var north := Vector2(rd.y, -rd.x)
+	return runway_center + rd * along + north * lat
+
+
+func inside_base(p: Vector2, margin := 0.0) -> bool:
+	var f := base_frame()
+	var l := base_local(p)
+	return l.x > f.along0 - margin and l.x < f.along1 + margin and l.y > f.lat0 - margin and l.y < f.lat1 + margin
+
+
+func wadi_distance(p: Vector2) -> float:
+	var best := 1e9
+	for w in wadis:
+		best = minf(best, poly_dist(p, w).x)
+	return best
 
 
 func runway_dir() -> Vector2:
@@ -213,6 +275,8 @@ func infrastructure_distance(p: Vector2) -> float:
 	var rd := runway_dir()
 	d = minf(d, _rect_dist(p, runway_center, rd, Vector2(runway_len * 0.5 + 0.01, runway_w * 0.5 + 0.004)))
 	d = minf(d, _rect_dist(p, apron_center, rd, apron_size * 0.5))
+	d = minf(d, _rect_dist(p, runway_center + Vector2(rd.y, -rd.x) * taxi_offset, rd, Vector2(runway_len * 0.5, taxi_w * 0.5 + 0.002)))
+	d = minf(d, _rect_dist(p, plant_center, Vector2.RIGHT, plant_size * 0.5 + Vector2(0.003, 0.003)))
 	d = minf(d, _rect_dist(p, silo_center, rd, Vector2(0.035, 0.024)))
 	d = minf(d, _rect_dist(p, Vector2((harbour_x0 + harbour_x1) * 0.5, (quay_land_z + quay_z) * 0.5), Vector2.RIGHT, Vector2((harbour_x1 - harbour_x0) * 0.5, (quay_z - quay_land_z) * 0.5 + 0.004)))
 	return d
@@ -250,10 +314,16 @@ func apply_pads(t: IslandTerrain) -> void:
 			var h := v.y
 			# air base: runway + apron + silo pad share one level
 			var w := rect_weight(p, runway_center, rd, Vector2(runway_len * 0.5 + 0.012, runway_w * 0.5 + 0.008), 0.03)
+			var north := Vector2(rd.y, -rd.x)
+			w = maxf(w, rect_weight(p, runway_center + north * taxi_offset * 0.5, rd, Vector2(runway_len * 0.5 + 0.008, taxi_offset * 0.5 + 0.008), 0.025))
 			w = maxf(w, rect_weight(p, apron_center, rd, apron_size * 0.5 + Vector2(0.006, 0.006), 0.025))
 			w = maxf(w, rect_weight(p, silo_center, rd, Vector2(0.038, 0.026), 0.02))
 			if w > 0.0:
 				h = lerpf(h, sea + base_height, w)
+			# power plant pad
+			var pw := rect_weight(p, plant_center, Vector2.RIGHT, plant_size * 0.5 + Vector2(0.004, 0.004), 0.02)
+			if pw > 0.0:
+				h = lerpf(h, sea + 0.0032, pw)
 			# town: soften relief
 			var td := p.distance_to(town) / town_radius
 			if td < 1.3:

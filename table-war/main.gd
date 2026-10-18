@@ -19,6 +19,8 @@ const PRESETS := {
 	"top": [Vector3(0.0, 0.05, 0.0), 0.0, 89.6, 1.62, 40.0],
 	"town": [Vector3(0.085, 0.085, 0.14), -18.0, 34.0, 0.24, 50.0],
 	"base": [Vector3(-0.25, 0.085, -0.04), 28.0, 36.0, 0.30, 50.0],
+	"oldtown": [Vector3(0.07, 0.085, 0.085), -25.0, 40.0, 0.10, 50.0],
+	"plant": [Vector3(0.272, 0.085, 0.162), -40.0, 34.0, 0.16, 50.0],
 	"side": [Vector3(-0.22, 0.055, 0.42), -38.0, 13.0, 0.36, 45.0],
 	"lean": [Vector3(0.02, 0.08, 0.02), -10.0, 58.0, 0.66, 60.0],
 }
@@ -181,7 +183,7 @@ func _run_shots() -> void:
 	await _frames(12)
 	print("ISLAND_STATS ", JSON.stringify(island.stats()))
 	var views := [["a_hero", "hero", false], ["a2_hero_tiltshift", "hero", true], ["b_top", "top", false],
-		["c_town_harbour", "town", false], ["d_base", "base", false], ["e_slab_side", "side", false], ["e2_lean_over", "lean", true]]
+		["c_town_harbour", "town", false], ["c2_old_town", "oldtown", false], ["c3_power_plant", "plant", false], ["d_base", "base", false], ["e_slab_side", "side", false], ["e2_lean_over", "lean", true]]
 	for v in views:
 		if only != "" and not (v[0] as String).substr(0, 1) in only:
 			continue
@@ -200,14 +202,14 @@ func _physics_shots() -> void:
 	# target: the tallest downtown tower
 	var best: Dictionary = {}
 	for s in island.props.structures:
-		if s.kind in ["tower", "house"] and (best.is_empty() or s.size.y > best.size.y):
+		if s.kind in ["tower", "midrise"] and (best.is_empty() or s.size.y > best.size.y):
 			best = s
 	var tp: Vector3 = best.pos if not best.is_empty() else Vector3(0.1, 0.09, 0.12)
 	var tgt := Vector3(tp.x, island.height_at(tp.x, tp.z), tp.z)
 	phys.fire(tgt)
 	phys.advance(0.10)
 	var m := phys.p0
-	cam.set_view(Vector3(m.x + 0.01, m.y + 0.008, m.z), 35.0, 16.0, 0.06, 55.0)
+	cam.set_view(Vector3(m.x + 0.012, m.y + 0.008, m.z + 0.004), -130.0, 16.0, 0.07, 55.0)
 	await _capture("f_launch")
 	phys.advance(1.1)
 	cam.set_view(Vector3((m.x + tgt.x) * 0.5, 0.2, (m.z + tgt.z) * 0.5 + 0.02), -8.0, 18.0, 1.0, 50.0)

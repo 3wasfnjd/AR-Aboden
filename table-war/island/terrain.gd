@@ -22,6 +22,7 @@ var jz := PackedFloat32Array()
 var scorch := PackedFloat32Array()
 var ao := PackedFloat32Array()
 var lush := PackedFloat32Array()
+var wadi := PackedFloat32Array()       # 1 = dry stream bed, falls off over ~2 widths
 var rim := PackedByteArray()        # vertex snapped onto the circular edge
 var active := PackedByteArray()     # cell has at least one corner inside the circle
 
@@ -62,6 +63,9 @@ const C_CLIFF := Color(0.50, 0.38, 0.30)
 const C_PEAK := Color(0.62, 0.54, 0.46)
 const C_GRAVEL := Color(0.66, 0.58, 0.46)
 const C_TOWN := Color(0.74, 0.68, 0.58)
+const C_DUNE := Color(0.90, 0.70, 0.50)
+const C_WADI := Color(0.52, 0.49, 0.40)
+const C_REEF := Color(0.46, 0.44, 0.36)
 const C_SCORCH := Color(0.13, 0.11, 0.10)
 const C_SCORCH_RIM := Color(0.36, 0.30, 0.25)
 
@@ -87,7 +91,7 @@ func generate(lay: IslandLayout) -> void:
 	layout = lay
 	var nv := (NX + 1) * (NZ + 1)
 	hts.resize(nv); jx.resize(nv); jz.resize(nv)
-	scorch.resize(nv); ao.resize(nv); lush.resize(nv)
+	scorch.resize(nv); ao.resize(nv); lush.resize(nv); wadi.resize(nv)
 	scorch.fill(0.0); ao.fill(0.0)
 	rim.resize(nv); rim.fill(0)
 	var inside := PackedByteArray(); inside.resize(nv)
@@ -113,7 +117,9 @@ func generate(lay: IslandLayout) -> void:
 				jz[k] = z - gz
 				rim[k] = 1
 			hts[k] = _base_height(x, z)
-			lush[k] = layout.lush_at(x, z)
+			var wd := layout.wadi_distance(Vector2(x, z)) / IslandLayout.WADI_W
+			wadi[k] = 1.0 - smoothstep(0.6, 2.6, wd)
+			lush[k] = maxf(layout.lush_at(x, z), wadi[k] * 0.55)
 	active.resize(NX * NZ)
 	for j in NZ:
 		for i in NX:
@@ -167,10 +173,12 @@ func _base_height(x: float, z: float) -> float:
 	else:
 		var dm := -m
 		# wide sandy shelf (turquoise), then the drop-off into deep blue
-		hs = -0.0042 * smoothstep(0.0, 0.10, dm) - 0.027 * smoothstep(0.10, 0.42, dm)
-		hs += nb * 0.003 * smoothstep(0.02, 0.2, dm)
-		# patchy reef / sand bars on the shelf
-		hs += maxf(0.0, _n_sab.get_noise_2d(x * 0.5, z * 0.5)) * 0.004 * (1.0 - smoothstep(0.04, 0.16, dm))
+		# narrow sandy shelf (real Gulf fringing shelf ~50-100 m), then the drop-off
+		hs = -0.0035 * smoothstep(0.0, 0.03, dm) - 0.026 * smoothstep(0.035, 0.30, dm)
+		hs += nb * 0.0025 * smoothstep(0.03, 0.2, dm)
+		# patch reefs on the outer shelf edge
+		var reef := _n_sab.get_noise_2d(x * 1.3 + 40.0, z * 1.3)
+		hs += smoothstep(0.25, 0.55, reef) * 0.0022 * (1.0 - smoothstep(0.03, 0.11, dm)) * smoothstep(0.01, 0.03, dm)
 	# ridge
 	var rd := IslandLayout.poly_dist(Vector2(x, z), layout.ridge)
 	var along := pow(sin(PI * clampf(rd.y, 0.0, 1.0)), 0.6)
@@ -181,6 +189,16 @@ func _base_height(x: float, z: float) -> float:
 	for kn in layout.knolls:
 		var d := Vector2(x - kn.x, z - kn.y).length()
 		hs += kn.w * exp(-pow(d / kn.z, 2.0)) * (0.85 + 0.3 * rn)
+	# wadis: shallow flat-bottomed dry stream beds cut into the plains
+	var wdd := layout.wadi_distance(Vector2(x, z)) / IslandLayout.WADI_W
+	if wdd < 2.5 and hs > 0.0:
+		var cut := 0.0024 * (1.0 - smoothstep(0.5, 1.6, wdd))
+		hs = maxf(hs - cut, minf(hs, 0.0016))
+	# offshore sandbar
+	var sbd := IslandLayout.seg_dist(Vector2(x, z), layout.sandbar_a, layout.sandbar_b)
+	if sbd < 0.016 and hs < 0.0:
+		var bar := -0.0024 - 0.012 * pow(sbd / 0.016, 1.6) + _n_detail.get_noise_2d(x, z) * 0.0005
+		hs = maxf(hs, bar)
 	# lagoon + channel
 	var ld := Vector2((x - layout.lagoon.x) / layout.lagoon.z, (z - layout.lagoon.y) / layout.lagoon.w).length()
 	ld += _n_coast.get_noise_2d(x * 3.0, z * 3.0) * 0.18
@@ -440,8 +458,10 @@ func _face(mb: MeshBuilder, a: Vector3, b: Vector3, c: Vector3, ka: int, kb: int
 	var a_o := (ao[ka] + ao[kb] + ao[kc]) / 3.0
 	var lu := (lush[ka] + lush[kb] + lush[kc]) / 3.0
 	_face_n = n
+	_face_wadi = (wadi[ka] + wadi[kb] + wadi[kc]) / 3.0
 	var col := face_color(cen, n.y, lu, sc, a_o, seed)
 	_face_n = Vector3.UP
+	_face_wadi = 0.0
 	mb.tri(a, b, c, col)
 
 
@@ -452,6 +472,7 @@ static func _hash(n: int) -> float:
 
 
 var _face_n := Vector3.UP
+var _face_wadi := 0.0
 
 
 func face_color(cen: Vector3, ny: float, lu: float, sc: float, a_o: float, seed: int) -> Color:
@@ -462,8 +483,12 @@ func face_color(cen: Vector3, ny: float, lu: float, sc: float, a_o: float, seed:
 	var c: Color
 	if hs < -0.0018:
 		c = C_SHALLOW.lerp(C_DEEP, smoothstep(0.002, 0.026, -hs))
-	elif hs < 0.0010:
-		c = C_WET.lerp(C_SHALLOW, smoothstep(0.001, -0.0018, hs) * 0.5)
+		# patch reefs / seagrass: dark mottling on the shelf
+		var rf := _n_sab.get_noise_2d(x * 1.3 + 40.0, z * 1.3)
+		c = c.lerp(C_REEF, smoothstep(0.2, 0.5, rf) * (1.0 - smoothstep(0.004, 0.012, -hs)) * 0.8)
+	elif hs < 0.0011:
+		# wet sand: darkest right at the waterline
+		c = C_WET.darkened(0.12 * (1.0 - smoothstep(0.0, 0.0011, hs))).lerp(C_SHALLOW, smoothstep(0.0, -0.0018, hs) * 0.5)
 	elif hs < 0.0034 and ny > 0.95:
 		c = C_SAND
 	else:
@@ -479,6 +504,14 @@ func face_color(cen: Vector3, ny: float, lu: float, sc: float, a_o: float, seed:
 		# olive scrub patches
 		var scrub_p := _n_col.get_noise_2d(x * 2.2 - 5.0, z * 2.2 + 3.0)
 		c = c.lerp(C_DRY.darkened(0.08), smoothstep(0.2, 0.55, scrub_p) * 0.45 * smoothstep(0.003, 0.006, hs) * smoothstep(0.9, 0.97, ny))
+		# broad gravel plains (darker, greyer) and reddish dune fields: breaks up
+		# the beige at viewing distance
+		var plain := _n_base.get_noise_2d(x * 0.6 + 9.0, z * 0.6 - 4.0)
+		c = c.lerp(C_GRAVEL.darkened(0.12), smoothstep(0.0, 0.3, plain) * 0.8 * smoothstep(0.004, 0.008, hs))
+		c = c.lerp(C_DUNE, smoothstep(0.05, 0.35, -plain) * 0.6 * smoothstep(0.003, 0.006, hs))
+		# wadi beds: coarse darker gravel, green tinge along the banks
+		if _face_wadi > 0.0:
+			c = c.lerp(C_WADI, _face_wadi * 0.85)
 		# compacted ground in the town
 		var td := Vector2(x, z).distance_to(layout.town_center) / layout.town_radius
 		c = c.lerp(C_TOWN, (1.0 - smoothstep(0.6, 1.1, td)) * 0.6)
@@ -513,6 +546,12 @@ func color_at(x: float, z: float) -> Color:
 	var h := height_at(x, z)
 	var n := normal_at(x, z)
 	return face_color(Vector3(x, h, z), n.y, layout.lush_at(x, z), 0.0, 0.0, 0)
+
+
+func wadi_at(x: float, z: float) -> float:
+	var i := clampi(int(round((x - ox) / CELL)), 0, NX)
+	var j := clampi(int(round((z - oz) / CELL)), 0, NZ)
+	return wadi[idx(i, j)]
 
 
 func scorch_at(x: float, z: float) -> float:
@@ -583,14 +622,16 @@ func crater(center: Vector3, radius: float, depth: float) -> Array[Vector2i]:
 # Water depth texture (read by the water shader)
 # --------------------------------------------------------------------------------------
 
+const DEPTH_RES := 2      # depth texels per terrain cell (4 mm texels: crisper shoreline)
+
+
 func _rebuild_depth_image(i0: int, j0: int, i1: int, j1: int) -> void:
 	if depth_image == null:
-		depth_image = Image.create(NX + 1, NZ + 1, false, Image.FORMAT_L8)
-	for j in range(maxi(j0, 0), mini(j1, NZ) + 1):
-		for i in range(maxi(i0, 0), mini(i1, NX) + 1):
-			# sample the regular grid point (texture texels are regular)
-			var x := ox + i * CELL
-			var z := oz + j * CELL
+		depth_image = Image.create(NX * DEPTH_RES + 1, NZ * DEPTH_RES + 1, false, Image.FORMAT_L8)
+	for j in range(maxi(j0, 0) * DEPTH_RES, mini(j1, NZ) * DEPTH_RES + 1):
+		for i in range(maxi(i0, 0) * DEPTH_RES, mini(i1, NX) * DEPTH_RES + 1):
+			var x := ox + i * CELL / DEPTH_RES
+			var z := oz + j * CELL / DEPTH_RES
 			var d := SEA - height_at(x, z)
 			var v := clampf(0.2 + 0.8 * d / DEPTH_RANGE, 0.0, 1.0)
 			depth_image.set_pixel(i, j, Color(v, v, v))

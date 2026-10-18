@@ -53,10 +53,12 @@ func build(t: IslandTerrain, lay: IslandLayout) -> void:
 	_place_harbour()
 	_place_town()
 	_place_lighthouse()
+	_place_plant()
 	_rebuild_structures()
 	_build_drapes()
 	_place_vegetation()
 	_place_boats()
+	_place_buoys()
 
 
 # ======================================================================================
@@ -100,7 +102,7 @@ func add_structure(kind: String, c: Vector2, rot: float, size: Vector3, col: Col
 	}
 	structures.append(s)
 	placed.append({"kind": kind, "pos": Vector3(c.x, g.y, c.y), "water_ok": water_ok, "sink": s.sink, "ground_min": g.x})
-	terrain.stamp_ao(c, Vector2(size.x, size.z).length() * 0.62, 0.45)
+	terrain.stamp_ao(c, Vector2(size.x, size.z).length() * 0.78 + 0.002, 0.6)
 	return s
 
 
@@ -112,47 +114,53 @@ func _place_air_base() -> void:
 	var L := layout
 	var rd := L.runway_dir()
 	var rot := L.runway_angle
-	var north := Vector2(rd.y, -rd.x)
-	var apron := L.apron_center
-	# hangars along the north edge of the apron, doors facing the apron
+	var M := Scale.m(1.0)
+	# hardened aircraft shelters dispersed north of the apron, doors to the apron
+	var has_lat := L.taxi_offset + L.taxi_w * 0.5 + Scale.m(20.0) + L.apron_size.y + Scale.m(28.0)
 	for k in 4:
-		var c := apron + rd * (-0.054 + k * 0.034) + north * (L.apron_size.y * 0.5 + 0.0095)
-		add_structure("hangar", c, rot, Vector3(0.026, 0.0085, 0.018), C_OLIVE.lerp(C_MIL, rng.randf() * 0.6))
-	# control tower + HQ + barracks east of the apron
-	add_structure("ctower", apron + rd * 0.087 + north * 0.006, rot, Vector3(0.0055, 0.016, 0.0055), Color(0.86, 0.84, 0.78))
-	add_structure("house", apron + rd * 0.095 + north * 0.03, rot, Vector3(0.016, 0.0065, 0.010), Color(0.80, 0.76, 0.64))
+		var along := -Scale.m(130.0) + k * Scale.m(100.0)
+		var c := L.base_world(along, has_lat + (k % 2) * Scale.m(10.0))
+		var st := add_structure("has", c, rot + PI, Vector3(Scale.m(30.0), Scale.m(11.0), Scale.m(36.0)), Color(0.71, 0.67, 0.58))
+		st["link"] = [L.base_world(along, has_lat - Scale.m(20.0)), L.base_world(along, L.taxi_offset + L.taxi_w * 0.5 + Scale.m(20.0) + L.apron_size.y - Scale.m(2.0))]
+	# fighters on the apron (15 m long, 10 m span)
+	for k in 5:
+		var c4 := L.base_world(-Scale.m(90.0) + k * Scale.m(40.0), L.taxi_offset + L.taxi_w * 0.5 + Scale.m(20.0) + L.apron_size.y * 0.55)
+		add_structure("jet", c4, rot - PI * 0.5, Vector3(Scale.m(10.0), Scale.m(5.0), Scale.m(15.0)), Color(0.60, 0.63, 0.65))
+	# tower, operations, barracks east end (inside the fence)
+	var east := L.runway_len * 0.5 - Scale.m(40.0)
+	add_structure("ctower", L.base_world(east, L.taxi_offset + Scale.m(40.0)), rot, Vector3(Scale.m(10.0), Scale.m(25.0), Scale.m(10.0)), Color(0.86, 0.84, 0.78))
+	add_structure("house", L.base_world(east - Scale.m(30.0), L.taxi_offset + Scale.m(48.0)), rot, Vector3(Scale.m(34.0), Scale.storeys(2.0), Scale.m(16.0)), Color(0.80, 0.76, 0.64))
 	for k in 3:
-		add_structure("barracks", apron + rd * (0.035 + k * 0.022) + north * 0.045, rot, Vector3(0.018, 0.0045, 0.0065), Color(0.78, 0.73, 0.60))
-	# fuel tanks
+		add_structure("barracks", L.base_world(east - Scale.m(20.0) - k * Scale.m(46.0), has_lat + Scale.m(62.0)), rot, Vector3(Scale.m(40.0), Scale.storeys(1.0), Scale.m(12.0)), Color(0.78, 0.73, 0.60))
+	# fuel farm with bunds near the west end
 	for k in 3:
-		var c2 := L.silo_center + rd * (0.065 + k * 0.009) + north * 0.003
-		add_structure("tank", c2, 0.0, Vector3(0.0072, 0.0045, 0.0072), Color(0.88, 0.88, 0.86))
-	# silos on the silo pad
+		var c2 := L.base_world(Scale.m(0.0) + k * Scale.m(34.0), has_lat + Scale.m(70.0))
+		add_structure("tank", c2, 0.0, Vector3(Scale.m(20.0), Scale.m(12.0), Scale.m(20.0)), Color(0.88, 0.88, 0.86))
+	# missile silos on the silo pad
 	for k in 3:
-		var c3 := L.silo_center + rd * (-0.02 + k * 0.016) + north * 0.006
-		add_structure("silo_open" if k == 1 else "silo", c3, rot, Vector3(0.008, 0.0012, 0.008), C_CONCRETE)
-	# parked jets on the apron
-	for k in 4:
-		var c4 := apron + rd * (-0.05 + k * 0.022) + north * -0.004
-		add_structure("jet", c4, rot + PI * 0.5, Vector3(0.0062, 0.0016, 0.0072), Color(0.60, 0.63, 0.65))
-	# radar station on the knoll
+		var c3 := L.silo_center + rd * (-Scale.m(36.0) + k * Scale.m(36.0)) + Vector2(rd.y, -rd.x) * Scale.m(10.0)
+		add_structure("silo_open" if k == 1 else "silo", c3, rot, Vector3(Scale.m(14.0), Scale.m(2.0), Scale.m(14.0)), Arch.CONCRETE)
+	# radar station on the knoll (outside the wire)
 	var rp := L.radar_pos
-	add_structure("radar_base", rp + Vector2(0.006, 0.004), 0.3, Vector3(0.008, 0.004, 0.006), Color(0.84, 0.82, 0.76))
+	add_structure("radar_base", rp + Vector2(Scale.m(14.0), Scale.m(8.0)), 0.3, Vector3(Scale.m(16.0), Scale.storeys(1.0), Scale.m(12.0)), Color(0.84, 0.82, 0.76))
 	var rg := terrain.height_at(rp.x, rp.y)
-	add_structure("mast", rp, 0.0, Vector3(0.002, 0.007, 0.002), Color(0.75, 0.74, 0.70))
+	add_structure("mast", rp, 0.0, Vector3(Scale.m(3.0), Scale.m(12.0), Scale.m(3.0)), Color(0.75, 0.74, 0.70))
 	radar_head = Node3D.new()
 	radar_head.name = "RadarHead"
-	radar_head.position = Vector3(rp.x, rg + 0.0075, rp.y)
+	radar_head.position = Vector3(rp.x, rg + Scale.m(12.5), rp.y)
 	add_child(radar_head)
 	var dm := MeshBuilder.new()
-	_dish(dm, 0.0052, Color(0.92, 0.92, 0.90))
+	_dish(dm, Scale.m(5.0), Color(0.92, 0.92, 0.90))
 	var dmi := MeshInstance3D.new()
 	dmi.mesh = dm.commit(null, MeshBuilder.vc_material(0.5, false))
 	radar_head.add_child(dmi)
-	# static launcher + the interactive one (on the silo pad)
-	var lc := L.silo_center + rd * 0.03 + north * -0.013
-	add_structure("launcher_truck", L.silo_center + rd * -0.01 + north * -0.013, rot, Vector3(0.0075, 0.0028, 0.0032), Color(0.48, 0.50, 0.40))
+	# static launcher + the interactive one (on the silo pad); 12 m TEL trucks
+	var north := Vector2(rd.y, -rd.x)
+	var lc := L.silo_center + rd * Scale.m(60.0) - north * Scale.m(18.0)
+	add_structure("launcher_truck", L.silo_center - rd * Scale.m(60.0) - north * Scale.m(18.0), rot, Vector3(Scale.m(12.0), Scale.m(3.5), Scale.m(3.0)), Color(0.48, 0.50, 0.40))
 	_build_launcher(lc, rot)
+	if M < 0.0:
+		pass
 
 
 func _dish(mb: MeshBuilder, r: float, col: Color) -> void:
@@ -183,6 +191,7 @@ func _build_launcher(c: Vector2, rot: float) -> void:
 	launcher.name = "Launcher"
 	launcher.position = Vector3(c.x, g.y, c.y)
 	launcher.rotation.y = rot
+	launcher.scale = Vector3.ONE * 0.72     # 8.5 mm model -> ~12 m TEL at 1:2000
 	add_child(launcher)
 	var mb := MeshBuilder.new()
 	var green := Color(0.47, 0.50, 0.38)
@@ -241,36 +250,54 @@ func _place_harbour() -> void:
 	var x0 := L.harbour_x0
 	var x1 := L.harbour_x1
 	var sea := IslandTerrain.SEA
-	# quay wall: concrete block whose front face drops into the basin
+	# quay wall: concrete block whose front face drops into the dredged basin
 	var qd := L.quay_z - (L.quay_land_z + 0.002)
 	var qc := Vector2((x0 + x1) * 0.5, L.quay_z - qd * 0.5)
-	var s := {
+	structures.append({
 		"kind": "quay", "pos": Vector3(qc.x, sea + L.quay_height + 0.0003, qc.y), "rot": 0.0,
 		"size": Vector3(x1 - x0, 0.016, qd), "col": Color(0.74, 0.72, 0.67), "seed": 1,
 		"alive": true, "fragile": false, "sink": 0.016, "ruin": false,
-	}
-	structures.append(s)
-	# pier on posts
+	})
+	# fishing / dhow pier on piles (120 m)
 	var pz0 := L.quay_z
 	var pz1 := L.quay_z + L.pier_len
 	structures.append({
-		"kind": "pier", "pos": Vector3(L.pier_x, sea + 0.0021, (pz0 + pz1) * 0.5), "rot": 0.0,
-		"size": Vector3(0.0048, 0.0006, pz1 - pz0), "col": Color(0.55, 0.42, 0.30), "seed": 2,
+		"kind": "pier", "pos": Vector3(L.pier_x, sea + Scale.m(4.2), (pz0 + pz1) * 0.5), "rot": 0.0,
+		"size": Vector3(Scale.m(8.0), Scale.m(1.2), pz1 - pz0), "col": Color(0.55, 0.42, 0.30), "seed": 2,
 		"alive": true, "fragile": false, "sink": 0.0, "ruin": false,
 	})
 	placed.append({"kind": "pier", "pos": Vector3(L.pier_x, sea, pz1), "water_ok": true, "sink": 0.0, "ground_min": 0.0})
-	# warehouses behind the quay
-	add_structure("warehouse", Vector2(x0 + 0.022, L.quay_land_z - 0.011), 0.0, Vector3(0.032, 0.0058, 0.012), Color(0.72, 0.74, 0.74))
-	add_structure("warehouse", Vector2(x0 + 0.06, L.quay_land_z - 0.012), 0.0, Vector3(0.026, 0.0052, 0.011), Color(0.80, 0.70, 0.56))
-	# container stacks + gantry cranes on the apron
-	var cc := [Color(0.72, 0.25, 0.20), Color(0.20, 0.38, 0.58), Color(0.85, 0.62, 0.22), Color(0.30, 0.52, 0.40), Color(0.85, 0.85, 0.82)]
-	for k in 4:
-		var c := Vector2(x0 + 0.012 + k * 0.009, L.quay_land_z + 0.012)
-		var st := add_structure("containers", c, 0.0, Vector3(0.0072, 0.0026, 0.0068), cc[k % cc.size()])
-		st["seed"] = k * 31 + 7
+	# ship-to-shore cranes on the quay edge, booms over the berth
+	var crane_z := L.quay_z - Scale.m(17.0)
 	for k in 2:
-		add_structure("crane", Vector2(x0 + 0.056 + k * 0.022, L.quay_z - 0.006), 0.0, Vector3(0.006, 0.014, 0.0065), Color(0.88, 0.70, 0.18), true, true)
-	# breakwater (rock MultiMesh is placed in vegetation pass)
+		add_structure("sts_crane", Vector2(x0 + Scale.m(70.0) + k * Scale.m(56.0), crane_z), 0.0, Vector3(Scale.m(20.0), Scale.m(58.0), Scale.m(32.0)), Color(0.88, 0.70, 0.18), true, true)
+	# feeder ship alongside (140 x 22 m)
+	var ship := {
+		"kind": "ship", "pos": Vector3(x0 + Scale.m(95.0), sea, L.quay_z + Scale.m(13.0)), "rot": 0.0,
+		"size": Vector3(Scale.m(140.0), Scale.m(22.0), Scale.m(22.0)), "col": Color(0.2, 0.27, 0.36), "seed": 77,
+		"alive": true, "fragile": true, "sink": 0.0, "ruin": false,
+	}
+	structures.append(ship)
+	placed.append({"kind": "ship", "pos": ship.pos, "water_ok": true, "sink": 0.0, "ground_min": 0.0})
+	# container yard: 2 rows x 3 blocks, RTG over one block
+	var yard_z0 := L.quay_land_z + Scale.m(8.0)
+	var block := Vector3(Scale.m(40.0), Scale.m(11.0), Scale.m(14.0))
+	for row in 2:
+		for k in 3:
+			var c := Vector2(x0 + Scale.m(30.0) + k * Scale.m(46.0), yard_z0 + block.z * 0.5 + row * Scale.m(20.0))
+			var st := add_structure("containers", c, 0.0, block, Color(0.6, 0.5, 0.4))
+			st["seed"] = row * 31 + k * 7 + 3
+	add_structure("rtg", Vector2(x0 + Scale.m(76.0), yard_z0 + block.z * 0.5), 0.0, Vector3(Scale.m(42.0), Scale.m(18.0), Scale.m(20.0)), Color(0.90, 0.72, 0.20))
+	# transit sheds at the east end of the apron
+	add_structure("warehouse", Vector2(x1 - Scale.m(32.0), yard_z0 + Scale.m(8.0)), 0.0, Vector3(Scale.m(56.0), Scale.m(9.0), Scale.m(18.0)), Color(0.72, 0.74, 0.74))
+	add_structure("warehouse", Vector2(x1 - Scale.m(32.0), yard_z0 + Scale.m(30.0)), 0.0, Vector3(Scale.m(56.0), Scale.m(8.0), Scale.m(16.0)), Color(0.80, 0.70, 0.56))
+	# navigation: beacon on the breakwater head
+	var bw := breakwater_points()
+	var head: Vector2 = bw[bw.size() - 1]
+	var bsz := Vector3(Scale.m(2.4), Scale.m(9.0), Scale.m(2.4))
+	structures.append({"kind": "beacon", "pos": Vector3(head.x, sea + Scale.m(4.0), head.y), "rot": 0.0, "size": bsz,
+		"col": Color(0.2, 0.62, 0.3), "seed": 5, "alive": true, "fragile": true, "sink": Scale.m(4.0), "ruin": false})
+	placed.append({"kind": "beacon", "pos": Vector3(head.x, sea, head.y), "water_ok": true, "sink": 0.0, "ground_min": 0.0})
 
 
 func breakwater_points() -> PackedVector2Array:
@@ -286,24 +313,41 @@ func breakwater_points() -> PackedVector2Array:
 func _place_town() -> void:
 	var L := layout
 	var tc := L.town_center
-	# landmarks first
-	add_structure("fort", L.fort_pos, deg_to_rad(8.0), Vector3(0.026, 0.0048, 0.026), C_MUD)
-	var mosque_c := tc + Vector2(-0.025, -0.022)
-	add_structure("mosque", mosque_c, 0.0, Vector3(0.016, 0.0055, 0.016), Color(0.95, 0.94, 0.90))
-	var pitch := 0.0128
-	var nxz := 9
+	# landmarks: the old fort and the souq (civic market hall)
+	add_structure("fort", L.fort_pos, deg_to_rad(8.0), Vector3(Scale.m(56.0), Scale.m(9.0), Scale.m(56.0)), Color(0.76, 0.65, 0.50))
+	add_structure("souq", tc + Vector2(-0.024, -0.024), 0.0, Vector3(Scale.m(64.0), Scale.m(8.5), Scale.m(26.0)), Color(0.90, 0.85, 0.74))
+	var modern_c := tc + Vector2(0.034, 0.03)
+	var pitch := Scale.m(26.0)
+	var nxz := 10
 	for gz in range(-nxz, nxz + 1):
 		for gx in range(-nxz, nxz + 1):
-			# street every third lot
-			var sx: float = gx * pitch + floor(gx / 3.0) * 0.0045
-			var sz: float = gz * pitch + floor(gz / 2.0) * 0.0045
-			var c := tc + Vector2(sx, sz) + Vector2(rng.randf_range(-0.0012, 0.0012), rng.randf_range(-0.0012, 0.0012))
+			# a street every two lots in the old town, every lot pair in the new grid
+			var sx: float = gx * pitch + floor(gx / 2.0) * Scale.m(10.0)
+			var sz: float = gz * pitch + floor(gz / 2.0) * Scale.m(10.0)
+			var c := tc + Vector2(sx, sz) + Vector2(rng.randf_range(-0.0008, 0.0008), rng.randf_range(-0.0008, 0.0008))
 			var dn := c.distance_to(tc) / L.town_radius
 			if dn > 1.0 + rng.randf_range(-0.2, 0.05):
 				continue
-			if rng.randf() < 0.06:
-				continue   # open lots / squares
-			var size := Vector3(rng.randf_range(0.0075, 0.0118), 0.0, rng.randf_range(0.0075, 0.0118))
+			if rng.randf() < 0.05:
+				continue
+			var modern := 1.0 - smoothstep(0.0, 0.05, c.distance_to(modern_c))
+			var kind := "house"
+			var size := Vector3(Scale.m(rng.randf_range(15.0, 22.0)), 0.0, Scale.m(rng.randf_range(15.0, 22.0)))
+			var col: Color = Arch.PLASTER[rng.randi() % Arch.PLASTER.size()]
+			if rng.randf() < modern * 0.9:
+				if rng.randf() < 0.35 and modern > 0.5:
+					kind = "tower"
+					size = Vector3(Scale.m(rng.randf_range(24.0, 30.0)), Scale.storeys(rng.randi_range(10, 16)), Scale.m(rng.randf_range(24.0, 30.0)))
+					col = [Color(0.72, 0.80, 0.84), Color(0.86, 0.88, 0.88), Color(0.64, 0.72, 0.78)][rng.randi() % 3]
+				else:
+					kind = "midrise"
+					size = Vector3(Scale.m(rng.randf_range(22.0, 28.0)), Scale.storeys(rng.randi_range(5, 8)), Scale.m(rng.randf_range(16.0, 22.0)))
+					col = [Color(0.90, 0.88, 0.84), Color(0.84, 0.80, 0.72), Color(0.78, 0.76, 0.72), Color(0.88, 0.82, 0.70)][rng.randi() % 4]
+			elif rng.randf() < 0.55:
+				kind = "courtyard"
+				size = Vector3(Scale.m(rng.randf_range(20.0, 24.0)), Scale.storeys(2.0), Scale.m(rng.randf_range(20.0, 24.0)))
+			else:
+				size.y = Scale.storeys(1.0 if rng.randf() < 0.45 else 2.0)
 			var half_diag := Vector2(size.x, size.z).length() * 0.5
 			if L.road_distance(c) < half_diag * 0.8 + IslandLayout.ROAD_W * 0.5 + 0.0008:
 				continue
@@ -314,20 +358,6 @@ func _place_town() -> void:
 			var g := _ground(c, 0.0, Vector2(size.x, size.z) * 0.5)
 			if g.x - IslandTerrain.SEA < 0.0018 or g.y - g.x > 0.006:
 				continue
-			# downtown towers near the harbour road
-			var downtown := 1.0 - smoothstep(0.0, 0.045, c.distance_to(Vector2(0.116, 0.123)))
-			var kind := "house"
-			var hgt := 0.0045 if rng.randf() < 0.55 else 0.0073
-			if rng.randf() < 0.12:
-				hgt = 0.0101
-			var col: Color = [C_WHITE, C_SANDSTONE, C_OCHRE, Color(0.90, 0.86, 0.78), Color(0.84, 0.80, 0.74), Color(0.88, 0.80, 0.70)][rng.randi() % 6]
-			if rng.randf() < downtown * 0.85:
-				kind = "tower"
-				hgt = rng.randf_range(0.013, 0.026)
-				size.x = minf(size.x, 0.011)
-				size.z = minf(size.z, 0.011)
-				col = [Color(0.80, 0.84, 0.86), Color(0.92, 0.91, 0.88), Color(0.70, 0.78, 0.82)][rng.randi() % 3]
-			size.y = hgt
 			add_structure(kind, c, 0.0, size, col)
 
 
@@ -337,15 +367,98 @@ func _place_town() -> void:
 
 func _place_lighthouse() -> void:
 	var p := layout.lighthouse_pos
-	add_structure("lighthouse", p, 0.0, Vector3(0.0075, 0.026, 0.0075), Color(0.95, 0.94, 0.92))
-	add_structure("house", p + Vector2(-0.010, 0.006), 0.2, Vector3(0.008, 0.0042, 0.006), Color(0.93, 0.92, 0.88))
+	add_structure("lighthouse", p, 0.0, Vector3(Scale.m(9.0), Scale.m(30.0), Scale.m(9.0)), Color(0.95, 0.94, 0.92))
+	add_structure("house", p + Vector2(-Scale.m(20.0), Scale.m(12.0)), 0.2, Vector3(Scale.m(14.0), Scale.storeys(1.0), Scale.m(10.0)), Color(0.93, 0.92, 0.88))
+
+
+## Coastal combined power + desalination plant (south-east coast).
+func _place_plant() -> void:
+	var L := layout
+	var c := L.plant_center
+	add_structure("turbine_hall", c + Vector2(-Scale.m(20.0), Scale.m(4.0)), 0.0, Vector3(Scale.m(84.0), Scale.m(22.0), Scale.m(26.0)), Color(0.76, 0.79, 0.82))
+	for k in 4:
+		add_structure("stack", c + Vector2(-Scale.m(60.0) + k * Scale.m(26.0), -Scale.m(30.0)), 0.0, Vector3(Scale.m(6.0), Scale.m(85.0), Scale.m(6.0)), Arch.CONCRETE)
+	for k in 2:
+		add_structure("desal", c + Vector2(Scale.m(14.0), Scale.m(26.0) + k * Scale.m(11.0)), 0.0, Vector3(Scale.m(84.0), Scale.m(7.0), Scale.m(10.0)), Color(0.86, 0.86, 0.84))
+	for k in 3:
+		add_structure("water_tank", c + Vector2(Scale.m(50.0), -Scale.m(22.0) + k * Scale.m(20.0)), 0.0, Vector3(Scale.m(16.0), Scale.m(10.0), Scale.m(16.0)), Color(0.80, 0.84, 0.86))
+	add_structure("house", c + Vector2(Scale.m(55.0), Scale.m(30.0)), 0.0, Vector3(Scale.m(18.0), Scale.storeys(2.0), Scale.m(12.0)), Color(0.86, 0.84, 0.80))
+	# intake jetty straight out to sea
+	var jx := c.x - Scale.m(10.0)
+	var jz0 := c.y + L.plant_size.y * 0.5
+	var jz1 := jz0
+	while jz1 < jz0 + 0.06 and _hs(jx, jz1) > -0.004:
+		jz1 += 0.002
+	jz1 += 0.006
+	var sea := IslandTerrain.SEA
+	structures.append({"kind": "jetty", "pos": Vector3(jx, sea + Scale.m(3.0), (jz0 + jz1) * 0.5), "rot": 0.0,
+		"size": Vector3(Scale.m(6.0), Scale.m(1.0), jz1 - jz0), "col": Arch.CONCRETE, "seed": 9,
+		"alive": true, "fragile": false, "sink": 0.0, "ruin": false})
+	placed.append({"kind": "jetty", "pos": Vector3(jx, sea, jz1), "water_ok": true, "sink": 0.0, "ground_min": 0.0})
 
 
 # ======================================================================================
 # structure mesh generation
 # ======================================================================================
 
+# --- simple box colliders for debris (rebuilt with the structures mesh) ----------------
+const COL_CELL := 0.02
+var col_boxes: Array[Dictionary] = []
+var col_hash := {}
+
+
+func _rebuild_colliders() -> void:
+	col_boxes.clear()
+	col_hash.clear()
+	for st in structures:
+		if not st.alive or st.kind in ["quay", "pier", "jetty"]:
+			continue
+		var sz: Vector3 = st.size
+		var xf := structure_xform(st)
+		var top: float = sz.y
+		if st.kind == "ship":
+			top = Scale.m(6.0)
+		var box := {"inv": xf.affine_inverse(), "basis": xf.basis, "hx": sz.x * 0.5, "hz": sz.z * 0.5, "top": top, "bottom": -float(st.sink) - 0.002}
+		var idx := col_boxes.size()
+		col_boxes.append(box)
+		var r := Vector2(sz.x, sz.z).length() * 0.5
+		var p: Vector3 = st.pos
+		for cx in range(int(floor((p.x - r) / COL_CELL)), int(floor((p.x + r) / COL_CELL)) + 1):
+			for cz in range(int(floor((p.z - r) / COL_CELL)), int(floor((p.z + r) / COL_CELL)) + 1):
+				var key := Vector2i(cx, cz)
+				if not col_hash.has(key):
+					col_hash[key] = []
+				(col_hash[key] as Array).append(idx)
+
+
+## Push a point (radius r) out of any standing building. Returns the world
+## contact normal, or Vector3.ZERO when there was no contact.
+func collide_point(p: Vector3, r: float) -> Array:
+	var key := Vector2i(int(floor(p.x / COL_CELL)), int(floor(p.z / COL_CELL)))
+	if not col_hash.has(key):
+		return []
+	for i in (col_hash[key] as Array):
+		var b: Dictionary = col_boxes[i]
+		var lp: Vector3 = (b.inv as Transform3D) * p
+		var px: float = b.hx + r - absf(lp.x)
+		var pz: float = b.hz + r - absf(lp.z)
+		var py: float = b.top + r - lp.y
+		if px <= 0.0 or pz <= 0.0 or py <= 0.0 or lp.y < b.bottom:
+			continue
+		var n := Vector3.UP
+		var pen := py
+		if px < pen:
+			pen = px
+			n = Vector3(signf(lp.x), 0, 0)
+		if pz < pen:
+			pen = pz
+			n = Vector3(0, 0, signf(lp.z))
+		return [((b.basis as Basis) * n).normalized(), pen]
+	return []
+
+
 func _rebuild_structures() -> void:
+	_rebuild_colliders()
 	var mb := MeshBuilder.new()
 	for s in structures:
 		_gen_structure(mb, s)
@@ -373,37 +486,36 @@ func _gen_structure(mb: MeshBuilder, s: Dictionary) -> void:
 		_gen_ruin(mb, s, r)
 		return
 	match kind:
-		"house", "barracks":
-			_box_walls(mb, Vector3(0, 0, 0), sz, sink, col, true)
-			_parapet(mb, sz, col)
-			if kind == "house":
-				var nd := r.randi_range(0, 2)
-				for k in nd:
-					var dx := r.randf_range(-sz.x * 0.3, sz.x * 0.3)
-					var dz := r.randf_range(-sz.z * 0.3, sz.z * 0.3)
-					if r.randf() < 0.5:
-						mb.box(Vector3(dx, sz.y + 0.0004, dz), Vector3(0.0014, 0.0008, 0.0011), col.darkened(0.12))
-					else:
-						mb.cylinder(Vector3(dx, sz.y, dz), 0.0006, 0.0006, 0.0011, 6, Color(0.85, 0.85, 0.85))
-				if r.randf() < 0.45:
-					mb.box(Vector3(sz.x * 0.25, sz.y + 0.0012, -sz.z * 0.2), Vector3(0.0028, 0.0024, 0.0028), col, true)
+		"house", "barracks", "radar_base":
+			Arch.house(mb, sz, sink, col, r)
+		"courtyard":
+			Arch.courtyard(mb, sz, sink, col, r)
+		"midrise":
+			Arch.midrise(mb, sz, sink, col, r)
 		"tower":
-			_box_walls(mb, Vector3.ZERO, sz, sink, col, true)
-			var crown := Vector3(sz.x * 0.72, 0.0024, sz.z * 0.72)
-			mb.box(Vector3(0, sz.y + crown.y * 0.5, 0), crown, col.darkened(0.05), true)
-			mb.box(Vector3(0, sz.y + crown.y + 0.0003, 0), Vector3(sz.x * 0.8, 0.0006, sz.z * 0.8), col.lightened(0.1))
-			if r.randf() < 0.5:
-				mb.cylinder(Vector3(0, sz.y + crown.y + 0.0006, 0), 0.00012, 0.00008, 0.004, 4, Color(0.8, 0.8, 0.8))
-		"mosque":
-			_box_walls(mb, Vector3.ZERO, sz, sink, col, false)
-			_parapet(mb, sz, col)
-			mb.cylinder(Vector3(0, sz.y, 0), 0.0045, 0.0045, 0.0012, 12, col)
-			mb.sphere(Vector3(0, sz.y + 0.0012, 0), Vector3(0.0048, 0.0055, 0.0048), 8, 12, Color(0.86, 0.80, 0.62), true)
-			mb.cylinder(Vector3(0, sz.y + 0.0067, 0), 0.0003, 0.0, 0.0018, 4, Color(0.85, 0.72, 0.35))
-			var mp := Vector3(sz.x * 0.5 - 0.0014, 0, sz.z * 0.5 - 0.0014)
-			mb.cylinder(mp + Vector3(0, -sink, 0), 0.0013, 0.0011, 0.019 + sink, 8, col)
-			mb.cylinder(mp + Vector3(0, 0.0145, 0), 0.0017, 0.0017, 0.0007, 8, col.darkened(0.05))
-			mb.cylinder(mp + Vector3(0, 0.0190, 0), 0.0009, 0.0, 0.0032, 8, Color(0.86, 0.80, 0.62))
+			Arch.tower(mb, sz, sink, col, r)
+		"souq":
+			Arch.souq(mb, sz, sink, col, r)
+		"sts_crane":
+			Arch.sts_crane(mb, col)
+		"rtg":
+			Arch.rtg(mb, sz, col)
+		"ship":
+			Arch.ship(mb, sz, r)
+		"has":
+			Arch.has(mb, sz, sink, col)
+		"tank", "water_tank":
+			Arch.tank(mb, sz, sink, col, kind == "tank")
+		"stack":
+			Arch.stack(mb, sz, sink)
+		"turbine_hall":
+			Arch.turbine_hall(mb, sz, sink, col)
+		"desal":
+			Arch.desal(mb, sz, sink, col)
+		"jetty":
+			Arch.jetty(mb, sz, terrain, mb.xform)
+		"beacon":
+			Arch.beacon(mb, sz, sink, col)
 		"fort":
 			var t := 0.0018
 			var h := sz.y
@@ -429,49 +541,15 @@ func _gen_structure(mb: MeshBuilder, s: Dictionary) -> void:
 			mb.box(Vector3(0, 0.0003 - sink * 0.5, 0), Vector3(sz.x - t, sink + 0.0006, sz.z - t), Color(0.80, 0.70, 0.52))
 			mb.box(Vector3(0, h * 0.25, hz), Vector3(0.0036, h * 0.55, 0.0008), Color(0.30, 0.22, 0.16))
 		"warehouse":
-			_box_walls(mb, Vector3.ZERO, sz, sink, col, false)
-			# low gable roof
-			var ry := 0.0014
-			var hx2 := sz.x * 0.5 + 0.0003
-			var hz2 := sz.z * 0.5 + 0.0003
-			var rc := col.darkened(0.1)
-			mb.quad(Vector3(-hx2, sz.y, -hz2), Vector3(-hx2, sz.y + ry, 0), Vector3(hx2, sz.y + ry, 0), Vector3(hx2, sz.y, -hz2), rc)
-			mb.quad(Vector3(-hx2, sz.y + ry, 0), Vector3(-hx2, sz.y, hz2), Vector3(hx2, sz.y, hz2), Vector3(hx2, sz.y + ry, 0), rc.lightened(0.05))
-			mb.tri_out(Vector3(-hx2, sz.y, -hz2), Vector3(-hx2, sz.y, hz2), Vector3(-hx2, sz.y + ry, 0), col, Vector3.LEFT)
-			mb.tri_out(Vector3(hx2, sz.y, -hz2), Vector3(hx2, sz.y, hz2), Vector3(hx2, sz.y + ry, 0), col, Vector3.RIGHT)
-			for k in 3:
-				mb.box(Vector3(-sz.x * 0.3 + k * sz.x * 0.3, 0.0016, sz.z * 0.5 + 0.0001), Vector3(sz.x * 0.18, 0.0032, 0.0002), Color(0.35, 0.37, 0.38))
+			Arch.warehouse(mb, sz, sink, col)
 		"containers":
-			var palette := [Color(0.72, 0.25, 0.20), Color(0.20, 0.38, 0.58), Color(0.85, 0.62, 0.22), Color(0.30, 0.52, 0.40), Color(0.85, 0.85, 0.82), Color(0.55, 0.30, 0.45)]
-			var cl := 0.0034
-			var cw := 0.0012
-			var ch := 0.0012
-			for rx in 2:
-				for rz in 5:
-					var stack := r.randi_range(1, 3)
-					for ry2 in stack:
-						var cpos := Vector3(-sz.x * 0.5 + cl * 0.5 + rx * (cl + 0.0003), ch * 0.5 + ry2 * ch, -sz.z * 0.5 + cw * 0.5 + rz * (cw + 0.0002))
-						mb.box(cpos, Vector3(cl, ch * 0.96, cw * 0.96), palette[r.randi() % palette.size()])
-		"crane":
-			var leg := 0.0005
-			var hy := sz.y
-			for lx in [-1.0, 1.0]:
-				for lz in [-1.0, 1.0]:
-					mb.box(Vector3(lx * sz.x * 0.4, hy * 0.35, lz * sz.z * 0.4), Vector3(leg, hy * 0.7, leg), col)
-			mb.box(Vector3(0, hy * 0.7, 0), Vector3(sz.x * 0.9, 0.0012, sz.z), col)
-			mb.box(Vector3(0, hy * 0.7 + 0.0006, 0.006), Vector3(0.0012, 0.0008, 0.022), col.darkened(0.05))
-			mb.box(Vector3(0, hy * 0.7 + 0.0016, -0.002), Vector3(0.002, 0.0016, 0.0024), Color(0.85, 0.85, 0.82))
-		"hangar":
-			_hangar(mb, sz, sink, col)
+			Arch.container_block(mb, sz, r)
 		"ctower":
 			_box_walls(mb, Vector3.ZERO, Vector3(sz.x * 0.65, sz.y - 0.003, sz.z * 0.65), sink, col, false)
 			mb.cylinder(Vector3(0, sz.y - 0.003, 0), sz.x * 0.62, sz.x * 0.75, 0.0024, 8, Color(0.22, 0.32, 0.38), false)
 			mb.cylinder(Vector3(0, sz.y - 0.0006, 0), sz.x * 0.8, sz.x * 0.7, 0.0006, 8, col)
 			mb.cylinder(Vector3(0, sz.y, 0), 0.0001, 0.0001, 0.003, 4, Color(0.8, 0.2, 0.2))
 			mb.box(Vector3(0.006, (0.0045 - sink) * 0.5, 0), Vector3(0.008, 0.0045 + sink, 0.0065), col, true)
-		"tank":
-			mb.cylinder(Vector3(0, -sink, 0), sz.x * 0.5, sz.x * 0.5, sz.y + sink, 14, col, true, col.darkened(0.06))
-			mb.cylinder(Vector3(0, sz.y, 0), sz.x * 0.5, sz.x * 0.2, 0.0007, 14, col.darkened(0.03))
 		"silo", "silo_open":
 			mb.cylinder(Vector3(0, -sink, 0), sz.x * 0.5, sz.x * 0.47, sz.y + sink, 14, C_CONCRETE, true, Color(0.62, 0.61, 0.58))
 			if kind == "silo":
@@ -482,17 +560,16 @@ func _gen_structure(mb: MeshBuilder, s: Dictionary) -> void:
 				mb.cylinder(Vector3(0, sz.y - 0.0005, 0), 0.0011, 0.0011, 0.0012, 10, Color(0.92, 0.92, 0.9))
 				mb.cylinder(Vector3(0, sz.y + 0.0007, 0), 0.0011, 0.0, 0.0022, 10, Color(0.80, 0.22, 0.18))
 		"jet":
+			# mesh authored nose +x, 6.2 mm long / 7.2 mm span -> 15 m x 10 m
+			mb.xform = mb.xform * Transform3D(Basis.from_scale(Vector3(1.21, 1.0, 0.69)), Vector3.ZERO)
 			_jet(mb, col)
-		"radar_base":
-			_box_walls(mb, Vector3.ZERO, sz, sink, col, true)
-			_parapet(mb, sz, col)
 		"mast":
 			mb.cylinder(Vector3(0, -sink, 0), 0.0011, 0.0006, sz.y + sink, 6, col)
 		"launcher_truck":
-			mb.box(Vector3(0, (0.0016 - sink) * 0.5, 0), Vector3(sz.x, 0.0016 + sink, sz.z), col)
-			mb.box(Vector3(sz.x * 0.38, 0.0021, 0), Vector3(0.0018, 0.0012, sz.z * 0.92), col.lightened(0.06))
+			mb.box(Vector3(0, (sz.y * 0.45 - sink) * 0.5, 0), Vector3(sz.x, sz.y * 0.45 + sink, sz.z), col)
+			mb.box(Vector3(sz.x * 0.38, sz.y * 0.6, 0), Vector3(sz.x * 0.22, sz.y * 0.35, sz.z * 0.92), col.lightened(0.06))
 			for k in 2:
-				mb.box(Vector3(-0.0008, 0.0022 + k * 0.0009, 0), Vector3(0.0056, 0.0008, sz.z * 0.85), col.darkened(0.12))
+				mb.box(Vector3(-sz.x * 0.1, sz.y * (0.62 + k * 0.22), 0), Vector3(sz.x * 0.66, sz.y * 0.2, sz.z * 0.85), col.darkened(0.12))
 		"lighthouse":
 			_lighthouse(mb, sz, sink)
 		"quay":
@@ -637,10 +714,13 @@ func _gen_ruin(mb: MeshBuilder, s: Dictionary, r: RandomNumberGenerator) -> void
 	var sz: Vector3 = s.size
 	var col: Color = (s.col as Color).darkened(0.45)
 	var stub := minf(sz.y * 0.28, 0.0028)
-	if s.kind in ["tank", "silo", "silo_open", "mast", "lighthouse"]:
+	if s.kind in ["tank", "water_tank", "silo", "silo_open", "mast", "lighthouse", "stack", "beacon"]:
 		mb.cylinder(Vector3(0, -s.sink, 0), sz.x * 0.5, sz.x * 0.45, s.sink + stub, 10, col)
-	elif s.kind in ["jet", "containers", "launcher_truck", "crane"]:
+	elif s.kind in ["jet", "containers", "launcher_truck", "crane", "sts_crane", "rtg"]:
 		mb.box(Vector3(0, 0.0003, 0), Vector3(sz.x * 0.7, 0.0006, sz.z * 0.7), Color(0.12, 0.11, 0.10))
+	elif s.kind == "ship":
+		# burnt hull settled at the waterline
+		mb.box(Vector3(0, -Scale.m(1.0), 0), Vector3(sz.x * 0.9, Scale.m(5.0), sz.z * 0.85), Color(0.12, 0.11, 0.10))
 	else:
 		# jagged broken walls
 		var hx := sz.x * 0.5
@@ -746,9 +826,9 @@ func _splits(n: int, total: float, r: RandomNumberGenerator) -> PackedFloat32Arr
 ## Called after a crater: remove vegetation inside, re-snap the rest, re-drape roads.
 func on_crater(center: Vector3, radius: float) -> Array[Dictionary]:
 	var burnt: Array[Dictionary] = []
+	craters.append(Vector3(center.x, center.z, radius))
 	for name in species:
 		var sp: Dictionary = species[name]
-		var mm: MultiMesh = sp.mm
 		var xfs: Array = sp.xf
 		for k in xfs.size():
 			if sp.alive[k] == 0:
@@ -757,14 +837,14 @@ func on_crater(center: Vector3, radius: float) -> Array[Dictionary]:
 			var d := Vector2(xf.origin.x - center.x, xf.origin.z - center.z).length()
 			if d < radius * 1.15:
 				sp.alive[k] = 0
-				mm.set_instance_transform(k, Transform3D(Basis().scaled(Vector3.ONE * 1e-5), xf.origin))
+				_set_veg_xf(sp, k, Transform3D(Basis().scaled(Vector3.ONE * 1e-5), xf.origin))
 				if name == "palm" or name == "acacia":
 					burnt.append({"pos": xf.origin + Vector3(0, 0.002, 0), "half": Vector3(0.0003, 0.0022, 0.0003), "col": Color(0.18, 0.14, 0.11)})
 			elif d < radius * 2.0:
 				var ny := terrain.height_at(xf.origin.x, xf.origin.z) - 0.0004
 				xf.origin.y = ny
 				xfs[k] = xf
-				mm.set_instance_transform(k, xf)
+				_set_veg_xf(sp, k, xf)
 	_build_drapes()
 	return burnt
 
@@ -773,39 +853,180 @@ func on_crater(center: Vector3, radius: float) -> Array[Dictionary]:
 # draped surfaces (roads, runway, aprons) — follow the faceted terrain exactly
 # ======================================================================================
 
+var craters: Array[Vector3] = []      # (x, z, radius): paving is broken inside
+var designators: Array[Label3D] = []
+
+
+func _in_crater(p: Vector2, jag := 1.0) -> bool:
+	for c in craters:
+		if Vector2(c.x, c.y).distance_to(p) < c.z * 0.82 * jag:
+			return true
+	return false
+
+
+func paving_at(p: Vector2, r: float) -> bool:
+	var L := layout
+	if L.road_distance(p) < IslandLayout.ROAD_W * 0.5 + r * 0.6:
+		return true
+	return L.inside_base(p, -0.01) and L.infrastructure_distance(p) < r * 0.6
+
+
 func _build_drapes() -> void:
 	for m in drape_mi:
 		m.queue_free()
 	drape_mi.clear()
 	var L := layout
 	var rd := L.runway_dir()
+	var north := Vector2(rd.y, -rd.x)
 	var shader := load("res://island/marking.gdshader")
-	# roads
+	# roads (8 m two-lane)
 	var rb := MeshBuilder.new()
 	for r in L.road_samples():
 		_ribbon(rb, r, IslandLayout.ROAD_W, 0.00032)
 	_add_drape(rb, shader, 0, 0.0)
-	# runway
+	# runway 600 x 25 m with ICAO-style markings
 	var rwb := MeshBuilder.new()
 	_rect_grid(rwb, L.runway_center, rd, Vector2(L.runway_len, L.runway_w), 0.0005)
 	_add_drape(rwb, shader, 1, L.runway_len)
-	# apron, silo pad, quay apron (concrete)
+	# parallel taxiway + end/middle connectors (15 m, yellow centreline)
+	var tb := MeshBuilder.new()
+	_rect_grid(tb, L.runway_center + north * L.taxi_offset, rd, Vector2(L.runway_len - Scale.m(20.0), L.taxi_w), 0.00045)
+	for along in [-L.runway_len * 0.5 + Scale.m(20.0), 0.0, L.runway_len * 0.5 - Scale.m(20.0)]:
+		var c: Vector2 = L.runway_center + rd * along + north * L.taxi_offset * 0.5
+		_rect_grid(tb, c, north, Vector2(L.taxi_offset - L.runway_w * 0.5 - L.taxi_w * 0.5 + Scale.m(4.0), L.taxi_w), 0.00042)
+	_add_drape(tb, shader, 4, 0.0)
+	# apron, silo pad, HAS links, plant yard (concrete)
 	var cb := MeshBuilder.new()
 	_rect_grid(cb, L.apron_center, rd, L.apron_size, 0.0004)
-	_rect_grid(cb, L.silo_center, rd, Vector2(0.07, 0.044), 0.0004)
-	# taxiways from the apron's south edge to the runway's north edge
-	var south := Vector2(-rd.y, rd.x)
-	var d := L.apron_center - L.runway_center
-	var along := d.dot(rd)
-	var lat_apron := d.dot(south) + L.apron_size.y * 0.5
-	var lat_rw := -L.runway_w * 0.5
-	for off in [-0.05, 0.05]:
-		var mid_lat := (lat_apron + lat_rw) * 0.5
-		var c: Vector2 = L.runway_center + rd * (along + off) + south * mid_lat
-		_rect_grid(cb, c, south, Vector2(absf(lat_rw - lat_apron) + 0.002, 0.007), 0.00035)
-	# harbour apron: flat, on top of the quay slab
+	_rect_grid(cb, L.apron_center - north * (L.apron_size.y * 0.5 + Scale.m(5.0)), north, Vector2(Scale.m(12.0), Scale.m(40.0)), 0.00041)
+	_rect_grid(cb, L.silo_center, rd, Vector2(Scale.m(150.0), Scale.m(80.0)), 0.0004)
+	for st in structures:
+		if st.has("link"):
+			var lk: Array = st.link
+			var p0: Vector2 = lk[0]
+			var p1: Vector2 = lk[1]
+			_rect_grid(cb, (p0 + p1) * 0.5, (p1 - p0).normalized(), Vector2(p0.distance_to(p1), Scale.m(16.0)), 0.00041)
+	_rect_grid(cb, L.plant_center, Vector2.RIGHT, L.plant_size, 0.0004)
 	_rect_grid(cb, Vector2((L.harbour_x0 + L.harbour_x1) * 0.5, (L.quay_land_z + 0.002 + L.quay_z) * 0.5), Vector2.RIGHT, Vector2(L.harbour_x1 - L.harbour_x0, L.quay_z - L.quay_land_z - 0.002), 0.0, IslandTerrain.SEA + L.quay_height + 0.00035)
 	_add_drape(cb, shader, 2, 0.0)
+	# base perimeter: fence (with gates where roads cross) + inner patrol road
+	var f := L.base_frame()
+	var corners := [Vector2(f.along0, f.lat0), Vector2(f.along1, f.lat0), Vector2(f.along1, f.lat1), Vector2(f.along0, f.lat1)]
+	var ring := PackedVector2Array()
+	var inner := PackedVector2Array()
+	for k in 5:
+		var a2: Vector2 = corners[k % 4]
+		var b2: Vector2 = corners[(k + 1) % 4]
+		if k == 4:
+			break
+		var n := int(ceil(a2.distance_to(b2) / 0.003))
+		for i in n:
+			var q := a2.lerp(b2, float(i) / n)
+			ring.append(L.base_world(q.x, q.y))
+			var qi := Vector2(clampf(q.x, f.along0 + 0.005, f.along1 - 0.005), clampf(q.y, f.lat0 + 0.005, f.lat1 - 0.005))
+			inner.append(L.base_world(qi.x, qi.y))
+	ring.append(ring[0])
+	inner.append(inner[0])
+	var pr := MeshBuilder.new()
+	var land_inner := PackedVector2Array()
+	for q in inner:
+		land_inner.append(q)
+	_ribbon(pr, land_inner, Scale.m(6.0), 0.0003, true)
+	_add_drape(pr, shader, 5, 0.0)
+	_build_fence(ring)
+	# desert tyre tracks (pairs of ruts, multiply-blended)
+	var trk := MeshBuilder.new()
+	for t in L.tracks:
+		var pts := IslandLayout.catmull(t, 0.003)
+		for side in [-1.0, 1.0]:
+			var off := PackedVector2Array()
+			for i in pts.size():
+				var tng := (pts[mini(i + 1, pts.size() - 1)] - pts[maxi(i - 1, 0)]).normalized()
+				off.append(pts[i] + Vector2(-tng.y, tng.x) * side * Scale.m(1.0))
+			_ribbon(trk, off, Scale.m(1.0), 0.00018, true)
+	var tm := ShaderMaterial.new()
+	tm.shader = load("res://island/track.gdshader")
+	var tmi := MeshInstance3D.new()
+	tmi.name = "Tracks"
+	tmi.mesh = trk.commit(null, tm)
+	tmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(tmi)
+	drape_mi.append(tmi)
+	_build_designators()
+
+
+func _build_fence(ring: PackedVector2Array) -> void:
+	var fb := MeshBuilder.new()
+	var pb := MeshBuilder.new()
+	var h := Scale.m(2.5)
+	var wire := Color(0.30, 0.31, 0.32)
+	var post_acc := 0.0
+	for i in ring.size() - 1:
+		var a := ring[i]
+		var b := ring[i + 1]
+		var m := (a + b) * 0.5
+		if _hs(m.x, m.y) < 0.0015 or not terrain.is_inside(m.x, m.y, 0.01):
+			continue
+		if layout.road_distance(m) < IslandLayout.ROAD_W * 1.2 or _in_crater(m):
+			continue
+		if IslandLayout._rect_dist(m, layout.silo_center, layout.runway_dir(), Vector2(Scale.m(78.0), Scale.m(43.0))) < 0.0:
+			continue
+		var A := Vector3(a.x, terrain.height_at(a.x, a.y), a.y)
+		var B := Vector3(b.x, terrain.height_at(b.x, b.y), b.y)
+		var up := Vector3(0, h, 0)
+		var n := (B - A).cross(Vector3.UP)
+		fb.tri_out(A, B, B + up, wire, n)
+		fb.tri_out(A, B + up, A + up, wire, n)
+		fb.tri_out(A, B, B + up, wire, -n)
+		fb.tri_out(A, B + up, A + up, wire, -n)
+		post_acc += a.distance_to(b)
+		if post_acc > Scale.m(10.0):
+			post_acc = 0.0
+			pb.box(A + Vector3(0, h * 0.55, 0), Vector3(Scale.m(0.5), h * 1.1, Scale.m(0.5)), Color(0.45, 0.46, 0.46))
+	var fm := StandardMaterial3D.new()
+	fm.vertex_color_use_as_albedo = true
+	fm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	fm.albedo_color = Color(1, 1, 1, 0.42)
+	fm.roughness = 0.8
+	var fmi := MeshInstance3D.new()
+	fmi.name = "Fence"
+	fmi.mesh = fb.commit(null, fm)
+	fmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(fmi)
+	drape_mi.append(fmi)
+	var pmi := MeshInstance3D.new()
+	pmi.name = "FencePosts"
+	pmi.mesh = pb.commit(null, MeshBuilder.vc_material(0.7))
+	add_child(pmi)
+	drape_mi.append(pmi)
+
+
+## Runway designators (heading 099/279 -> "10" / "28"), painted flat.
+func _build_designators() -> void:
+	for d in designators:
+		d.queue_free()
+	designators.clear()
+	var L := layout
+	var rd := L.runway_dir()
+	for e in [[-1.0, "10"], [1.0, "28"]]:
+		var sgn: float = e[0]
+		var c := L.runway_center + rd * sgn * (L.runway_len * 0.5 - Scale.m(48.0))
+		if _in_crater(c):
+			continue
+		var lb := Label3D.new()
+		lb.text = e[1]
+		lb.font_size = 96
+		lb.pixel_size = Scale.m(9.0) / 96.0
+		lb.outline_size = 0
+		lb.modulate = Color(0.93, 0.93, 0.92)
+		lb.shaded = true
+		lb.alpha_cut = Label3D.ALPHA_CUT_DISCARD
+		var upv := rd * -sgn
+		var theta := atan2(-upv.x, -upv.y)
+		lb.basis = Basis(Vector3.UP, theta) * Basis(Vector3.RIGHT, -PI * 0.5)
+		lb.position = Vector3(c.x, terrain.height_at(c.x, c.y) + 0.0006, c.y)
+		add_child(lb)
+		designators.append(lb)
 
 
 func _add_drape(mb: MeshBuilder, shader: Shader, kind: int, length: float) -> void:
@@ -821,7 +1042,7 @@ func _add_drape(mb: MeshBuilder, shader: Shader, kind: int, length: float) -> vo
 	drape_mi.append(mi)
 
 
-func _ribbon(mb: MeshBuilder, pts: PackedVector2Array, width: float, lift: float) -> void:
+func _ribbon(mb: MeshBuilder, pts: PackedVector2Array, width: float, lift: float, land_only := false) -> void:
 	var dist := 0.0
 	var prev_l := Vector3.ZERO
 	var prev_c := Vector3.ZERO
@@ -846,12 +1067,20 @@ func _ribbon(mb: MeshBuilder, pts: PackedVector2Array, width: float, lift: float
 		var C := Vector3(c.x, terrain.height_at(c.x, c.y) + lift, c.y)
 		var R := Vector3(pr.x, terrain.height_at(pr.x, pr.y) + lift, pr.y)
 		var tint := _scorch_tint(c)
-		if s > 0:
+		var mid := (c + pts[maxi(s - 1, 0)]) * 0.5
+		var skip := _in_crater(mid, 0.85 + 0.3 * _hash01(s))
+		if land_only and (_hs(mid.x, mid.y) < 0.0012 or not terrain.is_inside(mid.x, mid.y, 0.008)):
+			skip = true
+		if s > 0 and not skip:
 			mb.tri_out(prev_l, L, C, tint, Vector3.UP, Vector2(prev_u, 1), Vector2(dist, 1), Vector2(dist, 0))
 			mb.tri_out(prev_l, C, prev_c, tint, Vector3.UP, Vector2(prev_u, 1), Vector2(dist, 0), Vector2(prev_u, 0))
 			mb.tri_out(prev_c, C, R, tint, Vector3.UP, Vector2(prev_u, 0), Vector2(dist, 0), Vector2(dist, -1))
 			mb.tri_out(prev_c, R, prev_r, tint, Vector3.UP, Vector2(prev_u, 0), Vector2(dist, -1), Vector2(prev_u, -1))
 		prev_l = L; prev_c = C; prev_r = R; prev_u = dist
+
+
+static func _hash01(n: int) -> float:
+	return float(((n * 2654435761) >> 7) & 1023) / 1023.0
 
 
 func _scorch_tint(p: Vector2) -> Color:
@@ -881,6 +1110,9 @@ func _rect_grid(mb: MeshBuilder, c: Vector2, dir: Vector2, size: Vector2, lift: 
 			var b := a + 1
 			var cc := a + nu + 1
 			var d := cc + 1
+			var ctr := Vector2((grid[a].x + grid[d].x) * 0.5, (grid[a].z + grid[d].z) * 0.5)
+			if _in_crater(ctr, 0.85 + 0.3 * _hash01(i * 31 + j * 17)):
+				continue
 			var tint := _scorch_tint(Vector2(grid[a].x, grid[a].z))
 			mb.tri_out(grid[a], grid[b], grid[d], tint, Vector3.UP, uvg[a], uvg[b], uvg[d])
 			mb.tri_out(grid[a], grid[d], grid[cc], tint, Vector3.UP, uvg[a], uvg[d], uvg[cc])
@@ -948,6 +1180,63 @@ func _palm_mesh() -> ArrayMesh:
 				mb.tri_out(a, b, c2, shade.darkened(0.25), Vector3.DOWN)
 	# a few dates
 	mb.sphere(crown + Vector3(0, -0.03, 0), Vector3(0.045, 0.035, 0.045), 3, 5, Color(0.55, 0.38, 0.18))
+	return mb.commit()
+
+
+## ~26 triangles: 3-sided trunk + 5 crossed frond cards (both faces).
+func _palm_lo_mesh() -> ArrayMesh:
+	var mb := MeshBuilder.new()
+	var trunk := Color(0.55, 0.45, 0.34)
+	var crown := Vector3(0.1, 0.8, 0)
+	for s in 3:
+		var a0 := TAU * s / 3.0
+		var a1 := TAU * (s + 1) / 3.0
+		var d0 := Vector3(cos(a0), 0, sin(a0))
+		var d1 := Vector3(cos(a1), 0, sin(a1))
+		mb.tri_out(d0 * 0.04, d1 * 0.04, crown + d1 * 0.025, trunk, d0 + d1)
+		mb.tri_out(d0 * 0.04, crown + d1 * 0.025, crown + d0 * 0.025, trunk, d0 + d1)
+	for l in 5:
+		var ang := TAU * l / 5.0
+		var dir := Vector3(cos(ang), 0, sin(ang))
+		var side := Vector3(-dir.z, 0, dir.x) * 0.08
+		var tip := crown + dir * 0.4 + Vector3(0, -0.14, 0)
+		var mid := crown + dir * 0.2 + Vector3(0, 0.04, 0)
+		var g := Color(0.34, 0.48, 0.23)
+		mb.tri_out(crown, mid + side, tip, g, Vector3.UP)
+		mb.tri_out(crown, tip, mid - side, g, Vector3.UP)
+		mb.tri_out(crown, mid + side, tip, g.darkened(0.25), Vector3.DOWN)
+		mb.tri_out(crown, tip, mid - side, g.darkened(0.25), Vector3.DOWN)
+	return mb.commit()
+
+
+## ~16 triangles: crossed trunk card + hexagonal flat-top canopy.
+func _acacia_lo_mesh() -> ArrayMesh:
+	var mb := MeshBuilder.new()
+	var bark := Color(0.40, 0.33, 0.26)
+	for a in [0.0, PI * 0.5]:
+		var d := Vector3(cos(a), 0, sin(a)) * 0.04
+		mb.tri_out(-d, d, Vector3(0, 0.66, 0), bark, Vector3(-d.z, 0, d.x))
+		mb.tri_out(-d, d, Vector3(0, 0.66, 0), bark, Vector3(d.z, 0, -d.x))
+	var top := Vector3(0, 0.80, 0)
+	var g := Color(0.48, 0.54, 0.30)
+	for s in 6:
+		var a0 := TAU * s / 6.0
+		var a1 := TAU * (s + 1) / 6.0
+		var p0 := Vector3(cos(a0) * 0.46, 0.70, sin(a0) * 0.46)
+		var p1 := Vector3(cos(a1) * 0.46, 0.70, sin(a1) * 0.46)
+		mb.tri_out(top, p0, p1, g, Vector3.UP)
+		mb.tri_out(Vector3(0, 0.64, 0), p0, p1, g.darkened(0.3), Vector3.DOWN)
+	return mb.commit()
+
+
+func _shrub_lo_mesh() -> ArrayMesh:
+	var mb := MeshBuilder.new()
+	var c := Color(0.55, 0.56, 0.36)
+	var top := Vector3(0, 0.75, 0)
+	for s in 4:
+		var a0 := TAU * s / 4.0
+		var a1 := TAU * (s + 1) / 4.0
+		mb.tri_out(top, Vector3(cos(a0), 0.05, sin(a0)), Vector3(cos(a1), 0.05, sin(a1)), c, Vector3.UP)
 	return mb.commit()
 
 
@@ -1023,24 +1312,74 @@ func _rock_mesh(seed: int) -> ArrayMesh:
 	return mb.commit()
 
 
-func _make_species(name: String, mesh: Mesh, xfs: Array[Transform3D], cols: Array[Color]) -> void:
-	var mm := MultiMesh.new()
-	mm.transform_format = MultiMesh.TRANSFORM_3D
-	mm.use_colors = true
-	mm.mesh = mesh
-	mm.instance_count = xfs.size()
+const VEG_TILES := 2          # 2 x 2 spatial tiles per species -> per-tile LOD switching
+const LOD_DIST := 0.55        # m camera distance where trees swap to the low mesh
+
+
+## Build tiled MultiMeshes. `lo` (optional) is drawn beyond LOD_DIST; with
+## `cull_far` the species simply disappears beyond `far` (grass tufts).
+func _make_species(name: String, hi: Mesh, lo: Mesh, xfs: Array[Transform3D], cols: Array[Color], cull_far := false, far := LOD_DIST) -> void:
+	var nt := VEG_TILES * VEG_TILES
+	var buckets: Array = []
+	for t in nt:
+		buckets.append([])
+	var tile_of := PackedInt32Array(); tile_of.resize(xfs.size())
+	var local := PackedInt32Array(); local.resize(xfs.size())
 	for k in xfs.size():
-		mm.set_instance_transform(k, xfs[k])
-		mm.set_instance_color(k, cols[k])
-	var mmi := MultiMeshInstance3D.new()
-	mmi.name = "MM_" + name
-	mmi.multimesh = mm
-	mmi.material_override = veg_mat
-	add_child(mmi)
+		var o := xfs[k].origin
+		var tx := clampi(int((o.x + 0.5) * VEG_TILES), 0, VEG_TILES - 1)
+		var tz := clampi(int((o.z + 0.5) * VEG_TILES), 0, VEG_TILES - 1)
+		var t := tz * VEG_TILES + tx
+		tile_of[k] = t
+		local[k] = (buckets[t] as Array).size()
+		(buckets[t] as Array).append(k)
+	var mm_hi: Array[MultiMesh] = []
+	var mm_lo: Array[MultiMesh] = []
+	for t in nt:
+		var ids: Array = buckets[t]
+		for lod in 2:
+			var mesh: Mesh = hi if lod == 0 else lo
+			if mesh == null:
+				if lod == 1:
+					mm_lo.append(null)
+				continue
+			var mm := MultiMesh.new()
+			mm.transform_format = MultiMesh.TRANSFORM_3D
+			mm.use_colors = true
+			mm.mesh = mesh
+			mm.instance_count = ids.size()
+			for i in ids.size():
+				mm.set_instance_transform(i, xfs[ids[i]])
+				mm.set_instance_color(i, cols[ids[i]])
+			var mmi := MultiMeshInstance3D.new()
+			mmi.name = "MM_%s_t%d_%s" % [name, t, "hi" if lod == 0 else "lo"]
+			mmi.multimesh = mm
+			mmi.material_override = veg_mat
+			if lod == 0 and (lo != null or cull_far):
+				mmi.visibility_range_end = far
+			elif lod == 1:
+				mmi.visibility_range_begin = far
+				mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF if name == "shrub" else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+			if name == "tuft":
+				mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			add_child(mmi)
+			if lod == 0:
+				mm_hi.append(mm)
+			else:
+				mm_lo.append(mm)
 	var alive := PackedByteArray()
 	alive.resize(xfs.size())
 	alive.fill(1)
-	species[name] = {"mm": mm, "xf": xfs, "alive": alive, "mmi": mmi}
+	species[name] = {"xf": xfs, "alive": alive, "tile": tile_of, "local": local, "hi": mm_hi, "lo": mm_lo, "mesh_hi": hi, "mesh_lo": lo}
+
+
+func _set_veg_xf(sp: Dictionary, k: int, xf: Transform3D) -> void:
+	var t: int = sp.tile[k]
+	var i: int = sp.local[k]
+	(sp.hi[t] as MultiMesh).set_instance_transform(i, xf)
+	var lo: MultiMesh = sp.lo[t] if (sp.lo as Array).size() > t else null
+	if lo:
+		lo.set_instance_transform(i, xf)
 
 
 func _veg_ok(p: Vector2, min_hs: float, min_ny: float, clear_r: float) -> bool:
@@ -1063,7 +1402,7 @@ func _place_vegetation() -> void:
 	var palms: Array[Transform3D] = []
 	var palm_c: Array[Color] = []
 	var add_palm := func(p: Vector2) -> void:
-		var s := rng.randf_range(0.0085, 0.0125)
+		var s := rng.randf_range(0.0058, 0.0082)       # date palm 11-16 m
 		var b := Basis(Vector3.UP, rng.randf() * TAU)
 		b = b.rotated(Vector3(rng.randf_range(-1, 1), 0, rng.randf_range(-1, 1)).normalized(), rng.randf_range(0.0, 0.12))
 		var y := terrain.height_at(p.x, p.y) - 0.0004
@@ -1071,7 +1410,7 @@ func _place_vegetation() -> void:
 		var tint := rng.randf_range(0.88, 1.1)
 		palm_c.append(Color(tint, tint * rng.randf_range(0.96, 1.04), tint * 0.95))
 		placed.append({"kind": "palm", "pos": Vector3(p.x, y, p.y), "water_ok": false, "sink": 0.0004, "ground_min": y + 0.0004})
-		terrain.stamp_ao(p, 0.0045, 0.35)
+		terrain.stamp_ao(p, 0.0035, 0.45)
 	# groves
 	for g in L.groves:
 		var n := int(g.z * g.z * 26000.0)
@@ -1114,32 +1453,42 @@ func _place_vegetation() -> void:
 		if hs > 0.0022 and hs < 0.006 and _veg_ok(p, 0.0022, 0.92, 0.004) and _spacing_ok(palms, p, 0.006):
 			if p.distance_to(L.sabkha_center) > L.sabkha_radius:
 				add_palm.call(p)
-	_make_species("palm", _palm_mesh(), palms, palm_c)
+	_make_species("palm", _palm_mesh(), _palm_lo_mesh(), palms, palm_c)
 
 	# acacias on the dry inland plains
 	var aca: Array[Transform3D] = []
 	var aca_c: Array[Color] = []
-	for k in 900:
+	for k in 4000:
 		var p := Vector2(rng.randf_range(-0.42, 0.42), rng.randf_range(-0.34, 0.34))
+		if k % 2 == 0:
+			# half the candidates are drawn along the wadis (trees follow the water)
+			var w: PackedVector2Array = L.wadis[rng.randi() % L.wadis.size()]
+			var seg := rng.randi() % (w.size() - 1)
+			p = w[seg].lerp(w[seg + 1], rng.randf()) + Vector2(rng.randf_range(-1, 1), rng.randf_range(-1, 1)) * IslandLayout.WADI_W * 1.4
 		var hs := _hs(p.x, p.y)
-		if hs < 0.004 or hs > 0.03:
+		if hs < 0.0025 or hs > 0.03:
+			continue
+		var wet := terrain.wadi_at(p.x, p.y)
+		if rng.randf() > 0.12 + wet * 0.88:
+			continue
+		if L.inside_base(p, 0.005):
 			continue
 		if p.distance_to(L.town_center) < L.town_radius * 1.1:
 			continue
 		if L.lush_at(p.x, p.y) > 0.5:
 			continue
-		if not _veg_ok(p, 0.004, 0.86, 0.005) or not _spacing_ok(aca, p, 0.009) or not _spacing_ok(palms, p, 0.006):
+		if not _veg_ok(p, 0.0025, 0.86, 0.004) or not _spacing_ok(aca, p, 0.0055) or not _spacing_ok(palms, p, 0.004):
 			continue
-		var s := rng.randf_range(0.0065, 0.0095)
+		var s := rng.randf_range(0.0035, 0.005)        # acacia 6-8 m
 		var y := terrain.height_at(p.x, p.y) - 0.0004
 		aca.append(Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(s, s * rng.randf_range(0.85, 1.1), s)), Vector3(p.x, y, p.y)))
 		var t := rng.randf_range(0.85, 1.1)
 		aca_c.append(Color(t, t, t * 0.95))
 		placed.append({"kind": "acacia", "pos": Vector3(p.x, y, p.y), "water_ok": false, "sink": 0.0004, "ground_min": y + 0.0004})
-		terrain.stamp_ao(p, 0.005, 0.3)
-		if aca.size() >= 140:
+		terrain.stamp_ao(p, 0.003, 0.4)
+		if aca.size() >= 220:
 			break
-	_make_species("acacia", _acacia_mesh(), aca, aca_c)
+	_make_species("acacia", _acacia_mesh(), _acacia_lo_mesh(), aca, aca_c)
 
 	# low shrubs: break up the big flat colour fields
 	var sh: Array[Transform3D] = []
@@ -1156,18 +1505,21 @@ func _place_vegetation() -> void:
 		var ny := terrain.smooth_normal_at(p.x, p.y, 0.003).y
 		if ny < 0.75:
 			continue
-		if L.infrastructure_distance(p) < 0.0025 or not _footprint_clear(p, 0.001):
+		if L.infrastructure_distance(p) < 0.0025 or not _footprint_clear(p, 0.001) or L.inside_base(p, 0.0):
 			continue
-		var s := rng.randf_range(0.0011, 0.0024)
+		var wet2 := maxf(terrain.wadi_at(p.x, p.y), L.lush_at(p.x, p.y))
+		if rng.randf() > 0.35 + wet2 * 0.65:
+			continue
+		var s := rng.randf_range(0.0005, 0.0009)       # saltbush / calotropis 2-3.5 m
 		var y := terrain.height_at(p.x, p.y) - 0.0003
 		sh.append(Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(s, s * rng.randf_range(0.6, 1.0), s)), Vector3(p.x, y, p.y)))
 		var t := rng.randf_range(0.8, 1.15)
 		var lu := L.lush_at(p.x, p.y)
 		sh_c.append(Color(t * (1.0 - lu * 0.15), t * (1.0 + lu * 0.05), t * 0.9 * (1.0 - lu * 0.1)))
 		placed.append({"kind": "shrub", "pos": Vector3(p.x, y, p.y), "water_ok": false, "sink": 0.0003, "ground_min": y + 0.0003})
-		if sh.size() >= 900:
+		if sh.size() >= 1400:
 			break
-	_make_species("shrub", _shrub_mesh(), sh, sh_c)
+	_make_species("shrub", _shrub_mesh(), _shrub_lo_mesh(), sh, sh_c)
 
 	# dry grass tufts: fine texture over the plains and dune flanks
 	var tf: Array[Transform3D] = []
@@ -1183,15 +1535,15 @@ func _place_vegetation() -> void:
 			continue
 		if L.infrastructure_distance(p) < 0.002 or not _footprint_clear(p, 0.0008):
 			continue
-		var s := rng.randf_range(0.0012, 0.0022)
+		var s := rng.randf_range(0.0006, 0.001)         # grass clumps ~1.5 m
 		var y := terrain.height_at(p.x, p.y) - 0.0002
 		tf.append(Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(s, s * rng.randf_range(0.8, 1.3), s)), Vector3(p.x, y, p.y)))
 		var t := rng.randf_range(0.85, 1.12)
 		tf_c.append(Color(t, t, t * 0.95))
 		placed.append({"kind": "tuft", "pos": Vector3(p.x, y, p.y), "water_ok": false, "sink": 0.0002, "ground_min": y + 0.0002})
-		if tf.size() >= 1400:
+		if tf.size() >= 2200:
 			break
-	_make_species("tuft", _tuft_mesh(), tf, tf_c)
+	_make_species("tuft", _tuft_mesh(), null, tf, tf_c, true, 0.6)
 
 	# rocks: ridge flanks, cliffs, breakwater
 	var rk: Array[Transform3D] = []
@@ -1207,7 +1559,7 @@ func _place_vegetation() -> void:
 			continue
 		if L.infrastructure_distance(p) < 0.004 or not _footprint_clear(p, 0.002):
 			continue
-		var s := rng.randf_range(0.0012, 0.0042) * (1.6 if rng.randf() < 0.08 else 1.0)
+		var s := rng.randf_range(0.0008, 0.003) * (1.6 if rng.randf() < 0.08 else 1.0)
 		var y := terrain.height_at(p.x, p.y) - s * 0.25
 		rk.append(Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(s, s * rng.randf_range(0.6, 1.0), s * rng.randf_range(0.8, 1.2))), Vector3(p.x, y, p.y)))
 		var t := rng.randf_range(0.8, 1.08)
@@ -1226,7 +1578,7 @@ func _place_vegetation() -> void:
 			rk.append(Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(s, hy, s)), Vector3(q.x, g - hy * 0.0, q.y)))
 			rk_c.append(Color(0.82, 0.8, 0.76))
 			placed.append({"kind": "breakwater", "pos": Vector3(q.x, g, q.y), "water_ok": true, "sink": 0.0, "ground_min": g})
-	_make_species("rock", _rock_mesh(17), rk, rk_c)
+	_make_species("rock", _rock_mesh(17), null, rk, rk_c)
 
 
 func _spacing_ok(list: Array[Transform3D], p: Vector2, d: float) -> bool:
@@ -1243,10 +1595,11 @@ func _spacing_ok(list: Array[Transform3D], p: Vector2, d: float) -> bool:
 
 func _boat_mesh(kind: int, col: Color) -> ArrayMesh:
 	var mb := MeshBuilder.new()
-	var L := 0.010 if kind == 0 else (0.014 if kind == 1 else 0.009)
+	# fishing boat 12 m, patrol boat 30 m, dhow 20 m
+	var L := Scale.m(12.0) if kind == 0 else (Scale.m(30.0) if kind == 1 else Scale.m(20.0))
 	var W := L * 0.30
-	var deck := 0.0007
-	var keel := -0.0008
+	var deck := Scale.m(1.6) if kind != 1 else Scale.m(2.4)
+	var keel := -Scale.m(1.6)
 	var hull := [Vector2(-L * 0.5, -W * 0.42), Vector2(L * 0.2, -W * 0.5), Vector2(L * 0.5, 0), Vector2(L * 0.2, W * 0.5), Vector2(-L * 0.5, W * 0.42)]
 	var n := hull.size()
 	var hc := col
@@ -1273,18 +1626,19 @@ func _boat_mesh(kind: int, col: Color) -> ArrayMesh:
 		var c: Vector2 = hull[k + 1]
 		mb.tri_out(Vector3(a.x, deck, a.y), Vector3(b.x, deck, b.y), Vector3(c.x, deck, c.y), deck_c, Vector3.UP)
 	if kind == 0:
-		mb.box(Vector3(-L * 0.12, deck + 0.0006, 0), Vector3(L * 0.32, 0.0012, W * 0.6), Color(0.95, 0.95, 0.93))
-		mb.box(Vector3(-L * 0.02, deck + 0.0009, 0), Vector3(0.0002, 0.0005, W * 0.5), Color(0.2, 0.28, 0.35))
+		mb.box(Vector3(-L * 0.12, deck + Scale.m(1.2), 0), Vector3(L * 0.32, Scale.m(2.4), W * 0.6), Color(0.95, 0.95, 0.93))
+		mb.box(Vector3(-L * 0.02, deck + Scale.m(1.8), 0), Vector3(Scale.m(0.4), Scale.m(1.0), W * 0.5), Color(0.2, 0.28, 0.35))
 	elif kind == 1:
-		mb.box(Vector3(-L * 0.25, deck + 0.0009, 0), Vector3(L * 0.25, 0.0018, W * 0.7), Color(0.95, 0.95, 0.93))
-		mb.box(Vector3(-L * 0.22, deck + 0.0021, 0), Vector3(L * 0.15, 0.0007, W * 0.6), Color(0.2, 0.3, 0.38))
-		mb.cylinder(Vector3(L * 0.1, deck, 0), 0.00012, 0.00012, 0.004, 4, Color(0.3, 0.3, 0.3))
+		mb.box(Vector3(-L * 0.25, deck + Scale.m(1.8), 0), Vector3(L * 0.25, Scale.m(3.6), W * 0.7), Color(0.62, 0.64, 0.64))
+		mb.box(Vector3(-L * 0.22, deck + Scale.m(4.2), 0), Vector3(L * 0.15, Scale.m(1.4), W * 0.6), Color(0.2, 0.3, 0.38))
+		mb.cylinder(Vector3(-L * 0.2, deck, 0), Scale.m(0.25), Scale.m(0.25), Scale.m(9.0), 4, Color(0.3, 0.3, 0.3))
+		mb.box(Vector3(L * 0.28, deck + Scale.m(0.8), 0), Vector3(Scale.m(2.0), Scale.m(1.0), Scale.m(1.0)), Color(0.3, 0.3, 0.3))
 	else:
 		# dhow: mast + lateen sail
-		mb.cylinder(Vector3(L * 0.08, deck, 0), 0.00014, 0.0001, 0.0075, 4, Color(0.35, 0.25, 0.15))
-		var s0 := Vector3(L * 0.45, deck + 0.0012, 0)
-		var s1 := Vector3(-L * 0.42, deck + 0.0085, 0)
-		var s2 := Vector3(L * 0.05, deck + 0.0008, 0)
+		mb.cylinder(Vector3(L * 0.08, deck, 0), Scale.m(0.3), Scale.m(0.2), Scale.m(15.0), 4, Color(0.35, 0.25, 0.15))
+		var s0 := Vector3(L * 0.45, deck + Scale.m(2.4), 0)
+		var s1 := Vector3(-L * 0.42, deck + Scale.m(17.0), 0)
+		var s2 := Vector3(L * 0.05, deck + Scale.m(1.6), 0)
 		var sail := Color(0.95, 0.92, 0.84)
 		mb.tri_out(s0, s1, s2, sail, Vector3.BACK)
 		mb.tri_out(s0, s1, s2, sail.darkened(0.08), Vector3.FORWARD)
@@ -1294,10 +1648,11 @@ func _boat_mesh(kind: int, col: Color) -> ArrayMesh:
 func _place_boats() -> void:
 	var L := layout
 	var defs := [
-		[Vector2(L.pier_x - 0.0055, L.quay_z + 0.016), deg_to_rad(90), 0, Color(0.95, 0.95, 0.93)],
-		[Vector2(L.pier_x + 0.0058, L.quay_z + 0.03), deg_to_rad(-90), 1, Color(0.92, 0.93, 0.95)],
-		[Vector2(L.pier_x - 0.006, L.quay_z + 0.036), deg_to_rad(95), 2, Color(0.55, 0.40, 0.25)],
-		[Vector2(L.harbour_x0 + 0.02, L.quay_z + 0.008), deg_to_rad(5), 1, Color(0.30, 0.42, 0.55)],
+		[Vector2(L.pier_x - Scale.m(9.0), L.quay_z + Scale.m(30.0)), deg_to_rad(90), 0, Color(0.95, 0.95, 0.93)],
+		[Vector2(L.pier_x - Scale.m(9.0), L.quay_z + Scale.m(48.0)), deg_to_rad(92), 0, Color(0.85, 0.88, 0.92)],
+		[Vector2(L.pier_x + Scale.m(11.0), L.quay_z + Scale.m(60.0)), deg_to_rad(-90), 1, Color(0.62, 0.64, 0.64)],
+		[Vector2(L.pier_x - Scale.m(11.0), L.quay_z + Scale.m(80.0)), deg_to_rad(95), 2, Color(0.55, 0.40, 0.25)],
+		[Vector2(L.pier_x + Scale.m(10.0), L.quay_z + Scale.m(100.0)), deg_to_rad(-85), 2, Color(0.50, 0.36, 0.22)],
 		[Vector2(0.06, 0.29), deg_to_rad(30), 2, Color(0.50, 0.36, 0.22)],
 		[Vector2(-0.30, 0.25), deg_to_rad(-60), 0, Color(0.92, 0.92, 0.9)],
 		[Vector2(0.40, -0.18), deg_to_rad(150), 1, Color(0.42, 0.45, 0.42)],
@@ -1317,6 +1672,34 @@ func _place_boats() -> void:
 		placed.append({"kind": "boat", "pos": mi.position, "water_ok": true, "sink": 0.0, "ground_min": 0.0})
 
 
+func _place_buoys() -> void:
+	# IALA region A: red to port, green to starboard when entering (heading north)
+	var L := layout
+	var gate_z := L.basin_z + Scale.m(30.0)
+	var cx := (L.harbour_x0 + L.harbour_x1) * 0.5
+	var red := Color(0.80, 0.18, 0.14)
+	var green := Color(0.15, 0.55, 0.28)
+	for e in [[cx - Scale.m(40.0), 0.0, red], [cx - Scale.m(46.0), Scale.m(45.0), red], [cx + Scale.m(30.0), 0.0, green], [cx + Scale.m(36.0), Scale.m(45.0), green]]:
+		var bx: float = e[0]
+		var bz: float = gate_z + float(e[1])
+		if _hs(bx, bz) > -0.002:
+			continue
+		var mb := MeshBuilder.new()
+		var col: Color = e[2]
+		mb.cylinder(Vector3(0, -Scale.m(1.0), 0), Scale.m(1.2), Scale.m(1.0), Scale.m(3.0), 8, col)
+		mb.cylinder(Vector3(0, Scale.m(2.0), 0), Scale.m(0.25), Scale.m(0.25), Scale.m(2.0), 4, Color(0.2, 0.2, 0.2))
+		if col.r > 0.5:
+			mb.cylinder(Vector3(0, Scale.m(4.0), 0), Scale.m(0.8), Scale.m(0.8), Scale.m(1.2), 6, col)
+		else:
+			mb.cylinder(Vector3(0, Scale.m(4.0), 0), Scale.m(0.8), 0.0, Scale.m(1.6), 6, col)
+		var mi := MeshInstance3D.new()
+		mi.mesh = mb.commit(null, MeshBuilder.vc_material(0.5))
+		mi.position = Vector3(bx, IslandTerrain.SEA, bz)
+		add_child(mi)
+		boats.append({"node": mi, "phase": rng.randf() * TAU, "rot": 0.0})
+		placed.append({"kind": "buoy", "pos": mi.position, "water_ok": true, "sink": 0.0, "ground_min": 0.0})
+
+
 func _process(_delta: float) -> void:
 	var t := Time.get_ticks_msec() * 0.001
 	for b in boats:
@@ -1333,17 +1716,27 @@ func _process(_delta: float) -> void:
 
 func triangle_stats() -> Dictionary:
 	var out := {"structure_tris": struct_tris}
-	var veg := 0
+	var veg_hi := 0
+	var veg_lo := 0
 	for name in species:
 		var sp: Dictionary = species[name]
-		var mm: MultiMesh = sp.mm
-		var per := (mm.mesh as ArrayMesh).surface_get_array_len(0) / 3
-		out["mm_" + name] = per * mm.instance_count
-		veg += per * mm.instance_count
-	out["vegetation_total"] = veg
+		var n: int = (sp.xf as Array).size()
+		var th := (sp.mesh_hi as ArrayMesh).surface_get_array_len(0) / 3
+		out["%s_count" % name] = n
+		out["%s_tris_hi" % name] = th
+		veg_hi += th * n
+		if sp.mesh_lo:
+			var tl := (sp.mesh_lo as ArrayMesh).surface_get_array_len(0) / 3
+			out["%s_tris_lo" % name] = tl
+			veg_lo += tl * n
+		elif name != "tuft":
+			veg_lo += th * n
+	out["vegetation_all_hi"] = veg_hi
+	out["vegetation_all_lo"] = veg_lo
 	var dr := 0
 	for m in drape_mi:
-		dr += (m.mesh as ArrayMesh).surface_get_array_len(0) / 3 if m.mesh and (m.mesh as ArrayMesh).get_surface_count() > 0 else 0
+		if m.mesh and (m.mesh as ArrayMesh).get_surface_count() > 0:
+			dr += (m.mesh as ArrayMesh).surface_get_array_len(0) / 3
 	out["drapes"] = dr
 	return out
 

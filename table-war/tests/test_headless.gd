@@ -88,6 +88,49 @@ func _initialize() -> void:
 				on_road += 1
 	check("no vegetation/rocks on roads", on_road == 0, "%d on roads" % on_road)
 
+	# --- no religious buildings, anywhere ----------------------------------------
+	var forbidden := ["mosque", "minaret", "church", "chapel", "cathedral", "temple", "shrine", "synagogue", "dome"]
+	var bad_kinds := []
+	for st in island.props.structures:
+		for f in forbidden:
+			if (st.kind as String).to_lower().contains(f):
+				bad_kinds.append(st.kind)
+	for pl in island.props.placed:
+		for f in forbidden:
+			if (pl.kind as String).to_lower().contains(f):
+				bad_kinds.append(pl.kind)
+	check("no religious structure kinds placed", bad_kinds.is_empty(), str(bad_kinds))
+	var src_hits := []
+	for path in ["res://island/props.gd", "res://island/arch.gd", "res://island/layout.gd", "res://island/island.gd"]:
+		var txt := FileAccess.get_file_as_string(path).to_lower()
+		for f in ["mosque", "minaret", "church", "chapel", "cathedral", "temple", "shrine", "synagogue"]:
+			if txt.contains(f):
+				src_hits.append("%s:%s" % [path.get_file(), f])
+	check("no religious building generators in source", src_hits.is_empty(), str(src_hits))
+	var has_souq := false
+	for st in island.props.structures:
+		if st.kind == "souq":
+			has_souq = true
+	check("civic souq replaces the old landmark", has_souq)
+
+	# --- scale consistency (1:2000) -------------------------------------------------
+	var rl := island.layout.runway_len * Scale.RATIO
+	check("runway 600 m x 25 m", absf(rl - 600.0) < 1.0 and absf(island.layout.runway_w * Scale.RATIO - 25.0) < 0.5, "%.0f m x %.1f m" % [rl, island.layout.runway_w * Scale.RATIO])
+	var storey_bad := 0
+	for st in island.props.structures:
+		if st.kind in ["house", "courtyard", "midrise", "tower"]:
+			var n: float = st.size.y / Scale.storeys(1.0)
+			if absf(n - round(n)) > 0.01 or n < 1.0 or n > 16.5:
+				storey_bad += 1
+	check("buildings are whole storeys (3.5 m)", storey_bad == 0, "%d off-grid" % storey_bad)
+	var palm_h := []
+	var sp: Dictionary = island.props.species["palm"]
+	for xf in (sp.xf as Array).slice(0, 50):
+		palm_h.append((xf as Transform3D).basis.get_scale().y * 0.9 * Scale.RATIO)
+	var pmin: float = palm_h.min()
+	var pmax: float = palm_h.max()
+	check("date palms 10-17 m tall", pmin > 10.0 and pmax < 17.0, "%.1f-%.1f m" % [pmin, pmax])
+
 	# --- crater deforms height ----------------------------------------------------
 	var c := Vector3(0.25, 0.0, -0.02)
 	c.y = t.height_at(c.x, c.z)
@@ -99,6 +142,18 @@ func _initialize() -> void:
 	check("crater rebuilds only affected chunks", t.rebuild_count - rebuilds == touched.size() and touched.size() <= 4, "%d of %d chunks" % [touched.size(), t.chunk_nodes.size()])
 	var far := t.height_at(c.x + 0.1, c.z)
 	check("far terrain untouched", absf(far - t.height_at(c.x + 0.1, c.z)) < 1e-9)
+
+	# --- roads break inside a crater ---------------------------------------------
+	var road_mi: MeshInstance3D = island.props.drape_mi[0]
+	var tris_before := (road_mi.mesh as ArrayMesh).surface_get_array_len(0)
+	var rp: Vector2 = island.layout.road_samples()[0][60]
+	var rc := Vector3(rp.x, t.height_at(rp.x, rp.y), rp.y)
+	t.crater(rc, 0.016, 0.0055)
+	island.props.on_crater(rc, 0.016)
+	await process_frame
+	var road_mi2: MeshInstance3D = island.props.drape_mi[0]
+	var tris_after := (road_mi2.mesh as ArrayMesh).surface_get_array_len(0)
+	check("road ribbon is broken inside the crater", tris_after < tris_before, "%d -> %d verts" % [tris_before, tris_after])
 
 	# --- ballistic accuracy ---------------------------------------------------------
 	var phys := PhysicsTest.new()
@@ -140,6 +195,20 @@ func _initialize() -> void:
 			awake_info += "[%s v%.4f w%.2f wet%s] " % [b.p, (b.v as Vector3).length(), (b.w as Vector3).length(), b.wet]
 	print("AWAKE ", awake_info)
 	check("debris settles (sleeping)", asleep > phys.debris.bodies.size() * 0.7, "%d / %d asleep" % [asleep, phys.debris.bodies.size()])
+	# debris lands on (not through) a standing building roof
+	var roof_st: Dictionary = {}
+	for st in island.props.structures:
+		if st.alive and st.kind == "midrise":
+			roof_st = st
+			break
+	var rpos: Vector3 = roof_st.pos
+	var roof_y: float = rpos.y + roof_st.size.y
+	phys.debris.clear()
+	phys.debris.spawn(rpos + Vector3(0, roof_st.size.y + 0.01, 0), Basis(), Vector3(0.0006, 0.0006, 0.0006), Vector3.ZERO, Vector3.ZERO, Color.WHITE, 1)
+	for k in 300:
+		phys.advance(1.0 / 60.0)
+	var by: float = (phys.debris.bodies[0].p as Vector3).y
+	check("debris rests on a building roof", by > roof_y - 0.0005 and by < roof_y + 0.003, "body y %.4f, roof %.4f" % [by, roof_y])
 	# building fracture
 	var tower: Dictionary = {}
 	for s in island.props.structures:

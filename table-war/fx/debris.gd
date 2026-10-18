@@ -15,6 +15,7 @@ const MAX_BODIES := 480
 const SUBSTEPS := 1
 
 var terrain: IslandTerrain
+var props: IslandProps        # optional: standing buildings act as box colliders
 var gravity := 0.5
 var fx: FxSystem
 
@@ -175,6 +176,20 @@ func _integrate(b: Dictionary, dt: float) -> void:
 			if v.length() < 0.012:
 				# resting contact: kill the rocking that a corner-impulse model produces
 				w *= exp(-30.0 * dt)
+	# standing buildings: simple box colliders (point vs oriented box)
+	if props:
+		var hit: Array = props.collide_point(p, b.r * 0.6)
+		if not hit.is_empty():
+			var n2: Vector3 = hit[0]
+			var pen2: float = hit[1]
+			p += n2 * pen2
+			var vn2 := v.dot(n2)
+			if vn2 < 0.0:
+				v -= n2 * vn2 * 1.25
+				v = v.lerp(n2 * v.dot(n2), 0.25)     # friction on the wall / roof
+				w *= 0.6
+			if n2.y > 0.7:
+				contact = true
 	# keep inside the slab; drop anything that falls off the table edge
 	if not terrain.is_inside(p.x, p.z, 0.002):
 		var fl := Vector2(p.x, p.z)

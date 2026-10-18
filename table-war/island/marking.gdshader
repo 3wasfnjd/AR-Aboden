@@ -30,23 +30,31 @@ void fragment() {
 		float dash = step(fract(u / 0.0045), 0.5);
 		c = mix(c, vec3(0.86, 0.83, 0.72), aa(av - 0.05) * dash * 0.45);
 	} else if (kind == 1) {
-		c = vec3(0.44, 0.44, 0.45) * (0.9 + 0.2 * n);
-		// tyre-rubber near both ends
-		float ends = 1.0 - smoothstep(0.0, 0.05, min(u, run_len - u));
-		c *= 1.0 - 0.35 * ends * smoothstep(0.6, 0.0, av) * n;
-		// edge lines
-		c = mix(c, vec3(0.92), aa(abs(av - 0.88) - 0.03));
-		// centre dashes
-		float dash = step(fract(u / 0.008), 0.55);
-		float inner = step(0.022, u) * step(u, run_len - 0.022);
-		c = mix(c, vec3(0.92), aa(av - 0.022) * dash * inner);
-		// threshold piano keys
-		float key = step(0.5, fract(v * 4.0 + 0.5)) * step(av, 0.78);
-		float thr = (step(0.003, u) * step(u, 0.011)) + (step(run_len - 0.011, u) * step(u, run_len - 0.003));
-		c = mix(c, vec3(0.92), key * thr);
-		// touchdown blocks
-		float td = (step(0.026, u) * step(u, 0.034)) + (step(run_len - 0.034, u) * step(u, run_len - 0.026));
-		c = mix(c, vec3(0.9), td * step(0.3, av) * step(av, 0.55));
+		// runway 600 x 25 m, all distances in model metres (1:2000)
+		c = vec3(0.40, 0.40, 0.41) * (0.9 + 0.2 * n);
+		float ends = 1.0 - smoothstep(0.0, 0.06, min(u, run_len - u));
+		c *= 1.0 - 0.35 * ends * smoothstep(0.55, 0.0, av) * n;          // tyre rubber
+		vec3 W = vec3(0.92);
+		c = mix(c, W, aa(abs(av - 0.955) - 0.035));                         // edge lines 0.9 m
+		float e = min(u, run_len - u);                                     // distance from nearest end
+		float dash = step(fract((u - 0.020) / 0.025), 0.6);                // 30 m dash / 20 m gap
+		c = mix(c, W, aa(av - 0.036) * dash * step(0.040, e));             // centreline 0.9 m
+		float key = step(0.5, fract(av * 4.0 + 0.25)) * step(av, 0.85);   // threshold piano keys
+		c = mix(c, W, key * step(0.003, e) * step(e, 0.018));
+		float aim = step(0.075, e) * step(e, 0.0975) * step(0.28, av) * step(av, 0.52);  // aiming point
+		c = mix(c, W, aim);
+		float tdz = step(0.11, e) * step(e, 0.122) * step(0.28, av) * step(av, 0.42);    // touchdown pair
+		c = mix(c, W, tdz);
+	} else if (kind == 4) {
+		// taxiway: asphalt, yellow centreline, yellow edge lines
+		c = vec3(0.42, 0.41, 0.40) * (0.9 + 0.2 * n);
+		vec3 Y = vec3(0.86, 0.68, 0.18);
+		c = mix(c, Y, aa(av - 0.07));
+		c = mix(c, Y, aa(abs(av - 0.93) - 0.04) * 0.85);
+	} else if (kind == 5) {
+		// patrol road: compacted gravel/asphalt, no markings
+		c = vec3(0.58, 0.54, 0.47) * (0.9 + 0.2 * n);
+		c = mix(c, vec3(0.70, 0.63, 0.52), smoothstep(0.5, 1.0, av) * 0.6);
 	} else {
 		c = vec3(0.70, 0.69, 0.66) * (0.94 + 0.1 * n);
 		vec2 g = fract(wp.xz / 0.004);

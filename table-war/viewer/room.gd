@@ -30,7 +30,7 @@ func _environment() -> void:
 	env.background_mode = Environment.BG_SKY
 	env.sky = sky
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-	env.ambient_light_energy = 0.32
+	env.ambient_light_energy = 0.38
 	env.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
 	env.tonemap_mode = Environment.TONE_MAPPER_AGX
 	env.tonemap_exposure = 1.05
@@ -51,7 +51,7 @@ func _lights() -> void:
 	sun = DirectionalLight3D.new()
 	sun.name = "WindowSun"
 	sun.light_color = Color(1.0, 0.94, 0.84)
-	sun.light_energy = 1.05
+	sun.light_energy = 1.0
 	sun.rotation = Vector3(deg_to_rad(-47.0), deg_to_rad(-38.0), 0)
 	sun.shadow_enabled = true
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
@@ -59,12 +59,12 @@ func _lights() -> void:
 	sun.directional_shadow_split_1 = 0.25
 	sun.shadow_bias = 0.03
 	sun.shadow_normal_bias = 1.1
-	sun.shadow_blur = 1.6
+	sun.shadow_blur = 2.6
 	add_child(sun)
 	fill = DirectionalLight3D.new()
 	fill.name = "Fill"
 	fill.light_color = Color(0.80, 0.86, 1.0)
-	fill.light_energy = 0.28
+	fill.light_energy = 0.36
 	fill.rotation = Vector3(deg_to_rad(-30.0), deg_to_rad(150.0), 0)
 	fill.shadow_enabled = false
 	add_child(fill)

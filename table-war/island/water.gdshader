@@ -105,7 +105,7 @@ void fragment() {
 	// sparkle on the deeper water
 	ALBEDO = clamp(col, 0.0, 1.0);
 	ALPHA = clamp(alpha, 0.0, 1.0);
-	ROUGHNESS = mix(0.15, 0.55, foam);
-	SPECULAR = 0.42;
+	ROUGHNESS = mix(0.07, 0.55, foam);
+	SPECULAR = 0.3;
 	METALLIC = 0.0;
 }

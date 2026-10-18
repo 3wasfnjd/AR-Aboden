@@ -51,6 +51,7 @@ func setup(isl: Island) -> void:
 	debris.name = "Debris"
 	add_child(debris)
 	debris.setup(island.terrain, G, fx)
+	debris.props = island.props
 	# shell: tiny elongated body + additive tracer glow
 	var mb := MeshBuilder.new()
 	mb.xform = Transform3D(Basis(Vector3(0, 0, 1), -PI * 0.5), Vector3(-0.0012, 0, 0))
@@ -271,6 +272,16 @@ func _impact(p: Vector3) -> void:
 	for f in frags:
 		debris.spawn(f.pos, f.basis, f.half, f.vel, f.ang, f.col, 1)
 	var burnt := island.props.on_crater(p, CRATER_R)
+	# broken paving: slabs of asphalt / concrete thrown out of the crater
+	if not in_water and island.props.paving_at(Vector2(p.x, p.z), CRATER_R):
+		for k in 12:
+			var a2 := rng.randf() * TAU
+			var dir2 := Vector3(cos(a2), 0, sin(a2))
+			var sp := p + dir2 * rng.randf_range(0.0, CRATER_R * 0.6) + Vector3(0, 0.002, 0)
+			var half2 := Vector3(rng.randf_range(0.0008, 0.0018), rng.randf_range(0.00018, 0.0003), rng.randf_range(0.0006, 0.0014))
+			var vel2 := dir2 * rng.randf_range(0.03, 0.09) + Vector3(0, rng.randf_range(0.08, 0.2), 0)
+			var tone := rng.randf_range(0.28, 0.42)
+			debris.spawn(sp, Basis(Vector3.UP, rng.randf() * TAU), half2, vel2, Vector3(rng.randf_range(-10, 10), rng.randf_range(-4, 4), rng.randf_range(-10, 10)), Color(tone, tone, tone * 1.02), 1)
 	for b in burnt:
 		var d := ((b.pos as Vector3) - p) * Vector3(1, 0, 1)
 		var vel := d.normalized() * rng.randf_range(0.03, 0.08) + Vector3(0, rng.randf_range(0.08, 0.16), 0)
