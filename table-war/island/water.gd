@@ -2,6 +2,9 @@ class_name IslandWater
 extends MeshInstance3D
 ## Sea surface plane covering the whole slab at IslandTerrain.SEA.
 
+## Quest profile: the opaque variant (no blending / overdraw over the whole 1 m disc).
+static var opaque := false
+
 var terrain: IslandTerrain
 var shader_mat: ShaderMaterial
 
@@ -41,7 +44,7 @@ func build(t: IslandTerrain) -> void:
 	var m := ArrayMesh.new()
 	m.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
 	shader_mat = ShaderMaterial.new()
-	shader_mat.shader = load("res://island/water.gdshader")
+	shader_mat.shader = load("res://island/water_opaque.gdshader" if opaque else "res://island/water.gdshader")
 	shader_mat.set_shader_parameter("depth_tex", t.depth_texture)
 	shader_mat.set_shader_parameter("rect", Vector4(t.ox, t.oz, sz.x, sz.y))
 	shader_mat.set_shader_parameter("depth_range", IslandTerrain.DEPTH_RANGE)

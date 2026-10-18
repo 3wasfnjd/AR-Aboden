@@ -8,6 +8,9 @@ uniform vec3 col_dark : source_color = vec3(0.30, 0.18, 0.10);
 uniform float scale = 1.0;
 uniform float plank = 0.0;        // >0: plank width (m) for a table top
 uniform float gloss = 0.35;
+// Island-local position: the diorama can be moved / turned / scaled in the room (XR),
+// tw_island_inv (world -> diorama) keeps every pattern glued to the model.
+global uniform mat4 tw_island_inv;
 varying vec3 wp;
 
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -17,7 +20,11 @@ float vnoise(vec2 p) {
 }
 float fbm(vec2 p) { float a = 0.5; float s = 0.0; for (int i = 0; i < 4; i++) { s += a * vnoise(p); p *= 2.03; a *= 0.5; } return s; }
 
-void vertex() { wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz; }
+uniform bool island_local = true;  // false: the room's own table / floor (world space)
+void vertex() {
+	vec4 w = MODEL_MATRIX * vec4(VERTEX, 1.0);
+	wp = island_local ? (tw_island_inv * w).xyz : w.xyz;
+}
 
 void fragment() {
 	vec3 p = wp / scale;

@@ -2,18 +2,67 @@ class_name Room
 extends Node3D
 ## Stand-in for passthrough: a wooden table in a softly lit living room.
 ## Lighting: warm "window" sun with soft PCF shadows + cool fill + sky ambient.
+##
+## XR: set_mr(true) (passthrough) hides the whole fake room (table, walls, floor, mug,
+## notebook = the "Set" node) and the lighting that fakes a room (sky background, cool
+## fill, glow); a soft key light + neutral ambient stay, suited to a real room behind.
+## set_mr(false) (VR fallback) shows the room again. apply_quest() is the Quest 3
+## profile: one directional light, small orthogonal shadow (1.5 m), no glow / adjustments.
 
 var sun: DirectionalLight3D
 var fill: DirectionalLight3D
 var env: Environment
+## Everything that only fakes a room: moved with the diorama in VR (table top under its base).
+var set_root: Node3D
+var mr := false
+var quest := false
 
 
 func _ready() -> void:
 	_environment()
 	_lights()
+	set_root = Node3D.new()
+	set_root.name = "Set"
+	add_child(set_root)
 	_table()
 	_room_shell()
 	_table_clutter()
+
+
+func set_mr(on: bool) -> void:
+	mr = on
+	set_root.visible = not on
+	if on:
+		env.background_mode = Environment.BG_COLOR
+		env.background_color = Color(0, 0, 0, 0)
+		# neutral, slightly warm ambient: the real room supplies the context
+		env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+		env.ambient_light_color = Color(0.82, 0.83, 0.85)
+		env.ambient_light_energy = 0.55
+		env.tonemap_exposure = 1.0
+		sun.light_energy = 1.05
+		sun.shadow_opacity = 0.85
+	else:
+		env.background_mode = Environment.BG_SKY
+		env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
+		env.ambient_light_energy = 0.38
+		env.tonemap_exposure = 1.05
+		sun.light_energy = 1.0
+		sun.shadow_opacity = 1.0
+	env.glow_enabled = not on and not quest
+	fill.visible = not on and not quest
+	if is_inside_tree():
+		get_viewport().transparent_bg = on
+
+
+func apply_quest() -> void:
+	quest = true
+	env.glow_enabled = false
+	env.adjustment_enabled = false   # a full-screen pass on the Compatibility renderer
+	fill.visible = false
+	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL
+	sun.directional_shadow_max_distance = 1.5
+	sun.shadow_blur = 1.0
 
 
 func _environment() -> void:
@@ -78,6 +127,7 @@ func _wood(light: Color, dark: Color, plank: float, gloss: float, scale := 1.0) 
 	m.set_shader_parameter("plank", plank)
 	m.set_shader_parameter("gloss", gloss)
 	m.set_shader_parameter("scale", scale)
+	m.set_shader_parameter("island_local", false)
 	return m
 
 
@@ -89,7 +139,7 @@ func _table() -> void:
 	top.mesh = bm
 	top.position = Vector3(0, -0.0225, 0.05)
 	top.material_override = _wood(Color(0.66, 0.48, 0.32), Color(0.44, 0.29, 0.18), 0.19, 0.45, 1.0)
-	add_child(top)
+	set_root.add_child(top)
 	for lx in [-1.2, 1.2]:
 		for lz in [-0.62, 0.72]:
 			var leg := MeshInstance3D.new()
@@ -98,7 +148,7 @@ func _table() -> void:
 			leg.mesh = lm
 			leg.position = Vector3(lx, -0.405, lz)
 			leg.material_override = top.material_override
-			add_child(leg)
+			set_root.add_child(leg)
 
 
 func _room_shell() -> void:
@@ -108,7 +158,7 @@ func _room_shell() -> void:
 	floor_mi.mesh = pm
 	floor_mi.position = Vector3(0, -0.77, 0)
 	floor_mi.material_override = _wood(Color(0.42, 0.30, 0.22), Color(0.28, 0.19, 0.13), 0.14, 0.3, 1.0)
-	add_child(floor_mi)
+	set_root.add_child(floor_mi)
 	var rug := MeshInstance3D.new()
 	var rm := PlaneMesh.new()
 	rm.size = Vector2(3.4, 2.4)
@@ -118,7 +168,7 @@ func _room_shell() -> void:
 	rmat.albedo_color = Color(0.55, 0.38, 0.30)
 	rmat.roughness = 1.0
 	rug.material_override = rmat
-	add_child(rug)
+	set_root.add_child(rug)
 	var wall_mat := StandardMaterial3D.new()
 	wall_mat.albedo_color = Color(0.86, 0.82, 0.76)
 	wall_mat.roughness = 0.95
@@ -131,7 +181,7 @@ func _room_shell() -> void:
 		mi.rotation = w[1]
 		mi.material_override = wall_mat
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		add_child(mi)
+		set_root.add_child(mi)
 	# skirting + a window glow panel on the left wall (where the sun comes from)
 	var win := MeshInstance3D.new()
 	var wq := QuadMesh.new()
@@ -144,7 +194,7 @@ func _room_shell() -> void:
 	wmat.albedo_color = Color(1.0, 0.98, 0.92)
 	win.material_override = wmat
 	win.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	add_child(win)
+	set_root.add_child(win)
 
 
 func _table_clutter() -> void:
@@ -164,7 +214,7 @@ func _table_clutter() -> void:
 	mug.name = "Mug"
 	mug.mesh = mb.commit(null, MeshBuilder.vc_material(0.25))
 	mug.position = Vector3(0.78, 0, -0.42)
-	add_child(mug)
+	set_root.add_child(mug)
 	var nb := MeshBuilder.new()
 	nb.box(Vector3(0.002, 0.006, 0.0), Vector3(0.203, 0.0105, 0.146), Color(0.92, 0.90, 0.84))
 	nb.box(Vector3(-0.1045, 0.006, 0.0), Vector3(0.003, 0.0125, 0.152), Color(0.20, 0.30, 0.36))
@@ -175,4 +225,4 @@ func _table_clutter() -> void:
 	book.mesh = nb.commit(null, MeshBuilder.vc_material(0.7))
 	book.position = Vector3(-0.80, 0, 0.55)
 	book.rotation.y = 0.35
-	add_child(book)
+	set_root.add_child(book)

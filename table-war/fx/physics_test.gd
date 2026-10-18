@@ -193,7 +193,7 @@ func fire(tgt: Vector3) -> void:
 	flying = true
 	t_flight = 0.0
 	shell.visible = true
-	shell.global_position = p0
+	shell.position = p0
 	fx.muzzle(p0, v0.normalized())
 
 
@@ -240,10 +240,10 @@ func _step_shell(dt: float) -> void:
 				hi = mid
 		_impact(position_at(hi))
 		return
-	shell.global_position = p
+	shell.position = p
 	var vel := v0 + Vector3(0, -G, 0) * t_flight
 	if vel.length() > 1e-5:
-		shell.global_transform.basis = Basis.looking_at(vel.normalized(), Vector3.UP).rotated(Vector3.UP, 0.0) * Basis(Vector3.UP, PI * 0.5)
+		shell.basis = Basis.looking_at(vel.normalized(), Vector3.UP).rotated(Vector3.UP, 0.0) * Basis(Vector3.UP, PI * 0.5)
 
 
 func _impact(p: Vector3) -> void:

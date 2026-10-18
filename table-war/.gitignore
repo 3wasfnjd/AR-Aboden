@@ -5,3 +5,9 @@
 # exported builds
 build/
 *.apk
+# Android build template installed by tools/ci/build_apk.sh
+/android/
+# signing keys are generated in CI and never committed
+*.keystore
+*.jks
+*.p12

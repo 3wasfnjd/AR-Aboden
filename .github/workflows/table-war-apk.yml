@@ -1,0 +1,66 @@
+name: Table War Quest APK · حرب الطاولة
+# Builds the Meta Quest 3 mixed-reality TEST build of the war-table prototype (table-war/):
+# headless tests first (tests/run_tests.sh), then a Godot 4.6.3 Android export signed with a
+# throw-away test key generated in CI (no key is ever committed), then a GitHub pre-release
+# tagged table-war-v<version>-build<run number> with the APK attached.
+# Pushes whose head commit message contains "[skip ci]" do not build.
+on:
+  push:
+    branches: [main]
+    paths: ['table-war/**', '.github/workflows/table-war-apk.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  # Pushes supersede each other; manual runs never cancel one another.
+  group: table-war-apk-${{ github.ref }}-${{ github.event_name == 'push' && 'push' || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'push' }}
+jobs:
+  build:
+    if: ${{ github.event_name == 'workflow_dispatch' || !contains(github.event.head_commit.message, '[skip ci]') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/dahrooj-godot
+          key: godot-4.6.3-stable-v1
+      - name: Test, build and verify APK
+        env:
+          VERSION_CODE: ${{ github.run_number }}
+          OUT_DIR: ${{ github.workspace }}/build
+        run: bash table-war/tools/ci/build_apk.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: table-war-quest-${{ github.run_number }}
+          path: |
+            build/*.apk
+            build/*.sha256
+            build/*.txt
+            build/export.log
+          if-no-files-found: warn
+      - name: Publish pre-release
+        if: ${{ success() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION=$(sed -n 's/^config\/version="\(.*\)"/\1/p' table-war/project.godot)
+          TAG="table-war-v${VERSION}-build${{ github.run_number }}"
+          {
+            echo "Meta Quest 3 / 3S mixed-reality test build of Table War (حرب الطاولة), Aboden Games."
+            echo
+            echo "Sideload test build signed with a throw-away CI test key: uninstall the previous build first."
+            echo "Install: Meta Horizon app developer mode + adb / Meta Quest Developer Hub, or SideQuest (see table-war/README.md)."
+            echo
+            echo '```'
+            cat build/apk-report.txt
+            echo '```'
+          } > notes.md
+          gh release create "$TAG" build/*.apk build/*.sha256 build/apk-report.txt build/test-report.txt \
+            --target "${{ github.sha }}" --prerelease --title "Table War Quest ${VERSION} (build ${{ github.run_number }})" --notes-file notes.md

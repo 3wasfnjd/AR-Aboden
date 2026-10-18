@@ -6,9 +6,12 @@ uniform float sea_y = 0.078;
 uniform float depth_range = 0.04;
 uniform vec3 col_top : source_color = vec3(0.34, 0.82, 0.80);
 uniform vec3 col_deep : source_color = vec3(0.03, 0.22, 0.40);
+// Island-local position: the diorama can be moved / turned / scaled in the room (XR),
+// tw_island_inv (world -> diorama) keeps every pattern glued to the model.
+global uniform mat4 tw_island_inv;
 varying vec3 wp;
 
-void vertex() { wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz; }
+void vertex() { wp = (tw_island_inv * (MODEL_MATRIX * vec4(VERTEX, 1.0))).xyz; }
 
 void fragment() {
 	float d = clamp((sea_y - wp.y) / depth_range, 0.0, 1.0);

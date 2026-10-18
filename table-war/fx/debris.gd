@@ -12,6 +12,8 @@ extends Node3D
 ## render in ONE MultiMesh draw call.
 
 const MAX_BODIES := 480
+## Live cap (<= MAX_BODIES). The Quest profile lowers it to 200 (GDScript physics on the headset CPU).
+static var cap := MAX_BODIES
 const SUBSTEPS := 1
 
 var terrain: IslandTerrain
@@ -57,7 +59,7 @@ func _mm(mesh: Mesh, mat: Material, nm: String) -> MultiMesh:
 
 ## kind: 0 = soil/rock chunk, 1 = building fragment (box)
 func spawn(pos: Vector3, basis: Basis, half: Vector3, vel: Vector3, ang: Vector3, col: Color, kind: int) -> void:
-	if bodies.size() >= MAX_BODIES:
+	if bodies.size() >= mini(cap, MAX_BODIES):
 		# recycle the oldest sleeping body (or the oldest)
 		var victim := 0
 		for k in bodies.size():

@@ -1,16 +1,40 @@
 ; Engine configuration file.
+; Table War (test) — island war-table diorama, desktop viewer + Meta Quest 3 MR test build
+; (Godot 4.6.3-stable, OpenXR Vendors 5.1.0-stable + Godot Meta Toolkit in addons/,
+; copied from the Dahrooj Quest project). Desktop runs pass --xr-mode off.
 config_version=5
 
 [application]
 
-config/name="Island War Table Prototype"
+config/name="Table War (test)"
+config/description="Island war-table diorama on your real table (mixed-reality test build). Aboden Games."
+config/version="0.1.0"
 run/main_scene="res://main.tscn"
 config/features=PackedStringArray("4.6", "GL Compatibility")
+boot_splash/bg_color=Color(0, 0, 0, 1)
+boot_splash/show_image=false
 
 [display]
 
 window/size/viewport_width=1920
 window/size/viewport_height=1080
+
+[editor_plugins]
+
+enabled=PackedStringArray()
+
+[filesystem]
+
+import/blender/enabled=false
+import/fbx2gltf/enabled=false
+
+[internationalization]
+
+locale/include_text_server_data=true
+
+[physics]
+
+common/physics_ticks_per_second=72
 
 [rendering]
 
@@ -18,6 +42,42 @@ renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"
 anti_aliasing/quality/msaa_3d=2
 lights_and_shadows/directional_shadow/size=4096
+lights_and_shadows/directional_shadow/size.mobile=2048
 lights_and_shadows/directional_shadow/soft_shadow_filter_quality=3
+lights_and_shadows/directional_shadow/soft_shadow_filter_quality.mobile=1
 lights_and_shadows/positional_shadow/soft_shadow_filter_quality=3
+lights_and_shadows/positional_shadow/atlas_size.mobile=0
 textures/vram_compression/import_etc2_astc=true
+environment/defaults/default_clear_color=Color(0, 0, 0, 1)
+
+[shader_globals]
+
+tw_island_inv={
+"type": "mat4",
+"value": Projection(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1)
+}
+tw_eye={
+"type": "vec3",
+"value": Vector3(0, 0.8, 0.9)
+}
+tw_lod_scale={
+"type": "float",
+"value": 1.0
+}
+
+[xr]
+
+openxr/enabled=true
+openxr/reference_space=2
+openxr/environment_blend_mode=2
+openxr/foveation_level=2
+openxr/foveation_dynamic=true
+openxr/startup_alert=false
+shaders/enabled=true
+openxr/extensions/hand_tracking=false
+openxr/extensions/meta/passthrough=true
+openxr/extensions/meta/render_model=true
+openxr/extensions/meta/anchor_api=true
+openxr/extensions/meta/scene_api=true
+openxr/extensions/meta/composition_layer_settings=true
+openxr/extensions/meta/composition_layer_settings/main_projection_layer/filtering/sharpening_mode=1

@@ -1,18 +1,29 @@
 extends Node3D
-## Desktop viewer for the island war-table prototype.
-## Keys: F fire at random target | click = fire at point | Space slow-motion |
+## Island war-table prototype: desktop viewer, and on Meta Quest 3 the mixed-reality
+## test build (xr/xr_game.gd: place the diorama on the real table, fire test shells).
+## Desktop keys: F fire at random target | click = fire at point | Space slow-motion |
 ##       T tilt-shift | 1-6 camera presets | H help | R reset debris
 ## Args (after --): --shots  render the screenshot set into res://shots/ and quit
 ##                  --stats  print triangle / draw-call numbers and quit
+##                  --quest  desktop preview of the Quest 3 performance profile
+##                  --mr-preview  render the MR / VR placement previews (shots/x_*) and quit
+##                  --out=<dir>  write screenshots there instead of res://shots
+##                  --xr     try OpenXR on desktop too (the Android build always does)
 
 var room: Room
+## The whole model (island + physics test). Identity on desktop; in XR it is moved,
+## turned and scaled onto the real table. Everything inside works in its local space.
+var diorama: Node3D
 var island: Island
 var phys: PhysicsTest
 var cam: OrbitCamera
+var xr_game: XRGame
+var quest := false
 var tilt_layer: CanvasLayer
 var tilt_rect: ColorRect
 var hud: Label
 var rng := RandomNumberGenerator.new()
+var _island_xf := Transform3D(Basis(), Vector3(INF, INF, INF))
 
 const PRESETS := {
 	"hero": [Vector3(0.0, 0.06, 0.04), -30.0, 40.0, 1.15, 50.0],
@@ -26,18 +37,51 @@ const PRESETS := {
 }
 
 
+## Quest 3 profile (README "أداء Quest 3"): set before the island is built.
+static func apply_quest_profile() -> void:
+	IslandProps.merged_veg = true      # one MultiMesh per species and LOD level
+	IslandProps.small_shadows = false  # shrubs / tufts / rocks cast no shadow
+	IslandWater.opaque = true          # opaque sea variant
+	DebrisSystem.cap = 200             # GDScript debris on the headset CPU
+
+
 func _ready() -> void:
 	rng.seed = 2024
+	var args := OS.get_cmdline_user_args()
+	var want_xr := OS.has_feature("android") or "--xr" in args
+	quest = OS.has_feature("android") or "--quest" in args
+	if quest:
+		apply_quest_profile()
 	room = Room.new()
 	room.name = "Room"
 	add_child(room)
+	if quest:
+		room.apply_quest()
+	diorama = Node3D.new()
+	diorama.name = "Diorama"
+	add_child(diorama)
 	island = Island.new()
 	island.name = "Island"
-	add_child(island)
+	diorama.add_child(island)
 	phys = PhysicsTest.new()
 	phys.name = "PhysicsTest"
-	add_child(phys)
+	diorama.add_child(phys)
 	phys.setup(island)
+	if quest:
+		for mmi in phys.debris.get_children():
+			if mmi is GeometryInstance3D:
+				(mmi as GeometryInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	if want_xr:
+		xr_game = XRGame.new()
+		xr_game.name = "XRGame"
+		add_child(xr_game)
+		xr_game.setup(room, diorama, island, phys)
+		if xr_game.start():
+			print("XR: OpenXR session starting (mixed-reality placement)")
+			return
+		print("XR: no OpenXR runtime, desktop viewer instead")
+		xr_game.queue_free()
+		xr_game = null
 	cam = OrbitCamera.new()
 	cam.name = "Camera"
 	add_child(cam)
@@ -45,11 +89,25 @@ func _ready() -> void:
 	cam.clicked.connect(_on_click)
 	_apply_preset("hero")
 	_build_overlay()
-	var args := OS.get_cmdline_user_args()
 	if "--shots" in args:
 		_run_shots.call_deferred()
 	elif "--stats" in args:
 		_run_stats.call_deferred()
+	elif "--mr-preview" in args:
+		_run_mr_preview.call_deferred()
+
+
+## World -> diorama transform and head position for the shaders (island-local
+## patterns, per-instance vegetation LOD of the Quest profile).
+func _process(_delta: float) -> void:
+	var xf := diorama.global_transform
+	if xf != _island_xf:
+		_island_xf = xf
+		RenderingServer.global_shader_parameter_set("tw_island_inv", Projection(xf.affine_inverse()))
+		RenderingServer.global_shader_parameter_set("tw_lod_scale", xf.basis.get_scale().x)
+	var c := get_viewport().get_camera_3d()
+	if c:
+		RenderingServer.global_shader_parameter_set("tw_eye", c.global_position)
 
 
 func _build_overlay() -> void:
@@ -138,6 +196,9 @@ func _capture(name: String) -> void:
 	await _frames(2)
 	var img := get_viewport().get_texture().get_image()
 	var dir := ProjectSettings.globalize_path("res://shots")
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--out="):
+			dir = a.substr(6)
 	DirAccess.make_dir_recursive_absolute(dir)
 	var path := dir.path_join(name + ".png")
 	img.save_png(path)
@@ -223,3 +284,31 @@ func _physics_shots() -> void:
 	phys.advance(3.5)
 	cam.set_view(tgt, -20.0, 48.0, 0.16, 50.0)
 	await _capture("i_aftermath")
+
+
+## Desktop check of the XR look: the model pinned at 0.6x on a 0.75 m virtual table,
+## seen from standing eye height. MR: fake room hidden, transparent background (the PNG
+## keeps the alpha), contact shadow. VR: the fake room's table under the base.
+func _run_mr_preview() -> void:
+	hud.visible = false
+	phys.manual = true
+	var spot := Vector3(0.0, Placement.TABLE_H, -0.1)
+	diorama.transform = Placement.pinned_transform(spot, 0.4, 0.6)
+	var x := XRGame.new()
+	x.name = "XRGamePreview"
+	add_child(x)
+	x.setup(room, diorama, island, phys)
+	x.cur_p = spot
+	x.cur_yaw = 0.4
+	x.state = "pinned"
+	cam.min_dist = 0.01
+	cam.set_view(spot + Vector3(0, 0.05, 0), -20.0, 48.0, 0.95, 60.0)
+	for m in ["mr", "vr"]:
+		x.set_mode(m)
+		room.set_root.transform = Transform3D(Basis(Vector3.UP, x.cur_yaw), spot)
+		var tgt := Vector3(0.1, 0.0, 0.12)
+		tgt.y = island.surface_at(tgt.x, tgt.z)
+		phys.aim(tgt)
+		await _capture("x_%s_preview" % m)
+	get_tree().quit()
+

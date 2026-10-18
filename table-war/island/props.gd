@@ -238,7 +238,9 @@ func aim_launcher(v: Vector3) -> void:
 func launcher_muzzle() -> Vector3:
 	if launcher == null:
 		return Vector3.ZERO
-	return launcher_rack.global_transform * Vector3(0.006, 0.0005, 0.0)
+	# island-local (the diorama may be moved / scaled in the room): props sit at the
+	# island origin, so its inverse maps the rack's world transform back.
+	return global_transform.affine_inverse() * (launcher_rack.global_transform * Vector3(0.006, 0.0005, 0.0))
 
 
 # ======================================================================================
@@ -1314,12 +1316,19 @@ func _rock_mesh(seed: int) -> ArrayMesh:
 
 const VEG_TILES := 2          # 2 x 2 spatial tiles per species -> per-tile LOD switching
 const LOD_DIST := 0.55        # m camera distance where trees swap to the low mesh
+## Quest profile: one MultiMesh per species and level, per-instance LOD in the vertex
+## shader (island/veg_lod.gdshader) -> 2 draw calls per species instead of 8.
+static var merged_veg := false
+## Quest profile: small props (shrubs, grass tufts, rocks) cast no shadows.
+static var small_shadows := true
+var _veg_shader: Shader
 
 
 ## Build tiled MultiMeshes. `lo` (optional) is drawn beyond LOD_DIST; with
 ## `cull_far` the species simply disappears beyond `far` (grass tufts).
 func _make_species(name: String, hi: Mesh, lo: Mesh, xfs: Array[Transform3D], cols: Array[Color], cull_far := false, far := LOD_DIST) -> void:
-	var nt := VEG_TILES * VEG_TILES
+	var tiles := 1 if merged_veg else VEG_TILES
+	var nt := tiles * tiles
 	var buckets: Array = []
 	for t in nt:
 		buckets.append([])
@@ -1327,9 +1336,9 @@ func _make_species(name: String, hi: Mesh, lo: Mesh, xfs: Array[Transform3D], co
 	var local := PackedInt32Array(); local.resize(xfs.size())
 	for k in xfs.size():
 		var o := xfs[k].origin
-		var tx := clampi(int((o.x + 0.5) * VEG_TILES), 0, VEG_TILES - 1)
-		var tz := clampi(int((o.z + 0.5) * VEG_TILES), 0, VEG_TILES - 1)
-		var t := tz * VEG_TILES + tx
+		var tx := clampi(int((o.x + 0.5) * tiles), 0, tiles - 1)
+		var tz := clampi(int((o.z + 0.5) * tiles), 0, tiles - 1)
+		var t := tz * tiles + tx
 		tile_of[k] = t
 		local[k] = (buckets[t] as Array).size()
 		(buckets[t] as Array).append(k)
@@ -1355,12 +1364,24 @@ func _make_species(name: String, hi: Mesh, lo: Mesh, xfs: Array[Transform3D], co
 			mmi.name = "MM_%s_t%d_%s" % [name, t, "hi" if lod == 0 else "lo"]
 			mmi.multimesh = mm
 			mmi.material_override = veg_mat
-			if lod == 0 and (lo != null or cull_far):
+			if merged_veg:
+				if _veg_shader == null:
+					_veg_shader = load("res://island/veg_lod.gdshader")
+				var vm := ShaderMaterial.new()
+				vm.shader = _veg_shader
+				if lod == 0 and (lo != null or cull_far):
+					vm.set_shader_parameter("lod_end", far)
+				elif lod == 1:
+					vm.set_shader_parameter("lod_begin", far)
+				mmi.material_override = vm
+				if lod == 1:
+					mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF if name == "shrub" else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+			elif lod == 0 and (lo != null or cull_far):
 				mmi.visibility_range_end = far
 			elif lod == 1:
 				mmi.visibility_range_begin = far
 				mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF if name == "shrub" else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
-			if name == "tuft":
+			if name == "tuft" or (not small_shadows and name in ["shrub", "rock"]):
 				mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 			add_child(mmi)
 			if lod == 0:

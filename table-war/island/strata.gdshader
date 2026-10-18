@@ -4,6 +4,9 @@ render_mode cull_back;
 // top-soil band under the surface. UV.y = depth below the terrain surface (m).
 
 uniform float base_y = 0.018;
+// Island-local position: the diorama can be moved / turned / scaled in the room (XR),
+// tw_island_inv (world -> diorama) keeps every pattern glued to the model.
+global uniform mat4 tw_island_inv;
 varying vec3 wp;
 varying float below;
 
@@ -13,7 +16,7 @@ float vn(float x) { float i = floor(x); float f = fract(x); f = f * f * (3.0 - 2
 vec3 lin(vec3 c) { return pow(c, vec3(2.2)); }
 
 void vertex() {
-	wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	wp = (tw_island_inv * (MODEL_MATRIX * vec4(VERTEX, 1.0))).xyz;
 	below = UV.y;
 }
 

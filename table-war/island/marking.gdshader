@@ -5,6 +5,9 @@ render_mode cull_back;
 
 uniform int kind = 0;
 uniform float run_len = 0.0;
+// Island-local position: the diorama can be moved / turned / scaled in the room (XR),
+// tw_island_inv (world -> diorama) keeps every pattern glued to the model.
+global uniform mat4 tw_island_inv;
 varying vec3 wp;
 
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -15,7 +18,7 @@ float vnoise(vec2 p) {
 float aa(float d) { float w = max(fwidth(d), 1e-5); return 1.0 - smoothstep(-w, w, d); }
 vec3 lin(vec3 c) { return pow(c, vec3(2.2)); }
 
-void vertex() { wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz; }
+void vertex() { wp = (tw_island_inv * (MODEL_MATRIX * vec4(VERTEX, 1.0))).xyz; }
 
 void fragment() {
 	float u = UV.x;
