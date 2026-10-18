@@ -49,12 +49,13 @@ static func apply_quest_profile() -> void:
 	IslandProps.tufts = false          # no grass tufts at all
 	IslandProps.small_shadows = false  # shrubs / rocks cast no shadow
 	IslandWater.opaque = true          # opaque sea variant
-	DebrisSystem.cap = 120             # live GDScript debris; settled ones are baked
-	PhysicsTest.ejecta_scale = 0.6     # fewer soil chunks per blast
+	DebrisSystem.cap = 80              # live GDScript debris; settled ones are baked
+	PhysicsTest.ejecta_scale = 0.35    # fewer soil chunks per blast
 	IslandTerrain.defer_meshes = true  # crater chunk meshes over the next frames
-	DebrisSystem.max_awake = 70        # CPU budget: older awake ones freeze + bake
-	DebrisSystem.max_age = 4.0
-	FxSystem.cap = 300                 # smoke / dust / water puffs
+	DebrisSystem.max_awake = 36        # CPU budget: older awake ones freeze + bake
+	DebrisSystem.max_age = 2.5
+	IslandProps.max_chunks = 20        # fracture pieces per building
+	FxSystem.cap = 220                 # smoke / dust / water puffs
 
 
 ## Quest: nothing casts a shadow (the sun has none either; Room.apply_quest).

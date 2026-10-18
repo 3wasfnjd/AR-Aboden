@@ -72,9 +72,9 @@ func puff(pos: Vector3, vel: Vector3, size0: float, size1: float, life: float, c
 
 
 func explosion(p: Vector3, scale := 1.0) -> void:
-	flash_light.position = p + Vector3(0, 0.01, 0)
-	flash_e = 5.0 * scale
-	flash_light.visible = true
+	# no flash light: a newly visible omni light makes the GL Compatibility renderer
+	# compile a lit shader variant (a long hitch on Quest); the additive flash puffs
+	# below carry the flash on their own.
 	# 1. flash: a big, very short additive bloom + hot core
 	puff(p + Vector3(0, 0.004, 0), Vector3.ZERO, 0.012 * scale, 0.034 * scale, 0.09, Color(1.0, 0.95, 0.78), 1, 0.0, 0.0)
 	puff(p + Vector3(0, 0.003, 0), Vector3.ZERO, 0.005 * scale, 0.012 * scale, 0.16, Color(1.0, 0.85, 0.55), 1, 0.0, 0.0)

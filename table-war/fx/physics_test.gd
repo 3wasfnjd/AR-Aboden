@@ -103,7 +103,7 @@ func setup(isl: Island) -> void:
 	preview_mm.transform_format = MultiMesh.TRANSFORM_3D
 	preview_mm.use_colors = true
 	preview_mm.mesh = dot
-	preview_mm.instance_count = 90
+	preview_mm.instance_count = 56
 	preview_mm.visible_instance_count = 0
 	var pmi := MultiMeshInstance3D.new()
 	pmi.name = "Preview"

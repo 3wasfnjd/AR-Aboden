@@ -493,9 +493,14 @@ func collide_point(p: Vector3, r: float) -> Array:
 
 ## The merged structures mesh, split into STRUCT_TILES x STRUCT_TILES tiles so a blast
 ## rebuilds only the tile(s) it touched (the whole 31k-triangle mesh took ~20 ms).
-const STRUCT_TILES := 3
+const STRUCT_TILES := 6       # 6 x 6 tiles: a hit re-uploads ~1/36 of the buildings
 var _struct_tile_mi := {}     # tile index -> MeshInstance3D
 var _struct_tile_tris := {}
+## Per-structure mesh arrays (index = structure id), built once: a tile rebuild only
+## concatenates them (native array appends, no GDScript geometry), so a hit costs
+## the new ruin of the hit building plus the upload of its tile.
+var _arr_alive := {}
+var _arr_ruin := {}
 
 
 func _struct_tile(st: Dictionary) -> int:
@@ -505,17 +510,32 @@ func _struct_tile(st: Dictionary) -> int:
 	return tz * STRUCT_TILES + tx
 
 
+func _struct_arrays(st: Dictionary) -> Array:
+	var cache := _arr_alive if st.alive else _arr_ruin
+	var id: int = st.id
+	if not cache.has(id):
+		var mb := MeshBuilder.new()
+		_gen_structure(mb, st)
+		cache[id] = [mb.verts, mb.norms, mb.cols, mb.uvs, mb.uv2s]
+	return cache[id]
+
+
 func _rebuild_structures(tiles: Array = []) -> void:
 	_rebuild_colliders()
-	var builders := {}
+	for i in structures.size():
+		structures[i]["id"] = i
+	var parts := {}
 	for t in STRUCT_TILES * STRUCT_TILES:
 		if tiles.is_empty() or t in tiles:
-			builders[t] = MeshBuilder.new()
+			parts[t] = [PackedVector3Array(), PackedVector3Array(), PackedColorArray(), PackedVector2Array(), PackedVector2Array()]
 	for st in structures:
 		var t := _struct_tile(st)
-		if builders.has(t):
-			_gen_structure(builders[t], st)
-	for t in builders:
+		if parts.has(t):
+			var a := _struct_arrays(st)
+			var dst: Array = parts[t]
+			for k in 5:
+				dst[k].append_array(a[k])
+	for t in parts:
 		if not _struct_tile_mi.has(t):
 			var mi := MeshInstance3D.new()
 			mi.name = "Structures_%d" % t
@@ -523,9 +543,22 @@ func _rebuild_structures(tiles: Array = []) -> void:
 			_struct_tile_mi[t] = mi
 			if struct_mi == null:
 				struct_mi = mi
-		var mb: MeshBuilder = builders[t]
-		(_struct_tile_mi[t] as MeshInstance3D).mesh = mb.commit(null, struct_mat) if mb.tri_count() > 0 else null
-		_struct_tile_tris[t] = mb.tri_count()
+		var dst: Array = parts[t]
+		var n: int = (dst[0] as PackedVector3Array).size()
+		var mesh: ArrayMesh = null
+		if n > 0:
+			var arr := []
+			arr.resize(Mesh.ARRAY_MAX)
+			arr[Mesh.ARRAY_VERTEX] = dst[0]
+			arr[Mesh.ARRAY_NORMAL] = dst[1]
+			arr[Mesh.ARRAY_COLOR] = dst[2]
+			arr[Mesh.ARRAY_TEX_UV] = dst[3]
+			arr[Mesh.ARRAY_TEX_UV2] = dst[4]
+			mesh = ArrayMesh.new()
+			mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+			mesh.surface_set_material(0, struct_mat)
+		(_struct_tile_mi[t] as MeshInstance3D).mesh = mesh
+		_struct_tile_tris[t] = n / 3
 	struct_tris = 0
 	for t in _struct_tile_tris:
 		struct_tris += int(_struct_tile_tris[t])
@@ -836,6 +869,10 @@ func blast(center: Vector3, radius: float) -> Array[Dictionary]:
 	return frags
 
 
+## Pre-fractured pieces per destroyed building (the Quest profile lowers it).
+static var max_chunks := 64
+
+
 func _fracture(s: Dictionary, center: Vector3) -> Array[Dictionary]:
 	var out: Array[Dictionary] = []
 	var sz: Vector3 = s.size
@@ -847,9 +884,9 @@ func _fracture(s: Dictionary, center: Vector3) -> Array[Dictionary]:
 	var nx := clampi(int(round(sz.x / 0.0028)), 1, 5)
 	var nz := clampi(int(round(sz.z / 0.0028)), 1, 5)
 	var ny := clampi(int(round(full_h / 0.0028)), 1, 8)
-	while nx * ny * nz > 64:
+	while nx * ny * nz > max_chunks:
 		ny = maxi(1, ny - 1)
-		if nx * ny * nz > 40:
+		if nx * ny * nz > max_chunks * 0.6:
 			nx = maxi(1, nx - 1)
 			nz = maxi(1, nz - 1)
 	var xs := _splits(nx, sz.x, r)

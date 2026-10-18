@@ -590,6 +590,7 @@ func crater(center: Vector3, radius: float, depth: float) -> Array[Vector2i]:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = hash(Vector2i(int(center.x * 1e4), int(center.z * 1e4)))
 	var floor_min := PLINTH_H + 0.006
+	var wet := false
 	for j in range(j0, j1 + 1):
 		for i in range(i0, i1 + 1):
 			var k := idx(i, j)
@@ -603,6 +604,8 @@ func crater(center: Vector3, radius: float, depth: float) -> Array[Vector2i]:
 			elif d < 1.7:
 				dh = depth * 0.32 * sin((d - 1.0) / 0.7 * PI) * rng.randf_range(0.7, 1.2)
 			hts[k] = maxf(hts[k] + dh, floor_min)
+			if hts[k] < SEA + 0.0005 or hts[k] - dh < SEA + 0.0005:
+				wet = true
 			if d < 2.3:
 				scorch[k] = maxf(scorch[k], clampf(1.35 - d * 0.55, 0.0, 1.0) * rng.randf_range(0.85, 1.0))
 	var touched: Array[Vector2i] = []
@@ -617,7 +620,9 @@ func crater(center: Vector3, radius: float, depth: float) -> Array[Vector2i]:
 						_pending_chunks.append(Vector2i(ci, cj))
 				else:
 					_build_chunk(ci, cj)
-	_rebuild_depth_image(i0 - 1, j0 - 1, i1 + 1, j1 + 1)
+	if wet:
+		# the water depth texture only changes where the crater reaches the sea level
+		_rebuild_depth_image(i0 - 1, j0 - 1, i1 + 1, j1 + 1)
 	deformed.emit(center, rim_r)
 	return touched
 

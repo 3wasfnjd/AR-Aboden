@@ -387,7 +387,7 @@ func _xr_tests(island: Island, phys: PhysicsTest) -> void:
 	check("shot launches at the hand (room) and lands on target in a moved diorama", origin_ok and qerr < 0.02, "err %.4f, origin %s" % [qerr, qp.p0])
 	for k in 120:
 		qp.debris.spawn(Vector3(0.1, 0.12, 0.1), Basis(), Vector3(0.001, 0.001, 0.001), Vector3.ZERO, Vector3.ZERO, Color.WHITE, 0)
-	check("Quest: live debris capped (120)", qp.debris.bodies.size() <= 120 and DebrisSystem.cap == 120, "%d bodies" % qp.debris.bodies.size())
+	check("Quest: live debris capped (80)", qp.debris.bodies.size() <= 80 and DebrisSystem.cap == 80, "%d bodies" % qp.debris.bodies.size())
 	for k in 40:
 		qp.debris.spawn(Vector3(0.1, 0.3, 0.1), Basis(), Vector3(0.001, 0.001, 0.001), Vector3(0, 0.05, 0), Vector3.ZERO, Color.WHITE, 0)
 	for k in 90:

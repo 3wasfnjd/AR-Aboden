@@ -558,13 +558,14 @@ func aim_at(origin: Vector3, dir: Vector3) -> Variant:
 			phys.hide_preview()
 			_aim_key = Vector4(INF, INF, INF, INF)
 		return world_hit
-	# re-plan only when the hand or the target moved (cruise paths at most ~12 Hz)
+	# re-plan only when the hand or the target moved: ballistic at most ~18 Hz, cruise
+	# paths (terrain-following, the costly ones) ~7 Hz; a big jump at most every 2nd frame
 	_aim_frame += 1
 	var lp := launch_point_local()
 	var key := Vector4((tgt as Vector3).x, (tgt as Vector3).z, lp.x + lp.y * 3.1, lp.z)
 	var dk := key.distance_to(_aim_key) if _aim_key.x != INF else INF
-	var every := 6 if weapon == "cruise" else 2
-	if dk > 0.02 or (dk > 0.002 and _aim_frame % every == 0):
+	var every := 10 if weapon == "cruise" else 4
+	if (dk > 0.02 and _aim_frame % 2 == 0) or (dk > 0.003 and _aim_frame % every == 0) or _aim_key.x == INF:
 		phys.aim(tgt, lp, weapon, locked != null)
 		_aim_key = key
 	return world_hit

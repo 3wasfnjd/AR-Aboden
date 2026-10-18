@@ -25,6 +25,9 @@ func _ready() -> void:
 		a.attenuation_model = AudioStreamPlayer3D.ATTENUATION_INVERSE_DISTANCE
 		add_child(a)
 		_voices.append(a)
+	# generate every sound now (load time), not in the frame of the first impact
+	for nm in ["boom", "thump", "launch"]:
+		stream(nm)
 
 
 func play(name: String, pos: Vector3, volume := 1.0) -> void:
