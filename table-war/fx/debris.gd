@@ -14,6 +14,18 @@ extends Node3D
 const MAX_BODIES := 480
 ## Live cap (<= MAX_BODIES). The Quest profile lowers it to 200 (GDScript physics on the headset CPU).
 static var cap := MAX_BODIES
+## Settled debris: a body asleep for BAKE_AFTER s leaves the simulation and is written
+## ONCE into a static MultiMesh (ring buffer of SETTLED_MAX, the oldest are reused), so
+## fragments stay on the island forever at no per-frame cost.
+const SETTLED_MAX := 1500
+const BAKE_AFTER := 0.5
+## CPU budget (each awake body costs ~20-40 us of GDScript per step on desktop, ~3x on
+## Quest): beyond max_awake, the oldest awake bodies that are past MIN_AGE_FREEZE are
+## frozen where they are (snapped onto the ground) and baked; nothing flies longer
+## than max_age. The Quest profile lowers max_awake.
+static var max_awake := 400
+static var max_age := 6.0
+const MIN_AGE_FREEZE := 0.9
 const SUBSTEPS := 1
 
 var terrain: IslandTerrain
@@ -25,6 +37,15 @@ var bodies: Array[Dictionary] = []
 var mm_box: MultiMesh
 var mm_rock: MultiMesh
 var stats_contacts := 0
+var mm_settled_box: MultiMesh
+var mm_settled_rock: MultiMesh
+## settled: {p, b, h, col, kind, slot} (slot = instance index in its static MultiMesh)
+var settled: Array[Dictionary] = []
+var _free_box: Array[int] = []
+var _free_rock: Array[int] = []
+var _next_box := 0
+var _next_rock := 0
+var _dirty := true
 
 
 func setup(t: IslandTerrain, g: float, fx_sys: FxSystem) -> void:
@@ -40,14 +61,21 @@ func setup(t: IslandTerrain, g: float, fx_sys: FxSystem) -> void:
 	r.seed = 5
 	rm.rock(Vector3.ZERO, Vector3(1.15, 1.0, 1.1), Color.WHITE, r, 0.3)
 	mm_rock = _mm(rm.commit(), mat, "FragRocks")
+	mm_settled_box = _mm(mm_box.mesh, mat, "SettledBoxes", SETTLED_MAX)
+	mm_settled_rock = _mm(mm_rock.mesh, mat, "SettledRocks", SETTLED_MAX)
+	mm_settled_box.visible_instance_count = -1
+	mm_settled_rock.visible_instance_count = -1
+	for k in SETTLED_MAX:
+		mm_settled_box.set_instance_transform(k, Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO))
+		mm_settled_rock.set_instance_transform(k, Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO))
 
 
-func _mm(mesh: Mesh, mat: Material, nm: String) -> MultiMesh:
+func _mm(mesh: Mesh, mat: Material, nm: String, count := MAX_BODIES) -> MultiMesh:
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
 	mm.use_colors = true
 	mm.mesh = mesh
-	mm.instance_count = MAX_BODIES
+	mm.instance_count = count
 	mm.visible_instance_count = 0
 	var mmi := MultiMeshInstance3D.new()
 	mmi.name = nm
@@ -60,18 +88,22 @@ func _mm(mesh: Mesh, mat: Material, nm: String) -> MultiMesh:
 ## kind: 0 = soil/rock chunk, 1 = building fragment (box)
 func spawn(pos: Vector3, basis: Basis, half: Vector3, vel: Vector3, ang: Vector3, col: Color, kind: int) -> void:
 	if bodies.size() >= mini(cap, MAX_BODIES):
-		# recycle the oldest sleeping body (or the oldest)
+		# make room: bake the oldest sleeping body into the static set (it stays
+		# visible), or drop the oldest flying one
 		var victim := 0
 		for k in bodies.size():
 			if bodies[k].sleep:
 				victim = k
 				break
+		if bodies[victim].sleep:
+			_bake(bodies[victim])
 		bodies.remove_at(victim)
 	var h2 := half.length_squared()
+	_dirty = true
 	bodies.append({
 		"p": pos, "v": vel, "b": basis.orthonormalized(), "w": ang, "h": half, "col": col,
 		"kind": kind, "inv_i": 1.0 / maxf(0.45 * h2, 1e-12), "sleep": false, "still": 0.0,
-		"wet": false, "age": 0.0, "r": half.length(),
+		"wet": false, "age": 0.0, "r": half.length(), "slept": 0.0,
 	})
 
 
@@ -80,6 +112,63 @@ func wake_near(center: Vector3, radius: float) -> void:
 		if (b.p as Vector3).distance_to(center) < radius:
 			b.sleep = false
 			b.still = 0.0
+			b.slept = 0.0
+	# settled fragments near a new impact go back into the simulation (the ground
+	# under them may have changed); beyond the live cap they are blown away
+	var k := 0
+	while k < settled.size():
+		var e: Dictionary = settled[k]
+		if (e.p as Vector3).distance_to(center) < radius:
+			_unbake(k)
+			if bodies.size() < mini(cap, MAX_BODIES):
+				spawn(e.p, e.b, e.h, Vector3(0, 0.01, 0), Vector3.ZERO, e.col, e.kind)
+			continue
+		k += 1
+
+
+func settled_count() -> int:
+	return settled.size()
+
+
+## Every fragment position (live + settled), for tests.
+func all_positions() -> PackedVector3Array:
+	var out := PackedVector3Array()
+	for b in bodies:
+		out.append(b.p)
+	for e in settled:
+		out.append(e.p)
+	return out
+
+
+func _bake(b: Dictionary) -> void:
+	if settled.size() >= SETTLED_MAX:
+		_unbake(0)
+	var slot: int
+	var mm: MultiMesh
+	if b.kind == 1:
+		mm = mm_settled_box
+		slot = _free_box.pop_back() if not _free_box.is_empty() else _next_box
+		_next_box = maxi(_next_box, slot + 1)
+	else:
+		mm = mm_settled_rock
+		slot = _free_rock.pop_back() if not _free_rock.is_empty() else _next_rock
+		_next_rock = maxi(_next_rock, slot + 1)
+	var bb: Basis = b.b
+	var hh: Vector3 = b.h
+	mm.set_instance_transform(slot, Transform3D(Basis(bb.x * hh.x, bb.y * hh.y, bb.z * hh.z), b.p))
+	mm.set_instance_color(slot, b.col)
+	settled.append({"p": b.p, "b": b.b, "h": b.h, "col": b.col, "kind": b.kind, "slot": slot})
+
+
+func _unbake(k: int) -> void:
+	var e: Dictionary = settled[k]
+	var mm := mm_settled_box if e.kind == 1 else mm_settled_rock
+	mm.set_instance_transform(e.slot, Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO))
+	if e.kind == 1:
+		_free_box.append(e.slot)
+	else:
+		_free_rock.append(e.slot)
+	settled.remove_at(k)
 
 
 func active_count() -> int:
@@ -93,12 +182,42 @@ func active_count() -> int:
 func step(dt: float) -> void:
 	var h := dt / SUBSTEPS
 	stats_contacts = 0
+	var moved := false
 	for _s in SUBSTEPS:
 		for b in bodies:
 			if b.sleep:
 				continue
 			_integrate(b, h)
-	_upload()
+			moved = true
+	# bodies asleep long enough leave the simulation into the static MultiMesh;
+	# over the awake budget / too old: frozen in place on the ground and baked too
+	var awake := 0
+	for b in bodies:
+		if not b.sleep:
+			awake += 1
+	var excess := awake - max_awake
+	var k := 0
+	while k < bodies.size():
+		var b: Dictionary = bodies[k]
+		var freeze := false
+		if not b.sleep and (float(b.age) > max_age or (excess > 0 and float(b.age) > MIN_AGE_FREEZE)):
+			freeze = true
+			excess -= 1
+		if b.sleep:
+			b.slept += dt
+		if freeze or (b.sleep and b.slept >= BAKE_AFTER):
+			if freeze:
+				var bp: Vector3 = b.p
+				bp.y = maxf(bp.y, terrain.height_at(bp.x, bp.z) + float(b.h.y) * 0.6)
+				b.p = bp
+			_bake(b)
+			bodies.remove_at(k)
+			_dirty = true
+			continue
+		k += 1
+	if moved or _dirty:
+		_upload()
+		_dirty = false
 
 
 func _integrate(b: Dictionary, dt: float) -> void:
@@ -205,6 +324,7 @@ func _integrate(b: Dictionary, dt: float) -> void:
 		b.still += dt
 		if b.still > 0.25:
 			b.sleep = true
+			b.slept = 0.0
 			v = Vector3.ZERO
 			w = Vector3.ZERO
 	else:
@@ -236,4 +356,10 @@ func _upload() -> void:
 
 func clear() -> void:
 	bodies.clear()
+	while not settled.is_empty():
+		_unbake(settled.size() - 1)
+	_free_box.clear()
+	_free_rock.clear()
+	_next_box = 0
+	_next_rock = 0
 	_upload()

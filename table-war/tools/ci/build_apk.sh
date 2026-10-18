@@ -158,6 +158,10 @@ unzip -l "$APK" | grep -q "lib/arm64-v8a/libgodotopenxrvendors.so"
   || echo "::warning::com.oculus.feature.PASSTHROUGH not in the manifest: the app may start in VR only"
 "$BT/aapt2" dump badging "$APK" | grep -q "com.oculus.permission.USE_SCENE" \
   || echo "::warning::com.oculus.permission.USE_SCENE not in the manifest: real table planes unavailable (virtual table fallback)"
+# Boundaryless MR (export preset meta_xr_features/boundary_mode=1): the Guardian does not
+# stop the player walking around the real table while the app shows passthrough.
+"$BT/aapt2" dump badging "$APK" | grep -q "com.oculus.feature.BOUNDARYLESS_APP" \
+  || echo "::warning::com.oculus.feature.BOUNDARYLESS_APP not in the manifest: the Guardian boundary stays on"
 sha256sum "$APK" | tee "$APK.sha256"
 echo "APK=$APK" >> "${GITHUB_ENV:-/dev/null}"
 log "Done: $APK"

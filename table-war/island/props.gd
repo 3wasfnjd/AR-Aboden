@@ -59,6 +59,38 @@ func build(t: IslandTerrain, lay: IslandLayout) -> void:
 	_place_vegetation()
 	_place_boats()
 	_place_buoys()
+	_snapshot()
+
+
+## Undamaged state, for reset_damage() ("reset island" on the panel).
+var _snap := {}
+
+
+func _snapshot() -> void:
+	_snap = {"structures": structures.duplicate(true), "veg": {}}
+	for nm in species:
+		_snap.veg[nm] = (species[nm].xf as Array).duplicate()
+
+
+## Buildings, vegetation and roads back to the undamaged island (no rebuild of the
+## generators: the snapshot taken at build time is restored).
+func reset_damage() -> void:
+	structures.clear()
+	for st in (_snap.structures as Array):
+		structures.append((st as Dictionary).duplicate(true))
+	for nm in species:
+		var sp: Dictionary = species[nm]
+		var xfs: Array = sp.xf
+		var orig: Array = _snap.veg[nm]
+		for k in xfs.size():
+			xfs[k] = orig[k]
+			_set_veg_xf(sp, k, orig[k])
+		(sp.alive as PackedByteArray).fill(1)
+	craters.clear()
+	_crater_grid.clear()
+	_pending_drapes.clear()
+	_rebuild_structures()
+	_build_drapes()
 
 
 # ======================================================================================
@@ -459,17 +491,44 @@ func collide_point(p: Vector3, r: float) -> Array:
 	return []
 
 
-func _rebuild_structures() -> void:
+## The merged structures mesh, split into STRUCT_TILES x STRUCT_TILES tiles so a blast
+## rebuilds only the tile(s) it touched (the whole 31k-triangle mesh took ~20 ms).
+const STRUCT_TILES := 3
+var _struct_tile_mi := {}     # tile index -> MeshInstance3D
+var _struct_tile_tris := {}
+
+
+func _struct_tile(st: Dictionary) -> int:
+	var p: Vector3 = st.pos
+	var tx := clampi(int((p.x + 0.5) * STRUCT_TILES), 0, STRUCT_TILES - 1)
+	var tz := clampi(int((p.z + 0.5) * STRUCT_TILES), 0, STRUCT_TILES - 1)
+	return tz * STRUCT_TILES + tx
+
+
+func _rebuild_structures(tiles: Array = []) -> void:
 	_rebuild_colliders()
-	var mb := MeshBuilder.new()
-	for s in structures:
-		_gen_structure(mb, s)
-	if struct_mi == null:
-		struct_mi = MeshInstance3D.new()
-		struct_mi.name = "Structures"
-		add_child(struct_mi)
-	struct_mi.mesh = mb.commit(null, struct_mat)
-	struct_tris = mb.tri_count()
+	var builders := {}
+	for t in STRUCT_TILES * STRUCT_TILES:
+		if tiles.is_empty() or t in tiles:
+			builders[t] = MeshBuilder.new()
+	for st in structures:
+		var t := _struct_tile(st)
+		if builders.has(t):
+			_gen_structure(builders[t], st)
+	for t in builders:
+		if not _struct_tile_mi.has(t):
+			var mi := MeshInstance3D.new()
+			mi.name = "Structures_%d" % t
+			add_child(mi)
+			_struct_tile_mi[t] = mi
+			if struct_mi == null:
+				struct_mi = mi
+		var mb: MeshBuilder = builders[t]
+		(_struct_tile_mi[t] as MeshInstance3D).mesh = mb.commit(null, struct_mat) if mb.tri_count() > 0 else null
+		_struct_tile_tris[t] = mb.tri_count()
+	struct_tris = 0
+	for t in _struct_tile_tris:
+		struct_tris += int(_struct_tile_tris[t])
 
 
 func structure_xform(s: Dictionary) -> Transform3D:
@@ -760,6 +819,7 @@ func _footprint_dist(s: Dictionary, p: Vector3) -> float:
 func blast(center: Vector3, radius: float) -> Array[Dictionary]:
 	var frags: Array[Dictionary] = []
 	var changed := false
+	var hit_tiles := []
 	for s in structures:
 		if not s.alive or not s.fragile:
 			continue
@@ -768,9 +828,11 @@ func blast(center: Vector3, radius: float) -> Array[Dictionary]:
 			continue
 		s.alive = false
 		changed = true
+		if not _struct_tile(s) in hit_tiles:
+			hit_tiles.append(_struct_tile(s))
 		frags.append_array(_fracture(s, center))
 	if changed:
-		_rebuild_structures()
+		_rebuild_structures(hit_tiles)
 	return frags
 
 
@@ -828,7 +890,7 @@ func _splits(n: int, total: float, r: RandomNumberGenerator) -> PackedFloat32Arr
 ## Called after a crater: remove vegetation inside, re-snap the rest, re-drape roads.
 func on_crater(center: Vector3, radius: float) -> Array[Dictionary]:
 	var burnt: Array[Dictionary] = []
-	craters.append(Vector3(center.x, center.z, radius))
+	_add_crater(Vector3(center.x, center.z, radius))
 	for name in species:
 		var sp: Dictionary = species[name]
 		var xfs: Array = sp.xf
@@ -847,7 +909,10 @@ func on_crater(center: Vector3, radius: float) -> Array[Dictionary]:
 				xf.origin.y = ny
 				xfs[k] = xf
 				_set_veg_xf(sp, k, xf)
-	_build_drapes()
+	# re-drape the touched groups over the next frames (one per frame, see _process)
+	for g in drapes_near(Vector2(center.x, center.z), radius * 1.3):
+		if not g in _pending_drapes:
+			_pending_drapes.append(g)
 	return burnt
 
 
@@ -859,11 +924,62 @@ var craters: Array[Vector3] = []      # (x, z, radius): paving is broken inside
 var designators: Array[Label3D] = []
 
 
+## Craters in a 2.5 cm grid: _in_crater() is called for every draped vertex, so a
+## linear scan over all craters made every re-drape slower as craters accumulated.
+const CRATER_CELL := 0.025
+var _crater_grid := {}
+
+
 func _in_crater(p: Vector2, jag := 1.0) -> bool:
-	for c in craters:
-		if Vector2(c.x, c.y).distance_to(p) < c.z * 0.82 * jag:
-			return true
+	var cx := int(floor(p.x / CRATER_CELL))
+	var cz := int(floor(p.y / CRATER_CELL))
+	for dz in range(-1, 2):
+		for dx in range(-1, 2):
+			var key := Vector2i(cx + dx, cz + dz)
+			if not _crater_grid.has(key):
+				continue
+			for c in (_crater_grid[key] as Array):
+				if Vector2(c.x, c.y).distance_to(p) < c.z * 0.82 * jag:
+					return true
 	return false
+
+
+func _add_crater(c: Vector3) -> void:
+	craters.append(c)
+	var key := Vector2i(int(floor(c.x / CRATER_CELL)), int(floor(c.y / CRATER_CELL)))
+	if not _crater_grid.has(key):
+		_crater_grid[key] = []
+	(_crater_grid[key] as Array).append(c)
+
+
+func _index_group(nm: String) -> void:
+	var cells := {}
+	for n in (_group_nodes.get(nm, []) as Array):
+		var mi := n as MeshInstance3D
+		if mi == null or mi.mesh == null or (mi.mesh as ArrayMesh).get_surface_count() == 0:
+			continue
+		var verts: PackedVector3Array = (mi.mesh as ArrayMesh).surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+		for v in verts:
+			cells[Vector2i(int(floor(v.x / 0.01)), int(floor(v.z / 0.01)))] = true
+	_group_cells[nm] = cells
+
+
+## The drape groups with geometry within r of c (1 cm cells).
+func drapes_near(c: Vector2, r: float) -> Array:
+	var out := []
+	for nm in DRAPE_GROUPS:
+		var cells: Dictionary = _group_cells.get(nm, {})
+		var hit := false
+		for cz in range(int(floor((c.y - r) / 0.01)), int(floor((c.y + r) / 0.01)) + 1):
+			for cx in range(int(floor((c.x - r) / 0.01)), int(floor((c.x + r) / 0.01)) + 1):
+				if cells.has(Vector2i(cx, cz)):
+					hit = true
+					break
+			if hit:
+				break
+		if hit:
+			out.append(nm)
+	return out
 
 
 func paving_at(p: Vector2, r: float) -> bool:
@@ -873,10 +989,35 @@ func paving_at(p: Vector2, r: float) -> bool:
 	return L.inside_base(p, -0.01) and L.infrastructure_distance(p) < r * 0.6
 
 
-func _build_drapes() -> void:
-	for m in drape_mi:
-		m.queue_free()
+## Draped surfaces in groups, so a crater re-drapes only the groups it touches
+## (re-draping everything took ~90 ms per impact on desktop, ~3x on Quest).
+const DRAPE_GROUPS := ["roads", "runway", "taxi", "concrete", "patrol", "tracks"]
+var _group_nodes := {}      # group -> [nodes]
+var _group_cells := {}      # group -> {Vector2i(1 cm cell): true}
+var _cur_group: Array = []
+var _pending_drapes: Array = []
+
+
+func _build_drapes(only: Array = []) -> void:
+	for nm in DRAPE_GROUPS:
+		if not only.is_empty() and not nm in only:
+			continue
+		for n in (_group_nodes.get(nm, []) as Array):
+			if is_instance_valid(n):
+				(n as Node).queue_free()
+		_cur_group = []
+		call("_drape_" + nm)
+		_group_nodes[nm] = _cur_group
+		if not _group_cells.has(nm):
+			_index_group(nm)
 	drape_mi.clear()
+	for nm in DRAPE_GROUPS:
+		for n in (_group_nodes.get(nm, []) as Array):
+			if n is MeshInstance3D and is_instance_valid(n):
+				drape_mi.append(n)
+
+
+func _drape_roads() -> void:
 	var L := layout
 	var rd := L.runway_dir()
 	var north := Vector2(rd.y, -rd.x)
@@ -886,10 +1027,25 @@ func _build_drapes() -> void:
 	for r in L.road_samples():
 		_ribbon(rb, r, IslandLayout.ROAD_W, 0.00032)
 	_add_drape(rb, shader, 0, 0.0)
+
+
+func _drape_runway() -> void:
+	var L := layout
+	var rd := L.runway_dir()
+	var north := Vector2(rd.y, -rd.x)
+	var shader := load("res://island/marking.gdshader")
 	# runway 600 x 25 m with ICAO-style markings
 	var rwb := MeshBuilder.new()
 	_rect_grid(rwb, L.runway_center, rd, Vector2(L.runway_len, L.runway_w), 0.0005)
 	_add_drape(rwb, shader, 1, L.runway_len)
+	_build_designators()
+
+
+func _drape_taxi() -> void:
+	var L := layout
+	var rd := L.runway_dir()
+	var north := Vector2(rd.y, -rd.x)
+	var shader := load("res://island/marking.gdshader")
 	# parallel taxiway + end/middle connectors (15 m, yellow centreline)
 	var tb := MeshBuilder.new()
 	_rect_grid(tb, L.runway_center + north * L.taxi_offset, rd, Vector2(L.runway_len - Scale.m(20.0), L.taxi_w), 0.00045)
@@ -897,6 +1053,13 @@ func _build_drapes() -> void:
 		var c: Vector2 = L.runway_center + rd * along + north * L.taxi_offset * 0.5
 		_rect_grid(tb, c, north, Vector2(L.taxi_offset - L.runway_w * 0.5 - L.taxi_w * 0.5 + Scale.m(4.0), L.taxi_w), 0.00042)
 	_add_drape(tb, shader, 4, 0.0)
+
+
+func _drape_concrete() -> void:
+	var L := layout
+	var rd := L.runway_dir()
+	var north := Vector2(rd.y, -rd.x)
+	var shader := load("res://island/marking.gdshader")
 	# apron, silo pad, HAS links, plant yard (concrete)
 	var cb := MeshBuilder.new()
 	_rect_grid(cb, L.apron_center, rd, L.apron_size, 0.0004)
@@ -911,6 +1074,13 @@ func _build_drapes() -> void:
 	_rect_grid(cb, L.plant_center, Vector2.RIGHT, L.plant_size, 0.0004)
 	_rect_grid(cb, Vector2((L.harbour_x0 + L.harbour_x1) * 0.5, (L.quay_land_z + 0.002 + L.quay_z) * 0.5), Vector2.RIGHT, Vector2(L.harbour_x1 - L.harbour_x0, L.quay_z - L.quay_land_z - 0.002), 0.0, IslandTerrain.SEA + L.quay_height + 0.00035)
 	_add_drape(cb, shader, 2, 0.0)
+
+
+func _drape_patrol() -> void:
+	var L := layout
+	var rd := L.runway_dir()
+	var north := Vector2(rd.y, -rd.x)
+	var shader := load("res://island/marking.gdshader")
 	# base perimeter: fence (with gates where roads cross) + inner patrol road
 	var f := L.base_frame()
 	var corners := [Vector2(f.along0, f.lat0), Vector2(f.along1, f.lat0), Vector2(f.along1, f.lat1), Vector2(f.along0, f.lat1)]
@@ -936,6 +1106,13 @@ func _build_drapes() -> void:
 	_ribbon(pr, land_inner, Scale.m(6.0), 0.0003, true)
 	_add_drape(pr, shader, 5, 0.0)
 	_build_fence(ring)
+
+
+func _drape_tracks() -> void:
+	var L := layout
+	var rd := L.runway_dir()
+	var north := Vector2(rd.y, -rd.x)
+	var shader := load("res://island/marking.gdshader")
 	# desert tyre tracks (pairs of ruts, multiply-blended)
 	var trk := MeshBuilder.new()
 	for t in L.tracks:
@@ -953,8 +1130,7 @@ func _build_drapes() -> void:
 	tmi.mesh = trk.commit(null, tm)
 	tmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(tmi)
-	drape_mi.append(tmi)
-	_build_designators()
+	_cur_group.append(tmi)
 
 
 func _build_fence(ring: PackedVector2Array) -> void:
@@ -995,12 +1171,12 @@ func _build_fence(ring: PackedVector2Array) -> void:
 	fmi.mesh = fb.commit(null, fm)
 	fmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(fmi)
-	drape_mi.append(fmi)
+	_cur_group.append(fmi)
 	var pmi := MeshInstance3D.new()
 	pmi.name = "FencePosts"
 	pmi.mesh = pb.commit(null, MeshBuilder.vc_material(0.7))
 	add_child(pmi)
-	drape_mi.append(pmi)
+	_cur_group.append(pmi)
 
 
 ## Runway designators (heading 099/279 -> "10" / "28"), painted flat.
@@ -1041,7 +1217,7 @@ func _add_drape(mb: MeshBuilder, shader: Shader, kind: int, length: float) -> vo
 	mi.mesh = mb.commit(null, mat)
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(mi)
-	drape_mi.append(mi)
+	_cur_group.append(mi)
 
 
 func _ribbon(mb: MeshBuilder, pts: PackedVector2Array, width: float, lift: float, land_only := false) -> void:
@@ -1321,6 +1497,8 @@ const LOD_DIST := 0.55        # m camera distance where trees swap to the low me
 static var merged_veg := false
 ## Quest profile: small props (shrubs, grass tufts, rocks) cast no shadows.
 static var small_shadows := true
+## Quest profile: no grass tufts at all (2200 tiny instances, barely visible at 1:2000).
+static var tufts := true
 var _veg_shader: Shader
 
 
@@ -1564,7 +1742,8 @@ func _place_vegetation() -> void:
 		placed.append({"kind": "tuft", "pos": Vector3(p.x, y, p.y), "water_ok": false, "sink": 0.0002, "ground_min": y + 0.0002})
 		if tf.size() >= 2200:
 			break
-	_make_species("tuft", _tuft_mesh(), null, tf, tf_c, true, 0.6)
+	if tufts:
+		_make_species("tuft", _tuft_mesh(), null, tf, tf_c, true, 0.6)
 
 	# rocks: ridge flanks, cliffs, breakwater
 	var rk: Array[Transform3D] = []
@@ -1722,6 +1901,8 @@ func _place_buoys() -> void:
 
 
 func _process(_delta: float) -> void:
+	if not _pending_drapes.is_empty():
+		_build_drapes([_pending_drapes.pop_front()])
 	var t := Time.get_ticks_msec() * 0.001
 	for b in boats:
 		var n: Node3D = b.node

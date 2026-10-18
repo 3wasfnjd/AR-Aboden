@@ -23,6 +23,11 @@ var focused := true
 var passthrough_supported := false
 var mode := "mr"
 
+## Tests without a headset: controllers count as tracked, sticks read sim_stick.
+var sim := false
+var sim_stick := {"left": Vector2.ZERO, "right": Vector2.ZERO}
+var pulses := 0
+
 var camera: XRCamera3D
 var hands := {}  # "left"/"right" -> {aim: XRController3D, grip: XRController3D, ray: MeshInstance3D, dot: MeshInstance3D}
 var _prev := {}
@@ -156,11 +161,15 @@ func set_mode(m: String) -> String:
 
 
 func tracked(hand: String) -> bool:
+	if sim:
+		return true
 	var c: XRController3D = hands[hand].aim
 	return xr_active and focused and c.get_is_active() and c.get_has_tracking_data()
 
 
 func stick(hand: String) -> Vector2:
+	if sim:
+		return sim_stick.get(hand, Vector2.ZERO)
 	if not tracked(hand):
 		return Vector2.ZERO
 	return hands[hand].aim.get_vector2("primary")
@@ -174,6 +183,7 @@ func ray(hand: String) -> Array:
 
 
 func pulse(hand: String, amplitude := 0.3, seconds := 0.04) -> void:
+	pulses += 1
 	if xr_active and tracked(hand):
 		hands[hand].aim.trigger_haptic_pulse("haptic", 0.0, amplitude, seconds, 0.0)
 
@@ -184,6 +194,10 @@ func head_transform() -> Transform3D:
 
 func grip_transform(hand: String) -> Transform3D:
 	return hands[hand].grip.global_transform
+
+
+func aim_transform(hand: String) -> Transform3D:
+	return hands[hand].aim.global_transform
 
 
 ## Pointer: the ray up to `hit` (a world point or null) and a ring on it.

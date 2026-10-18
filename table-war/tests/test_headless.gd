@@ -154,6 +154,7 @@ func _initialize() -> void:
 	t.crater(rc, 0.016, 0.0055)
 	island.props.on_crater(rc, 0.016)
 	await process_frame
+	await process_frame   # re-drapes run one group per frame in IslandProps._process
 	var road_mi2: MeshInstance3D = island.props.drape_mi[0]
 	var tris_after := (road_mi2.mesh as ArrayMesh).surface_get_array_len(0)
 	check("road ribbon is broken inside the crater", tris_after < tris_before, "%d -> %d verts" % [tris_before, tris_after])
@@ -179,16 +180,16 @@ func _initialize() -> void:
 		worst_err = maxf(worst_err, err)
 		times.append("%.2fs" % T)
 	check("shell lands within 2 cm of target", worst_err < 0.02, "worst %.4f m, flight times %s" % [worst_err, times])
-	check("debris spawned", phys.debris.bodies.size() > 50, "%d bodies" % phys.debris.bodies.size())
+	check("debris spawned", phys.debris.bodies.size() + phys.debris.settled_count() > 50, "%d live + %d settled" % [phys.debris.bodies.size(), phys.debris.settled_count()])
 	# let debris settle, check it rests on/above the ground
 	for k in 600:
 		phys.advance(1.0 / 60.0)
 	var below := 0
-	var asleep := 0
-	for b in phys.debris.bodies:
-		var bp: Vector3 = b.p
+	var asleep := phys.debris.settled_count()
+	for bp in phys.debris.all_positions():
 		if bp.y < t.height_at(bp.x, bp.z) - 0.002:
 			below += 1
+	for b in phys.debris.bodies:
 		if b.sleep:
 			asleep += 1
 	check("debris does not tunnel through terrain", below == 0, "%d below" % below)
@@ -197,7 +198,8 @@ func _initialize() -> void:
 		if not b.sleep and awake_info.length() < 600:
 			awake_info += "[%s v%.4f w%.2f wet%s] " % [b.p, (b.v as Vector3).length(), (b.w as Vector3).length(), b.wet]
 	print("AWAKE ", awake_info)
-	check("debris settles (sleeping)", asleep > phys.debris.bodies.size() * 0.7, "%d / %d asleep" % [asleep, phys.debris.bodies.size()])
+	var total_d := phys.debris.bodies.size() + phys.debris.settled_count()
+	check("debris settles (sleeping or baked into the static set)", asleep > total_d * 0.7 and phys.debris.settled_count() > 0, "%d / %d at rest (%d baked)" % [asleep, total_d, phys.debris.settled_count()])
 	# debris lands on (not through) a standing building roof
 	var roof_st: Dictionary = {}
 	for st in island.props.structures:
@@ -210,7 +212,7 @@ func _initialize() -> void:
 	phys.debris.spawn(rpos + Vector3(0, roof_st.size.y + 0.01, 0), Basis(), Vector3(0.0006, 0.0006, 0.0006), Vector3.ZERO, Vector3.ZERO, Color.WHITE, 1)
 	for k in 300:
 		phys.advance(1.0 / 60.0)
-	var by: float = (phys.debris.bodies[0].p as Vector3).y
+	var by: float = phys.debris.all_positions()[0].y
 	check("debris rests on a building roof", by > roof_y - 0.0005 and by < roof_y + 0.003, "body y %.4f, roof %.4f" % [by, roof_y])
 	# building fracture
 	var tower: Dictionary = {}
@@ -236,6 +238,10 @@ func _initialize() -> void:
 # ======================================================================================
 # XR / Quest build
 # ======================================================================================
+
+func pulses_of(x: XRGame) -> int:
+	return x.rig.pulses
+
 
 func _near(a: float, b: float, eps := 1e-5) -> bool:
 	return absf(a - b) <= eps
@@ -329,16 +335,18 @@ func _xr_tests(island: Island, phys: PhysicsTest) -> void:
 	m = xg.set_mode("vr")
 	check("VR fallback shows the fake room again", m == "vr" and room.set_root.visible and room.env.background_mode == Environment.BG_SKY and not vp.transparent_bg)
 	room.apply_quest()
-	check("Quest lighting: one shadowed directional light, 1.5 m orthogonal shadow, no glow", not room.fill.visible and not room.env.glow_enabled and room.sun.directional_shadow_mode == DirectionalLight3D.SHADOW_ORTHOGONAL and _near(room.sun.directional_shadow_max_distance, 1.5))
+	var lit := 0
+	for l in root.find_children("*", "Light3D", true, false):
+		if (l as Light3D).shadow_enabled:
+			lit += 1
+	check("Quest lighting: no light casts shadows, no glow / fog / ssao", lit == 0 and not room.fill.visible and not room.env.glow_enabled and not room.env.fog_enabled and not room.env.ssao_enabled, "%d shadowed lights" % lit)
 	xg.queue_free()
 	room.queue_free()
 	vp.transparent_bg = false
 
-	# --- Quest profile: merged vegetation, opaque sea, debris cap, moved diorama ----
-	IslandProps.merged_veg = true
-	IslandProps.small_shadows = false
-	IslandWater.opaque = true
-	DebrisSystem.cap = 200
+	# --- Quest profile: 2x2 vegetation tiles, no tufts, opaque sea, caps, no shadows -
+	var main_gd: GDScript = load("res://main.gd")
+	main_gd.apply_quest_profile()
 	var qd := Node3D.new()
 	qd.name = "QuestDiorama"
 	root.add_child(qd)
@@ -346,51 +354,173 @@ func _xr_tests(island: Island, phys: PhysicsTest) -> void:
 	var qi := Island.new()
 	qd.add_child(qi)
 	await process_frame
-	var per_species := []
-	var merged_ok := true
-	for nm in qi.props.species:
-		var sp: Dictionary = qi.props.species[nm]
-		var n_hi := (sp.hi as Array).size()
-		per_species.append("%s:%d" % [nm, n_hi])
-		if n_hi != 1 or (sp.hi[0] as MultiMesh).instance_count != (sp.xf as Array).size():
-			merged_ok = false
 	var mmis := qi.props.find_children("MM_*", "MultiMeshInstance3D", false, false)
-	var shader_ok := true
-	var small_cast := 0
+	var tiles_ok := not qi.props.species.has("tuft")
 	for mmi in mmis:
 		var g := mmi as MultiMeshInstance3D
-		if not (g.material_override is ShaderMaterial) or g.visibility_range_end > 0.0:
-			shader_ok = false
-		if (g.name.contains("shrub") or g.name.contains("tuft") or g.name.contains("rock")) and g.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF:
-			small_cast += 1
-	check("Quest: one MultiMesh per species and LOD level", merged_ok and mmis.size() <= 9, "%s, %d draw nodes (desktop: %d)" % [per_species, mmis.size(), island.props.find_children("MM_*", "MultiMeshInstance3D", false, false).size()])
-	check("Quest: per-instance LOD shader, small props cast no shadow", shader_ok and small_cast == 0, "%d small casters" % small_cast)
+		if g.material_override is ShaderMaterial:
+			tiles_ok = false
+	check("Quest: 2x2 vegetation tiles with LOD ranges, no grass tufts", tiles_ok and (qi.props.species["palm"].hi as Array).size() == 4, "%d draw nodes, species %s" % [mmis.size(), qi.props.species.keys()])
 	check("Quest: opaque sea variant", (qi.water.shader_mat.shader as Shader).resource_path.ends_with("water_opaque.gdshader"))
 	var qp := PhysicsTest.new()
 	qd.add_child(qp)
 	qp.setup(qi)
 	qp.manual = true
+	main_gd.no_shadows(qd)
+	var casters := 0
+	for g2 in qd.find_children("*", "GeometryInstance3D", true, false):
+		if (g2 as GeometryInstance3D).cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF:
+			casters += 1
+	check("Quest: no geometry casts shadows", casters == 0, "%d casters" % casters)
+	# a shot from a hand in the room, into the moved / turned / scaled diorama
+	var hand_w := Placement.pinned_transform(Vector3(0.4, 0.75, -0.7), -2.3, 0.55) * Vector3(0.1, 0.8, 1.2)
+	var hand_l := qd.global_transform.affine_inverse() * hand_w
 	var tgt := Vector3(0.10, 0.0, 0.10)
 	tgt.y = qi.surface_at(tgt.x, tgt.z)
-	qp.fire(tgt)
-	var muzzle_ok := qp.shell.position.distance_to(qp.p0) < 1e-6 and qp.p0.distance_to(qi.props.launcher_muzzle()) < 1e-5 and qi.terrain.is_inside(qp.p0.x, qp.p0.z)
+	qp.fire(tgt, hand_l, "ballistic")
+	var origin_ok := qp.shell.position.distance_to(hand_l) < 1e-6 and qp.p0.distance_to(hand_l) < 1e-6 and (qp.shell.global_position).distance_to(hand_w) < 1e-5
 	var steps := 0
-	while qp.flying and steps < 2000:
+	while qp.flying and steps < 3000:
 		qp.advance(1.0 / 72.0)
 		steps += 1
 	var qerr := Vector2(qp.last_impact.x - tgt.x, qp.last_impact.z - tgt.z).length()
-	check("shell in a moved / turned / scaled diorama: muzzle local, lands on target", muzzle_ok and qerr < 0.02, "err %.4f m, muzzle %s" % [qerr, qp.p0])
+	check("shot launches at the hand (room) and lands on target in a moved diorama", origin_ok and qerr < 0.02, "err %.4f, origin %s" % [qerr, qp.p0])
 	for k in 120:
 		qp.debris.spawn(Vector3(0.1, 0.12, 0.1), Basis(), Vector3(0.001, 0.001, 0.001), Vector3.ZERO, Vector3.ZERO, Color.WHITE, 0)
-	check("Quest: debris capped at 200", qp.debris.bodies.size() <= 200 and qp.debris.bodies.size() >= 150, "%d bodies" % qp.debris.bodies.size())
+	check("Quest: live debris capped (120)", qp.debris.bodies.size() <= 120 and DebrisSystem.cap == 120, "%d bodies" % qp.debris.bodies.size())
+	for k in 40:
+		qp.debris.spawn(Vector3(0.1, 0.3, 0.1), Basis(), Vector3(0.001, 0.001, 0.001), Vector3(0, 0.05, 0), Vector3.ZERO, Color.WHITE, 0)
+	for k in 90:
+		qp.advance(1.0 / 72.0)
+	var aw := 0
+	for b in qp.debris.bodies:
+		if not b.sleep:
+			aw += 1
+	check("Quest: awake debris kept within the CPU budget (old ones frozen + baked)", aw <= DebrisSystem.max_awake, "%d awake (max %d), %d baked" % [aw, DebrisSystem.max_awake, qp.debris.settled_count()])
 	qp.debris.clear()
 
-	# --- XR flow without a headset: aim at a scene table, pin, aim + fire, un-pin ---
+	# --- each weapon from the hand lands within 2 cm of the locked target on land ---
+	var land_targets := [Vector3(0.10, 0, 0.10), Vector3(-0.05, 0, 0.0), Vector3(0.24, 0, -0.02), Vector3(-0.30, 0, 0.12)]
+	var weapon_info := []
+	var worst := 0.0
+	var cruise_low := 0
+	for id in WeaponTable.IDS:
+		qp.reset_island()   # every weapon on the same, undamaged targets
+		for lt in land_targets:
+			var tg: Vector3 = lt
+			tg.y = qi.height_at(tg.x, tg.z)
+			if tg.y < IslandTerrain.SEA + 0.0005:
+				continue
+			qp.last_impact = Vector3.INF
+			var pl := qp.fire(tg, hand_l, id)
+			if id == "cruise":
+				# the cruise path stays above the terrain / sea all the way (but the final dive)
+				var T: float = pl.T
+				for kk in 400:
+					var pp := WeaponFlight.position_at(pl, T * kk / 400.0)
+					if Vector2(pp.x - tg.x, pp.z - tg.z).length() < 0.02:
+						break
+					var su := qp.surface(pp.x, pp.z)
+					if su > -INF and pp.y < su + 0.001:
+						cruise_low += 1
+			var st2 := 0
+			while qp.flying and st2 < 4000:
+				qp.advance(1.0 / 72.0)
+				st2 += 1
+			var e := Vector2(qp.last_impact.x - tg.x, qp.last_impact.z - tg.z).length()
+			worst = maxf(worst, e)
+			weapon_info.append("%s %.1fs %.4f" % [id, pl.T, e])
+	check("every weapon lands within 2 cm of the locked target (from the hand)", worst < 0.02 and weapon_info.size() == 12, "worst %.4f m: %s" % [worst, weapon_info])
+	check("cruise missile stays above the terrain along its path", cruise_low == 0, "%d low samples" % cruise_low)
+	var fts := {}
+	for id in WeaponTable.IDS:
+		var tg2 := Vector3(0.10, 0, 0.10)
+		tg2.y = qi.height_at(tg2.x, tg2.z)
+		fts[id] = float(qp.plan(tg2, hand_l, id).T)
+	check("flight times 1.5-3 s; artillery fastest, ballistic lofted longest", fts.artillery < fts.ballistic and fts.artillery >= 1.5 and fts.ballistic <= 3.0 and fts.cruise >= 1.5 and fts.cruise <= 3.0, str(fts))
+	var bpl := qp.plan(Vector3(0.10, qi.height_at(0.10, 0.10), 0.10), hand_l, "ballistic")
+	var apl := qp.plan(Vector3(0.10, qi.height_at(0.10, 0.10), 0.10), hand_l, "artillery")
+	var apex_b := -INF
+	var apex_a := -INF
+	for kk in 100:
+		apex_b = maxf(apex_b, WeaponFlight.position_at(bpl, bpl.T * kk / 100.0).y)
+		apex_a = maxf(apex_a, WeaponFlight.position_at(apl, apl.T * kk / 100.0).y)
+	check("ballistic arc is high (lofted), artillery arc low", apex_b > apex_a + 0.1, "apex %.3f vs %.3f" % [apex_b, apex_a])
+	# a cruise missile into a hill it cannot climb (a 5 cm cliff, synthetic surface):
+	# the planned path meets the cliff -> flagged, and the flight crosses the surface
+	var cliff := func(x: float, _z: float) -> float: return 0.05 if x > 0.2 else 0.0
+	var cw := WeaponTable.get_weapon("cruise")
+	var hp := WeaponFlight.plan(cw, Vector3(-0.4, 0.02, 0.0), Vector3(0.45, 0.05, 0.0), cliff, PhysicsTest.G)
+	var cross_x := INF
+	for kk in 2000:
+		var pp2 := WeaponFlight.position_at(hp, float(hp.T) * kk / 2000.0)
+		if pp2.y < float(cliff.call(pp2.x, pp2.z)):
+			cross_x = pp2.x
+			break
+	check("cruise missile into a hill too steep to climb hits the hill", hp.crash and cross_x > 0.199 and cross_x < 0.23, "crash %s at x %.3f" % [hp.crash, cross_x])
+
+	# --- land vs sea vs shallow impacts ------------------------------------------------
+	var deep := Vector3(0.05, IslandTerrain.SEA, 0.40)
+	var shallow := Vector3.INF
+	for jj in range(-40, 41):
+		for ii in range(-40, 41):
+			var x := ii * 0.01
+			var z := jj * 0.01
+			if not qi.terrain.is_inside(x, z, 0.03):
+				continue
+			var dd := IslandTerrain.SEA - qi.height_at(x, z)
+			if dd > 0.0004 and dd < PhysicsTest.SHALLOW * 0.7 and qi.height_at(x + 0.004, z) < IslandTerrain.SEA and qi.height_at(x - 0.004, z) < IslandTerrain.SEA:
+				shallow = Vector3(x, IslandTerrain.SEA, z)
+				break
+		if shallow != Vector3.INF:
+			break
+	var cr0 := qi.props.craters.size()
+	var h_deep := qi.height_at(deep.x, deep.z)
+	qp.debris.clear()
+	qp.fx.clear()
+	qp.fire(deep, hand_l, "ballistic")
+	var st3 := 0
+	while qp.flying and st3 < 4000:
+		qp.advance(1.0 / 72.0)
+		st3 += 1
+	check("sea impact: water splash, no crater / fire / debris, shell gone", qp.last_impact_kind == "water" and qi.props.craters.size() == cr0 and _near(qi.height_at(deep.x, deep.z), h_deep) and qp.debris.bodies.size() == 0 and qp.fx.ripples.size() >= 1 and qp.sfx.last_played == "thump" and not qp.flying and not qp.fx.flash_light.visible, "kind %s, ripples %d, sound %s" % [qp.last_impact_kind, qp.fx.ripples.size(), qp.sfx.last_played])
+	var fire_puffs := 0
+	for q in qp.fx.puffs:
+		if q.kind >= 2:
+			fire_puffs += 1
+	check("sea impact: no fireball / smoke column", fire_puffs == 0, "%d fireball puffs" % fire_puffs)
+	if shallow != Vector3.INF:
+		qp.fire(shallow, hand_l, "artillery")
+		st3 = 0
+		while qp.flying and st3 < 4000:
+			qp.advance(1.0 / 72.0)
+			st3 += 1
+		check("shallow water at the shore: small splash + wet sand mark, no crater", qp.last_impact_kind == "shallow" and qp.wet_mark_count() >= 1 and qi.props.craters.size() == cr0, "kind %s at %s" % [qp.last_impact_kind, shallow])
+	else:
+		check("found a shallow-water test point", false)
+	var landp := Vector3(0.02, 0.0, 0.05)
+	landp.y = qi.height_at(landp.x, landp.z)
+	qp.fire(landp, hand_l, "artillery")
+	st3 = 0
+	while qp.flying and st3 < 4000:
+		qp.advance(1.0 / 72.0)
+		st3 += 1
+	check("land impact: crater + explosion + boom", qp.last_impact_kind == "land" and qi.props.craters.size() == cr0 + 1 and qp.sfx.last_played == "boom" and qi.height_at(landp.x, landp.z) < landp.y - 0.001)
+	# reset island: craters, buildings and debris gone
+	qp.reset_island()
+	var all_alive := true
+	for st4 in qi.props.structures:
+		if not st4.alive:
+			all_alive = false
+	check("reset island restores the terrain, buildings and clears debris", qi.props.craters.is_empty() and _near(qi.height_at(landp.x, landp.z), landp.y) and all_alive and qp.debris.settled_count() == 0 and qp.debris.bodies.is_empty())
+
+	# --- XR flow without a headset ---------------------------------------------------
 	var room2 := Room.new()
 	root.add_child(room2)
 	var xg2 := XRGame.new()
 	root.add_child(xg2)
 	xg2.setup(room2, qd, qi, qp)
+	xg2.rig.sim = true
 	xg2.set_mode("mr")
 	xg2.surfaces.add_test_plane(Transform3D(Basis(Vector3.RIGHT, -PI / 2), Vector3(0.0, 0.72, -0.8)), Vector2(1.4, 0.8), "table")
 	var head := Transform3D(Basis(), Vector3(0.0, 1.6, 0.3))
@@ -407,34 +537,112 @@ func _xr_tests(island: Island, phys: PhysicsTest) -> void:
 	var k2 := qd.global_transform.basis.get_scale().x
 	check("XR placing: stick shrinks and turns the model", k2 < 0.5 and k2 >= 0.4 and absf(xg2.user_yaw) > 1.0, "scale %.2f, turn %.2f rad" % [k2, xg2.user_yaw])
 	xg2._on_button("right", "trigger", true)
-	check("XR: trigger pins the model", xg2.state == "pinned" and not xg2.ghost.visible and XRGame.HINT_PLAY_AR in xg2.hint.text)
+	check("XR: trigger pins the model, panel shown", xg2.state == "pinned" and not xg2.ghost.visible and XRGame.HINT_PLAY_AR in xg2.hint.text and xg2.panel.visible)
+
+	# pin stability: head and both controllers wander for 300 frames, nothing else
+	var cam := xg2.rig.camera
+	var ra: XRController3D = xg2.rig.hands["right"].aim
+	var lg: XRController3D = xg2.rig.hands["left"].grip
+	var la: XRController3D = xg2.rig.hands["left"].aim
+	var rgp: XRController3D = xg2.rig.hands["right"].grip
+	var pinned_xf := qd.global_transform
+	var drift := 0
+	for f in 300:
+		var a := f * 0.05
+		cam.transform = Transform3D(Basis(Vector3.UP, sin(a) * 1.2) * Basis(Vector3.RIGHT, -0.4 + 0.2 * cos(a * 0.7)), Vector3(0.6 * sin(a * 0.5), 1.5 + 0.1 * sin(a), 0.3 + 0.5 * cos(a * 0.5)))
+		ra.transform = Transform3D(Basis(Vector3.UP, cos(a)) * Basis(Vector3.RIGHT, -0.6), cam.transform.origin + Vector3(0.2, -0.35, -0.2))
+		rgp.transform = ra.transform
+		lg.transform = Transform3D(Basis(Vector3.UP, -cos(a)), cam.transform.origin + Vector3(-0.2, -0.4, -0.25))
+		la.transform = lg.transform
+		await process_frame
+		if qd.global_transform != pinned_xf:
+			drift += 1
+	check("pinned island bit-identical while head + controllers move (300 frames)", drift == 0 and qd.global_transform == pinned_xf, "%d frames drifted" % drift)
+	# left stick X: smooth turn about its own centre, base fixed, ticks every 15 deg
+	var p_before := pulses_of(xg2)
+	var base_before := qd.global_transform.origin
+	xg2.rig.sim_stick["left"] = Vector2(1.0, 0.0)
+	for f in 72:
+		await process_frame
+	xg2.rig.sim_stick["left"] = Vector2.ZERO
+	var turned := qd.global_transform
+	var yaw_change := absf(wrapf(turned.basis.get_euler().y - pinned_xf.basis.get_euler().y, -PI, PI))
+	var up_ok := turned.basis.y.normalized().dot(Vector3.UP) > 0.999999 and _near(turned.basis.get_scale().x, pinned_xf.basis.get_scale().x)
+	check("left stick X turns the island about its centre (yaw only, base fixed)", turned.origin == base_before and up_ok and yaw_change > 0.5, "yaw %.2f rad, base %s" % [yaw_change, turned.origin])
+	check("haptic tick every 15 deg while turning", pulses_of(xg2) - p_before >= int(yaw_change / (PI / 12.0)) - 1 and pulses_of(xg2) - p_before > 0, "%d ticks for %.0f deg" % [pulses_of(xg2) - p_before, rad_to_deg(yaw_change)])
+	var idle_drift := 0
+	for f in 120:
+		await process_frame
+		if qd.global_transform != turned:
+			idle_drift += 1
+	check("after turning, idle: no drift (120 frames)", idle_drift == 0)
+	# panel rotate buttons
+	var y0 := xg2.cur_yaw
+	xg2.panel.press("rot_l")
+	check("panel rotate button turns 15 deg", _near(wrapf(xg2.cur_yaw - y0, -PI, PI), PI / 12.0, 1e-4) and qd.global_transform.origin == base_before)
+
+	# weapon switching: left stick Y flick and a tap with the right ray on the panel
+	xg2.select_weapon("ballistic")
+	xg2.rig.sim_stick["left"] = Vector2(0.0, 1.0)
+	await process_frame
+	await process_frame
+	xg2.rig.sim_stick["left"] = Vector2.ZERO
+	await process_frame
+	var after_flick := xg2.weapon
+	await process_frame   # panel placed at the left hand this frame
+	var eye_p := xg2.rig.head_transform().origin
+	var bc := xg2.panel.button_center("w_artillery")
+	var ph := xg2.panel.hit(eye_p, (bc - eye_p).normalized())
+	if not ph.is_empty() and ph.id != "":
+		xg2.panel.press(ph.id)
+	check("panel: left stick flick and right-ray tap switch the weapon", after_flick == "cruise" and ph.get("id", "") == "w_artillery" and xg2.weapon == "artillery" and qp.weapon == "artillery" and xg2.panel.selected == "artillery", "flick -> %s, tap -> %s" % [after_flick, ph.get("id", "")])
+
+	# lock + fire: right ray on the island, right grip locks (red), trigger fires from the hand
 	var tl := Vector3(0.1, 0.0, 0.1)
 	tl.y = qi.surface_at(tl.x, tl.z)
-	var eye2 := qd.global_transform * Vector3(0.0, 0.6, 0.7)
+	ra.global_transform = Transform3D(Basis(), qd.global_transform * Vector3(0.0, 0.7, 0.9))
+	var eye2 := ra.global_transform.origin
 	var wh: Variant = xg2.aim_at(eye2, ((qd.global_transform * tl) - eye2).normalized())
-	check("XR: right ray on the island shows the trajectory preview", wh != null and xg2.aim_target != null and (xg2.aim_target as Vector3).distance_to(tl) < 0.003 and qp.preview_mm.visible_instance_count > 10, "aim %s" % [xg2.aim_target])
+	check("right ray on the island: target marker + preview from the hand", wh != null and xg2.aim_target != null and (xg2.aim_target as Vector3).distance_to(tl) < 0.003 and qp.preview_mm.visible_instance_count > 10 and qp.marker.visible, "aim %s" % [xg2.aim_target])
+	var p_first: Vector3 = WeaponFlight.position_at(qp.last_aim_plan, 0.0)   # first preview dot
+	check("preview starts at the hand", p_first.distance_to(xg2.launch_point_local()) < 1e-4, "%s vs %s" % [p_first, xg2.launch_point_local()])
+	xg2._on_button("right", "grip", true)
+	check("right grip locks the target (marker red)", xg2.locked != null and (xg2.locked as Vector3).distance_to(tl) < 0.003 and qp.marker.material_override == qp._mat_lock)
+	xg2.aim_at(eye2, Vector3(0.3, -0.2, -1.0).normalized())   # pointing elsewhere: lock kept
+	xg2._panel_hit = {}
+	var ammo0 := int(xg2.ammo["artillery"])
 	xg2._on_button("right", "trigger", true)
-	var fly0 := qp.flying
+	var launch_l := xg2.launch_point_local()
+	check("trigger fires the selected weapon from the hand at the locked target", qp.flying and qp.p0.distance_to(launch_l) < 1e-5 and (qp.target as Vector3).distance_to(xg2.locked) < 1e-6 and int(xg2.ammo["artillery"]) == ammo0 - 1 and float(xg2.cooldown["artillery"]) > 0.0)
+	var blocked := xg2.fire()
+	check("cooldown blocks an immediate second shot", not blocked)
 	var n := 0
-	while qp.flying and n < 2000:
+	while qp.flying and n < 3000:
 		qp.advance(1.0 / 72.0)
 		n += 1
-	check("XR: trigger fires the shell at the aimed point", fly0 and Vector2(qp.last_impact.x - tl.x, qp.last_impact.z - tl.z).length() < 0.02, "impact %s" % qp.last_impact)
+	check("locked shot lands within 2 cm", Vector2(qp.last_impact.x - tl.x, qp.last_impact.z - tl.z).length() < 0.02, "impact %s" % qp.last_impact)
 	xg2._on_button("right", "ax", true)
 	var slow := qp.slow_motion
 	xg2._on_button("right", "ax", true)
 	xg2._on_button("left", "stick", true)
 	xg2._step_fps(0.3)
-	check("XR: A toggles slow motion, left stick click the FPS panel", slow and not qp.slow_motion and xg2.fps_label.visible and xg2.fps_label.text.contains("fps"), xg2.fps_label.text.replace("\n", " | "))
-	xg2.aim_at(Vector3.ZERO, Vector3.ZERO)
-	check("XR: preview hidden when the ray leaves the island", qp.preview_mm.visible_instance_count == 0)
+	check("A toggles slow motion, left stick click the FPS panel", slow and not qp.slow_motion and xg2.fps_label.visible and xg2.fps_label.text.contains("fps"), xg2.fps_label.text.replace("\n", " | "))
+	xg2.panel.press("reset")
+	check("panel reset island clears craters and the lock", qi.props.craters.is_empty() and xg2.locked == null)
 	xg2._on_button("right", "by", true)
-	check("XR: B un-pins (place again)", xg2.state == "placing" and XRGame.HINT_PLACE_EN in xg2.hint.text)
+	check("B un-pins (place again)", xg2.state == "placing" and XRGame.HINT_PLACE_EN in xg2.hint.text and not xg2.panel.visible)
+	xg2.rig.sim = false
 	xg2.set_mode("vr")
 	xg2.queue_free()
 	room2.queue_free()
 
 	IslandProps.merged_veg = false
+	IslandProps.tufts = true
 	IslandProps.small_shadows = true
 	IslandWater.opaque = false
 	DebrisSystem.cap = DebrisSystem.MAX_BODIES
+	DebrisSystem.max_awake = 400
+	IslandTerrain.defer_meshes = false
+	DebrisSystem.max_age = 6.0
+	PhysicsTest.ejecta_scale = 1.0
+	FxSystem.cap = FxSystem.MAX_PUFFS

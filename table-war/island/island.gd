@@ -26,6 +26,7 @@ func build() -> void:
 	add_child(props)
 	props.build(terrain, layout)
 	terrain.build_meshes()
+	terrain.snapshot()
 	water = IslandWater.new()
 	water.name = "Water"
 	add_child(water)
@@ -35,6 +36,12 @@ func build() -> void:
 	add_child(base)
 	base.build(terrain)
 	build_ms = Time.get_ticks_msec() - t0
+
+
+## "Reset island": craters, burnt buildings, vegetation and roads back to new.
+func reset_damage() -> void:
+	terrain.reset_damage()
+	props.reset_damage()
 
 
 func height_at(x: float, z: float) -> float:

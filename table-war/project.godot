@@ -73,6 +73,7 @@ openxr/environment_blend_mode=2
 openxr/foveation_level=2
 openxr/foveation_dynamic=true
 openxr/startup_alert=false
+openxr/submit_depth_buffer=true
 shaders/enabled=true
 openxr/extensions/hand_tracking=false
 openxr/extensions/meta/passthrough=true

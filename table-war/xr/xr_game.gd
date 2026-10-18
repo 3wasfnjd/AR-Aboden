@@ -1,25 +1,36 @@
 class_name XRGame
 extends Node3D
-## Meta Quest 3 mixed-reality test mode: place the diorama on the real table, then walk
-## around it and fire the ballistic test shell at points on the island.
+## Meta Quest 3 mixed-reality mode: place the diorama on the real table, walk around
+## it, and fire weapons FROM YOUR OWN POSITION: the launch platform is the player's
+## right hand (weapons/weapon_table.gd, weapons/flight.gd, fx/physics_test.gd).
 ##
-## Placement (state "placing"): the model floats ahead of the user at hand height until
-## the right controller's ray meets a surface. Surfaces, in order:
-##   1. the headset's own scene planes / volumes facing up (Space Setup: tables, desks,
-##      storage, couch, bed, floor) via SceneSurfaces,
-##   2. a virtual horizontal plane at 0.75 m (a table) - right stick click switches it
-##      to the floor (0 m) and back,
-##   3. (MR) the floor when the ray passes beyond the virtual table's reach.
-## The base sits on the hit point (Placement.pinned_transform), facing the user; right
-## stick Y scales 0.4x-1.5x, X turns; a ghost ring marks the footprint. Trigger pins.
-## Pinned: right trigger aims (ray on the island shows the trajectory preview) and fires,
-## A toggles slow motion, B (or the left menu button) un-pins, left grip held + move
-## turns the model, left stick click shows the FPS panel at the left hand.
+## Placement ("placing"): the model floats ahead at hand height until the right ray
+## meets a surface: (1) the headset's scene planes / volumes facing up (Space Setup:
+## table, desk, storage, couch, bed, floor), (2) a virtual plane at 0.75 m (right stick
+## click: floor), (3) in MR the floor beyond its reach. The base sits on the hit point,
+## facing the user; right stick Y scales 0.4x-1.5x, X turns; a ghost ring shows the
+## footprint. Trigger pins.
+##
+## Pinned: the diorama's transform is written ONLY by the rotation inputs (left stick X,
+## left grip drag, the panel's rotate buttons), which change its yaw about its own
+## centre and nothing else (Placement.pinned_transform keeps the base on the table).
+## Nothing else reads the head or the controllers into it; a recenter keeps it.
+##   right ray on the island    target marker + trajectory preview from the hand
+##   right grip                 lock / unlock the target (marker turns red)
+##   right trigger              fire the selected weapon (locked target, else the
+##                              pointed spot); on the panel: press the button
+##   left stick Y (flick)       next / previous weapon;  X: rotate the island
+##   A slow motion · B re-place · left stick click FPS panel · left menu = B
 
 const HINT_PLACE_AR := "وجّه اليد اليمنى للطاولة، العصا للحجم والدوران، الزناد للتثبيت"
 const HINT_PLACE_EN := "Point at your table, stick to size/rotate, trigger to pin"
 const HINT_PLAY_AR := "الزناد: أطلق قذيفة · A: حركة بطيئة · B: نقل الجزيرة"
-const HINT_PLAY_EN := "Trigger: fire shell · A: slow motion · B: move island"
+const HINT_PLAY_EN := "Trigger: fire · grip: lock target · A: slow motion · B: move island"
+const ROT_RATE := 1.2            # rad/s at full left stick
+const ROT_TICK := PI / 12.0      # haptic tick every 15 degrees
+const ROT_STEP := PI / 12.0      # panel rotate buttons
+## Launch point relative to the right controller's aim pose: just above / ahead of it.
+const LAUNCH_OFFSET := Vector3(0.0, 0.035, -0.06)
 
 var room: Room
 var diorama: Node3D
@@ -28,18 +39,28 @@ var phys: PhysicsTest
 
 var rig: XRRig
 var surfaces: SceneSurfaces
+var panel: ControlPanel
 var state := "placing"          # placing | pinned
 var mode := "mr"                # mr (passthrough) | vr (fake room)
 var place_scale := 1.0
-var user_yaw := 0.0             # stick turn added to "facing the user"
+var user_yaw := 0.0
 var cur_yaw := 0.0
 var cur_p := Vector3.ZERO
 var virtual_h := Placement.TABLE_H
 var surface_label := ""
-var aim_target: Variant = null
-var _aim_sent := Vector3.INF
+var aim_target: Variant = null   # island-local point under the right ray
+var locked: Variant = null       # island-local locked target
+var weapon := "ballistic"
+var ammo := {}
+var cooldown := {}
+var _reload := {}
+var _aim_key := Vector4(INF, INF, INF, INF)
+var _aim_frame := 0
 var _have_p := false
-var _grab := {}                 # left-grip turn: {a0, yaw0}
+var _grab := {}
+var _rot_acc := 0.0
+var _flick_armed := true
+var _panel_hit := {}
 
 var ghost: MeshInstance3D
 var ghost_mat: StandardMaterial3D
@@ -67,6 +88,17 @@ func setup(r: Room, d: Node3D, isl: Island, p: PhysicsTest) -> void:
 	_build_ghost()
 	_build_contact_shadow()
 	_build_labels()
+	panel = ControlPanel.new()
+	panel.name = "ControlPanel"
+	panel.visible = false
+	add_child(panel)
+	panel.pressed.connect(_on_panel)
+	for id in WeaponTable.IDS:
+		var w := WeaponTable.get_weapon(id)
+		ammo[id] = int(w.ammo)
+		cooldown[id] = 0.0
+		_reload[id] = 0.0
+	phys.weapon = weapon
 	phys.impacted.connect(_on_impact)
 
 
@@ -78,15 +110,19 @@ func start() -> bool:
 	surfaces.attach(rig)
 	rig.button.connect(_on_button)
 	rig.session_started.connect(func(): set_mode("mr"))
-	rig.recentered.connect(unpin)
-	set_mode("mr")   # until the session reports passthrough support (VR without it)
+	rig.recentered.connect(_on_recentered)
+	set_mode("mr")
 	state = "placing"
 	_update_hint()
 	return true
 
 
-## "mr" hides the fake room (Room.set_mr) and shows a contact shadow on the real table;
-## "vr" (no passthrough) shows the room. Returns the mode actually set.
+## A recenter (long press on the Meta button) moves the tracking origin: the island
+## keeps its world transform and stays pinned (B re-places it if it no longer matches).
+func _on_recentered() -> void:
+	print("XR: recentered, island kept at its world transform")
+
+
 func set_mode(m: String) -> String:
 	m = rig.set_mode(m)
 	mode = m
@@ -100,7 +136,6 @@ func set_mode(m: String) -> String:
 # ------------------------------------------------------------------------------------
 
 func _build_ghost() -> void:
-	# a thin ring just outside the base + a faint inner ring at the slab edge
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var seg := 96
@@ -189,7 +224,6 @@ func _label(size: int, px: float) -> Label3D:
 
 
 func _build_labels() -> void:
-	# head-locked hint: small, below the line of sight
 	hint = _label(40, 0.00028)
 	hint.name = "Hint"
 	hint.position = Vector3(0, -0.15, -0.6)
@@ -201,21 +235,22 @@ func _build_labels() -> void:
 	hint_status.position = Vector3(0, -0.188, -0.6)
 	hint_status.rotation.x = deg_to_rad(12.0)
 	rig.camera.add_child(hint_status)
-	# FPS / frame time near the left hand (left stick click)
 	fps_label = _label(30, 0.00025)
 	fps_label.name = "FpsPanel"
 	fps_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-	fps_label.position = Vector3(0.0, 0.05, 0.02)
+	fps_label.position = Vector3(0.0, -0.02, 0.06)   # under the tablet
 	fps_label.rotation.x = deg_to_rad(-55.0)
 	fps_label.visible = false
 	rig.hands["left"].grip.add_child(fps_label)
 
 
+func _set_text(l: Label3D, t: String) -> void:
+	if l.text != t:
+		l.text = t
+
+
 func _update_hint() -> void:
-	if state == "placing":
-		hint.text = HINT_PLACE_AR + "\n" + HINT_PLACE_EN
-	else:
-		hint.text = HINT_PLAY_AR + "\n" + HINT_PLAY_EN
+	_set_text(hint, HINT_PLACE_AR + "\n" + HINT_PLACE_EN if state == "placing" else HINT_PLAY_AR + "\n" + HINT_PLAY_EN)
 
 
 # ------------------------------------------------------------------------------------
@@ -226,14 +261,19 @@ func _on_button(hand: String, name: String, pressed: bool) -> void:
 	if hand == "right" and name == "trigger" and pressed:
 		if state == "placing":
 			pin()
+		elif not _panel_hit.is_empty():
+			if String(_panel_hit.id) != "":
+				panel.press(_panel_hit.id)
+				rig.pulse("right", 0.25, 0.02)
 		else:
 			fire()
+	elif hand == "right" and name == "grip" and pressed and state == "pinned":
+		toggle_lock()
 	elif pressed and ((hand == "right" and name == "by") or (hand == "left" and name == "menu")):
 		if state == "pinned":
 			unpin()
 	elif hand == "right" and name == "ax" and pressed:
-		phys.set_slow_motion(not phys.slow_motion)
-		rig.pulse("right", 0.2, 0.03)
+		toggle_slow()
 	elif hand == "left" and name == "stick" and pressed:
 		fps_label.visible = not fps_label.visible
 	elif hand == "right" and name == "stick" and pressed and state == "placing":
@@ -246,17 +286,76 @@ func _on_button(hand: String, name: String, pressed: bool) -> void:
 			_grab = {}
 
 
-func _on_impact(_point: Vector3) -> void:
-	rig.pulse("right", 0.5, 0.08)
+func _on_panel(id: String) -> void:
+	match id:
+		"slow":
+			toggle_slow()
+		"reset":
+			reset_island()
+		"rot_l":
+			rotate_island(ROT_STEP)
+		"rot_r":
+			rotate_island(-ROT_STEP)
+		_:
+			if id.begins_with("w_"):
+				select_weapon(id.substr(2))
+
+
+func select_weapon(id: String) -> void:
+	weapon = id
+	phys.weapon = id
+	panel.set_selected(id)
+	_aim_key = Vector4(INF, INF, INF, INF)
+	rig.pulse("left", 0.2, 0.02)
+
+
+func toggle_slow() -> void:
+	phys.set_slow_motion(not phys.slow_motion)
+	rig.pulse("right", 0.2, 0.03)
+
+
+func toggle_lock() -> void:
+	if aim_target != null:
+		locked = aim_target
+		phys.show_marker(locked, true, weapon)
+		rig.pulse("right", 0.45, 0.04)
+	else:
+		locked = null
+	_aim_key = Vector4(INF, INF, INF, INF)
+
+
+func reset_island() -> void:
+	phys.reset_island()
+	locked = null
+	aim_target = null
+	for id in WeaponTable.IDS:
+		ammo[id] = int(WeaponTable.get_weapon(id).ammo)
+		cooldown[id] = 0.0
+	_aim_key = Vector4(INF, INF, INF, INF)
+
+
+## Turn the pinned island about its own vertical axis: only the yaw changes, the base
+## stays exactly where it stands on the table.
+func rotate_island(d_yaw: float) -> void:
+	cur_yaw = wrapf(cur_yaw + d_yaw, -PI, PI)
+	diorama.transform = Placement.pinned_transform(cur_p, cur_yaw, place_scale)
+	_rot_acc += absf(d_yaw)
+	while _rot_acc >= ROT_TICK:
+		_rot_acc -= ROT_TICK
+		rig.pulse("left", 0.15, 0.015)
 
 
 func pin() -> void:
 	if surface_label == "":
-		rig.pulse("right", 0.1, 0.02)   # nothing under the model yet
+		rig.pulse("right", 0.1, 0.02)
 		return
 	state = "pinned"
+	# exactly the transform the user saw: no easing continues after this
+	cur_p = diorama.transform.origin
+	diorama.transform = Placement.pinned_transform(cur_p, cur_yaw, place_scale)
 	ghost.visible = false
 	contact.visible = mode == "mr"
+	panel.visible = true
 	rig.pulse("right", 0.6, 0.06)
 	_update_hint()
 
@@ -265,17 +364,39 @@ func unpin() -> void:
 	state = "placing"
 	_grab = {}
 	aim_target = null
-	_aim_sent = Vector3.INF
-	if not phys.flying:
-		phys.hide_preview()
+	locked = null
+	panel.visible = false
+	phys.hide_preview()
 	_update_hint()
 
 
-func fire() -> void:
-	if aim_target == null or phys.flying:
-		return
-	phys.fire(aim_target)
+## World launch point: just above / ahead of the right controller.
+func launch_point_world() -> Vector3:
+	return rig.aim_transform("right") * LAUNCH_OFFSET
+
+
+func launch_point_local() -> Vector3:
+	return diorama.global_transform.affine_inverse() * launch_point_world()
+
+
+func fire() -> bool:
+	var tgt: Variant = locked if locked != null else aim_target
+	if tgt == null:
+		return false
+	if float(cooldown[weapon]) > 0.0 or int(ammo[weapon]) <= 0:
+		rig.pulse("right", 0.08, 0.02)
+		return false
+	var w := WeaponTable.get_weapon(weapon)
+	phys.fire(tgt, launch_point_local(), weapon)
+	ammo[weapon] = int(ammo[weapon]) - 1
+	cooldown[weapon] = float(w.cooldown)
 	rig.pulse("right", 0.8, 0.07)
+	return true
+
+
+func _on_impact(_point: Vector3, _kind: String) -> void:
+	rig.pulse("right", 0.5 if _kind == "land" else 0.25, 0.08)
+	_aim_key = Vector4(INF, INF, INF, INF)   # preview + (locked) marker again
 
 
 func _hand_angle() -> float:
@@ -292,7 +413,7 @@ func _hand_angle() -> float:
 # ------------------------------------------------------------------------------------
 
 func _process(delta: float) -> void:
-	if not rig.xr_active:
+	if not rig.xr_active and not rig.sim:
 		return
 	var dt := minf(delta, 0.05)
 	if state == "placing":
@@ -300,16 +421,14 @@ func _process(delta: float) -> void:
 	else:
 		_step_pinned(dt)
 	if mode == "vr":
-		# the fake room's table top stays under the base
 		room.set_root.transform = Transform3D(Basis(Vector3.UP, cur_yaw), cur_p)
 	_step_fps(delta)
 
 
-## The surface the right ray points at: {p, n, label} or {}.
 func aim_surface(origin: Vector3, dir: Vector3) -> Dictionary:
 	var hit := surfaces.ray_surface(origin, dir)
 	if mode == "vr" and not hit.is_empty() and hit.label == "floor":
-		hit = {}   # VR: the fake room's table must stand on something above the floor
+		hit = {}
 	if hit.is_empty():
 		hit = Placement.virtual_hit(origin, dir, virtual_h if mode == "mr" else Placement.TABLE_H)
 	if hit.is_empty() and mode == "mr" and virtual_h > 0.0:
@@ -326,8 +445,6 @@ func _step_placing(dt: float) -> void:
 	rig.set_pointer("right", hit.p if not hit.is_empty() else null, true)
 
 
-## One placing step: the model eases towards `hit` (or floats ahead of `head` when hit
-## is {}), facing the user, with the stick's scale / turn applied.
 func place_toward(hit: Dictionary, head: Transform3D, stick: Vector2, dt: float) -> void:
 	var st := Placement.apply_stick(place_scale, user_yaw, stick, dt)
 	place_scale = st[0]
@@ -348,28 +465,81 @@ func place_toward(hit: Dictionary, head: Transform3D, stick: Vector2, dt: float)
 		ghost_mat.albedo_color = Color(1, 1, 1, 0.5) if not surface_label.begins_with("virtual") else Color(1.0, 0.75, 0.4, 0.5)
 	contact.visible = on and mode == "mr"
 	var where := {"table": "طاولة حقيقية · real table", "floor": "الأرض · floor", "virtual_table": "طاولة افتراضية 0.75 م · virtual table", "virtual_floor": "أرض افتراضية · virtual floor"}
-	hint_status.text = "%s   ×%.2f" % [where.get(surface_label, surface_label if on else "-"), Placement.clamp_scale(place_scale)]
+	_set_text(hint_status, "%s   ×%.2f" % [where.get(surface_label, surface_label if on else "-"), Placement.clamp_scale(place_scale)])
 
 
-func _step_pinned(_dt: float) -> void:
-	hint_status.text = "×%.2f%s" % [Placement.clamp_scale(place_scale), "   · slow-mo" if phys.slow_motion else ""]
-	# left grip held: turn the model about its centre with the hand
+func _step_pinned(dt: float) -> void:
+	# cooldowns and the slow reload of ammo
+	for id in WeaponTable.IDS:
+		var w := WeaponTable.get_weapon(id)
+		cooldown[id] = maxf(float(cooldown[id]) - dt, 0.0)
+		if int(ammo[id]) < int(w.ammo):
+			_reload[id] = float(_reload[id]) + dt
+			if float(_reload[id]) >= float(w.reload):
+				_reload[id] = 0.0
+				ammo[id] = int(ammo[id]) + 1
+	# rotation inputs: the ONLY writers of the pinned transform
+	var ls := rig.stick("left")
+	if absf(ls.x) > Placement.DEADZONE:
+		rotate_island(-ls.x * ROT_RATE * dt)
+	if absf(ls.y) > 0.7 and _flick_armed:
+		_flick_armed = false
+		select_weapon(WeaponTable.next_id(weapon, 1 if ls.y > 0.0 else -1))
+	elif absf(ls.y) < 0.3:
+		_flick_armed = true
 	if not _grab.is_empty() and rig.tracked("left"):
 		var a := _hand_angle()
 		if not is_nan(a):
-			cur_yaw = float(_grab.yaw0) + wrapf(a - float(_grab.a0), -PI, PI)
-			diorama.transform = Placement.pinned_transform(cur_p, cur_yaw, place_scale)
+			var yaw := float(_grab.yaw0) + wrapf(a - float(_grab.a0), -PI, PI)
+			rotate_island(wrapf(yaw - cur_yaw, -PI, PI))
+	_place_panel(dt)
+	# right ray: the panel first, else the island
 	var world_hit: Variant = null
+	_panel_hit = {}
 	if rig.tracked("right"):
 		var r := rig.ray("right")
-		world_hit = aim_at(r[0], r[1])
+		if panel.visible:
+			_panel_hit = panel.hit(r[0], r[1])
+		if _panel_hit.is_empty():
+			world_hit = aim_at(r[0], r[1])
+		else:
+			world_hit = _panel_hit.point
 	else:
 		aim_at(Vector3.ZERO, Vector3.ZERO)
 	rig.set_pointer("right", world_hit, true)
+	_update_panel()
+	_set_text(hint_status, "×%.2f%s" % [Placement.clamp_scale(place_scale), "   · slow-mo" if phys.slow_motion else ""])
 
 
-## Pinned: a world ray on the island sets aim_target (island-local) and shows the
-## trajectory preview to it. Returns the world hit point or null. A zero direction clears.
+## The tablet in the left hand, turned toward the eyes.
+func _place_panel(_dt: float) -> void:
+	if not panel.visible:
+		return
+	var g := rig.grip_transform("left")
+	var pos := g.origin + g.basis * Vector3(0.0, 0.06, -0.03)
+	var eye := rig.head_transform().origin
+	var to_eye := eye - pos
+	if to_eye.length_squared() < 1e-6:
+		return
+	panel.global_transform = Transform3D(Basis.looking_at(to_eye.normalized(), Vector3.UP, true), pos)
+
+
+func _update_panel() -> void:
+	var cool := {}
+	for id in WeaponTable.IDS:
+		cool[id] = float(cooldown[id]) / maxf(float(WeaponTable.get_weapon(id).cooldown), 0.01)
+	var tgt: Variant = locked if locked != null else aim_target
+	var txt := "الهدف: - · Target: -"
+	if tgt != null:
+		var dist_m := (diorama.global_transform * (tgt as Vector3)).distance_to(launch_point_world())
+		var T: float = phys.last_aim_T if phys.last_aim_T > 0.0 else 0.0
+		txt = "%s %.2f م · %.1f ث\n%s %.2f m · %.1f s" % ["مقفل" if locked != null else "الهدف", dist_m, T, "LOCKED" if locked != null else "Target", dist_m, T]
+	panel.update_state(ammo, cool, txt, phys.slow_motion)
+
+
+## Pinned: a world ray on the island sets aim_target (island-local). The preview runs
+## from the launch point (the hand) to the locked target, else to the pointed spot.
+## Returns the world hit point or null. A zero direction clears the pointer target.
 func aim_at(origin: Vector3, dir: Vector3) -> Variant:
 	var world_hit: Variant = null
 	aim_target = null
@@ -382,15 +552,21 @@ func aim_at(origin: Vector3, dir: Vector3) -> Variant:
 			if hit != null:
 				aim_target = hit
 				world_hit = diorama.global_transform * (hit as Vector3)
-	if phys.flying:
+	var tgt: Variant = locked if locked != null else aim_target
+	if tgt == null:
+		if _aim_key.x != INF:
+			phys.hide_preview()
+			_aim_key = Vector4(INF, INF, INF, INF)
 		return world_hit
-	if aim_target != null:
-		if (aim_target as Vector3).distance_to(_aim_sent) > 0.0015:
-			phys.aim(aim_target)
-			_aim_sent = aim_target
-	elif _aim_sent != Vector3.INF:
-		phys.hide_preview()
-		_aim_sent = Vector3.INF
+	# re-plan only when the hand or the target moved (cruise paths at most ~12 Hz)
+	_aim_frame += 1
+	var lp := launch_point_local()
+	var key := Vector4((tgt as Vector3).x, (tgt as Vector3).z, lp.x + lp.y * 3.1, lp.z)
+	var dk := key.distance_to(_aim_key) if _aim_key.x != INF else INF
+	var every := 6 if weapon == "cruise" else 2
+	if dk > 0.02 or (dk > 0.002 and _aim_frame % every == 0):
+		phys.aim(tgt, lp, weapon, locked != null)
+		_aim_key = key
 	return world_hit
 
 
@@ -404,11 +580,11 @@ func _step_fps(delta: float) -> void:
 		var fps := _fps_frames / _fps_acc
 		var dc := RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME)
 		var prim := RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_PRIMITIVES_IN_FRAME)
-		fps_label.text = "%.0f fps · %.1f ms (worst %.1f)\ncpu %.1f ms · phys %.1f ms\ndraw %d · %dk tris\ndebris %d/%d · %s" % [
+		_set_text(fps_label, "%.0f fps · %.1f ms (worst %.1f)\ncpu %.1f ms · phys %.1f ms\ndraw %d · %dk tris\ndebris %d+%d · puffs %d · %s" % [
 			fps, 1000.0 * _fps_acc / _fps_frames, 1000.0 * _fps_worst,
 			Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0,
 			Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS) * 1000.0,
-			dc, prim / 1000, phys.debris.bodies.size(), mini(DebrisSystem.cap, DebrisSystem.MAX_BODIES), mode.to_upper()]
+			dc, prim / 1000, phys.debris.bodies.size(), phys.debris.settled_count(), phys.fx.puffs.size(), mode.to_upper()])
 	_fps_acc = 0.0
 	_fps_frames = 0
 	_fps_worst = 0.0

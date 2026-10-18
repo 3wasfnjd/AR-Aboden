@@ -8,6 +8,7 @@ extends Node3D
 ##                  --quest  desktop preview of the Quest 3 performance profile
 ##                  --mr-preview  render the MR / VR placement previews (shots/x_*) and quit
 ##                  --out=<dir>  write screenshots there instead of res://shots
+##                  --shadows  sun shadows on (off by default everywhere)
 ##                  --xr     try OpenXR on desktop too (the Android build always does)
 
 var room: Room
@@ -25,6 +26,9 @@ var hud: Label
 var rng := RandomNumberGenerator.new()
 var _island_xf := Transform3D(Basis(), Vector3(INF, INF, INF))
 
+## Desktop "player eye", above / behind PhysicsTest.DESKTOP_HAND.
+const DESKTOP_EYE := Vector3(-0.36, 0.62, 0.92)
+
 const PRESETS := {
 	"hero": [Vector3(0.0, 0.06, 0.04), -30.0, 40.0, 1.15, 50.0],
 	"top": [Vector3(0.0, 0.05, 0.0), 0.0, 89.6, 1.62, 40.0],
@@ -39,10 +43,24 @@ const PRESETS := {
 
 ## Quest 3 profile (README "أداء Quest 3"): set before the island is built.
 static func apply_quest_profile() -> void:
-	IslandProps.merged_veg = true      # one MultiMesh per species and LOD level
-	IslandProps.small_shadows = false  # shrubs / tufts / rocks cast no shadow
+	# 2x2 tiles with visibility-range LOD (the merged per-instance vertex LOD submitted
+	# every hi + lo triangle, ~215k, each frame: dropped on Quest after build 1)
+	IslandProps.merged_veg = false
+	IslandProps.tufts = false          # no grass tufts at all
+	IslandProps.small_shadows = false  # shrubs / rocks cast no shadow
 	IslandWater.opaque = true          # opaque sea variant
-	DebrisSystem.cap = 200             # GDScript debris on the headset CPU
+	DebrisSystem.cap = 120             # live GDScript debris; settled ones are baked
+	PhysicsTest.ejecta_scale = 0.6     # fewer soil chunks per blast
+	IslandTerrain.defer_meshes = true  # crater chunk meshes over the next frames
+	DebrisSystem.max_awake = 70        # CPU budget: older awake ones freeze + bake
+	DebrisSystem.max_age = 4.0
+	FxSystem.cap = 300                 # smoke / dust / water puffs
+
+
+## Quest: nothing casts a shadow (the sun has none either; Room.apply_quest).
+static func no_shadows(n: Node) -> void:
+	for g in n.find_children("*", "GeometryInstance3D", true, false):
+		(g as GeometryInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 
 
 func _ready() -> void:
@@ -52,6 +70,8 @@ func _ready() -> void:
 	quest = OS.has_feature("android") or "--quest" in args
 	if quest:
 		apply_quest_profile()
+	Room.shadows = "--shadows" in args and not quest
+	process_priority = 100   # shader globals after XRGame / the camera moved this frame
 	room = Room.new()
 	room.name = "Room"
 	add_child(room)
@@ -68,9 +88,7 @@ func _ready() -> void:
 	diorama.add_child(phys)
 	phys.setup(island)
 	if quest:
-		for mmi in phys.debris.get_children():
-			if mmi is GeometryInstance3D:
-				(mmi as GeometryInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		no_shadows(self)
 	if want_xr:
 		xr_game = XRGame.new()
 		xr_game.name = "XRGame"
@@ -126,7 +144,7 @@ func _build_overlay() -> void:
 	hud.add_theme_color_override("font_color", Color(1, 1, 1, 0.9))
 	hud.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.6))
 	hud.add_theme_constant_override("outline_size", 4)
-	hud.text = "LMB drag orbit · RMB pan · wheel zoom · click = fire there · F random fire · Space slow-mo · T tilt-shift · 1-6 views · H hide"
+	hud.text = "LMB drag orbit · RMB pan · wheel zoom · click = fire there · F random fire · W weapon (%s) · Space slow-mo · T tilt-shift · 1-6 views · R reset · H hide" % phys.weapon
 	tilt_layer.add_child(hud)
 
 
@@ -149,7 +167,10 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		KEY_H:
 			hud.visible = not hud.visible
 		KEY_R:
-			phys.debris.clear()
+			phys.reset_island()
+		KEY_W:
+			phys.weapon = WeaponTable.next_id(phys.weapon)
+			hud.text = hud.text.substr(0, hud.text.find("W weapon")) + "W weapon (%s)" % phys.weapon + hud.text.substr(hud.text.find(") ·") + 1)
 		KEY_1: _apply_preset("hero")
 		KEY_2: _apply_preset("top")
 		KEY_3: _apply_preset("town")
@@ -260,20 +281,26 @@ func _run_shots() -> void:
 
 
 func _physics_shots() -> void:
-	# target: the tallest downtown tower
+	# target: the tallest downtown tower; the shot leaves the player's hand
 	var best: Dictionary = {}
 	for s in island.props.structures:
 		if s.kind in ["tower", "midrise"] and (best.is_empty() or s.size.y > best.size.y):
 			best = s
 	var tp: Vector3 = best.pos if not best.is_empty() else Vector3(0.1, 0.09, 0.12)
 	var tgt := Vector3(tp.x, island.height_at(tp.x, tp.z), tp.z)
+	phys.weapon = "ballistic"
+	phys.aim(tgt)
 	phys.fire(tgt)
-	phys.advance(0.10)
+	phys.advance(0.12)
 	var m := phys.p0
-	cam.set_view(Vector3(m.x + 0.012, m.y + 0.008, m.z + 0.004), -130.0, 16.0, 0.07, 55.0)
+	cam.min_dist = 0.01
+	# over the player's shoulder: the shot leaving the hand, the island ahead
+	var eye := DESKTOP_EYE
+	cam.fov = 60.0
+	cam.global_transform = Transform3D(Basis.looking_at((Vector3(0.0, 0.1, 0.0) - eye).normalized(), Vector3.UP), eye)
 	await _capture("f_launch")
-	phys.advance(1.1)
-	cam.set_view(Vector3((m.x + tgt.x) * 0.5, 0.2, (m.z + tgt.z) * 0.5 + 0.02), -8.0, 18.0, 1.0, 50.0)
+	phys.advance(1.2)
+	cam.set_view((m + tgt) * 0.5 + Vector3(0, 0.05, 0), -75.0, 14.0, 1.25, 50.0)
 	await _capture("g_midflight")
 	while phys.flying:
 		phys.advance(1.0 / 60.0)
@@ -284,11 +311,44 @@ func _physics_shots() -> void:
 	phys.advance(3.5)
 	cam.set_view(tgt, -20.0, 48.0, 0.16, 50.0)
 	await _capture("i_aftermath")
+	# a shell into the sea: water column, spray, ripples, foam; no crater
+	var sea := Vector3(0.05, IslandTerrain.SEA, 0.40)
+	phys.weapon = "artillery"
+	phys.fire(sea)
+	while phys.flying:
+		phys.advance(1.0 / 60.0)
+	print("SEA_IMPACT ", phys.last_impact, " kind ", phys.last_impact_kind)
+	phys.advance(0.28)
+	cam.set_view(sea + Vector3(0, 0.012, 0), -30.0, 22.0, 0.17, 50.0)
+	await _capture("j_sea_splash")
+	phys.advance(0.9)
+	cam.set_view(sea, -30.0, 40.0, 0.17, 50.0)
+	await _capture("j2_sea_ripples")
+	# each weapon from the player's eye: preview from the hand + the shot in flight
+	var eye_target := Vector3(0.0, 0.05, 0.0)
+	var targets := {"ballistic": Vector3(0.02, 0.0, 0.10), "cruise": Vector3(0.24, 0.0, -0.02), "artillery": Vector3(-0.18, 0.0, 0.16)}
+	for id in WeaponTable.IDS:
+		var t: Vector3 = targets[id]
+		t.y = island.surface_at(t.x, t.z)
+		phys.weapon = id
+		phys.aim(t, Vector3.INF, id, true)
+		phys.fire(t)
+		phys.advance(phys.flight_T * (0.8 if id == "ballistic" else 0.55))
+		cam.fov = 60.0
+		cam.global_transform = Transform3D(Basis.looking_at((eye_target - DESKTOP_EYE).normalized(), Vector3.UP), DESKTOP_EYE)
+		await _capture("k_weapon_" + id)
+		while phys.flying:
+			phys.advance(1.0 / 60.0)
+		print("WEAPON ", id, " err ", Vector2(phys.last_impact.x - t.x, phys.last_impact.z - t.z).length(), " T ", phys.flight_T)
+		phys.advance(1.5)
+	phys.hide_preview()
+	phys.weapon = "ballistic"
 
 
 ## Desktop check of the XR look: the model pinned at 0.6x on a 0.75 m virtual table,
 ## seen from standing eye height. MR: fake room hidden, transparent background (the PNG
 ## keeps the alpha), contact shadow. VR: the fake room's table under the base.
+## Also the left-hand control panel close up (x_panel).
 func _run_mr_preview() -> void:
 	hud.visible = false
 	phys.manual = true
@@ -303,12 +363,28 @@ func _run_mr_preview() -> void:
 	x.state = "pinned"
 	cam.min_dist = 0.01
 	cam.set_view(spot + Vector3(0, 0.05, 0), -20.0, 48.0, 0.95, 60.0)
+	var tgt := Vector3(0.1, 0.0, 0.12)
+	tgt.y = island.surface_at(tgt.x, tgt.z)
+	var hand_w := spot + Vector3(-0.25, 0.42, 0.62)
+	var hand_l := diorama.global_transform.affine_inverse() * hand_w
 	for m in ["mr", "vr"]:
 		x.set_mode(m)
 		room.set_root.transform = Transform3D(Basis(Vector3.UP, x.cur_yaw), spot)
-		var tgt := Vector3(0.1, 0.0, 0.12)
-		tgt.y = island.surface_at(tgt.x, tgt.z)
-		phys.aim(tgt)
+		phys.aim(tgt, hand_l, "ballistic", true)
 		await _capture("x_%s_preview" % m)
+	# the tablet in the left hand, from the eye
+	x.set_mode("mr")
+	var eye := spot + Vector3(-0.05, 0.62, 0.70)
+	var ppos := eye + Vector3(-0.12, -0.2, -0.22)
+	x.panel.visible = true
+	x.panel.global_transform = Transform3D(Basis.looking_at((eye - ppos).normalized(), Vector3.UP, true), ppos)
+	x.select_weapon("cruise")
+	x.locked = tgt
+	x.ammo["ballistic"] = 4
+	x.cooldown["cruise"] = 1.2
+	x.panel.update_state(x.ammo, {"ballistic": 0.0, "cruise": 0.4, "artillery": 0.0}, "مقفل 0.86 م · 2.4 ث\nLOCKED 0.86 m · 2.4 s", false)
+	x.panel.hit(eye, (x.panel.button_center("reset") - eye).normalized())
+	cam.global_transform = Transform3D(Basis.looking_at((ppos + Vector3(0.05, 0.05, -0.1) - eye).normalized(), Vector3.UP), eye)
+	cam.fov = 55.0
+	await _capture("x_panel")
 	get_tree().quit()
-

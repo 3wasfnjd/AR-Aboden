@@ -6,8 +6,8 @@ extends Node3D
 const CELL := 0.008
 const NX := 126                 # cells along x  -> 1.008 m (square grid)
 const NZ := 126                 # cells along z
-const CX := 42                  # cells per chunk (x)  -> 3 chunks
-const CZ := 42                  # cells per chunk (z)  -> 3 x 3 = 9 chunks
+const CX := 21                  # cells per chunk (x)  -> 6 chunks (a crater rebuilds ~1/4 of the old 42-cell chunk)
+const CZ := 21                  # cells per chunk (z)  -> 6 x 6 = 36 chunks
 const RADIUS := 0.5             # round slab: 1.0 m diameter
 const PLINTH_H := 0.018         # wooden plinth top (slab sits on it)
 const SEA := 0.078              # sea surface height (top of resin)
@@ -612,7 +612,11 @@ func crater(center: Vector3, radius: float, depth: float) -> Array[Vector2i]:
 		for ci in range(clampi((i0 - 1) / CX, 0, nci - 1), clampi((i1 + 1) / CX, 0, nci - 1) + 1):
 			touched.append(Vector2i(ci, cj))
 			if not chunk_nodes.is_empty():
-				_build_chunk(ci, cj)
+				if defer_meshes:
+					if not Vector2i(ci, cj) in _pending_chunks:
+						_pending_chunks.append(Vector2i(ci, cj))
+				else:
+					_build_chunk(ci, cj)
 	_rebuild_depth_image(i0 - 1, j0 - 1, i1 + 1, j1 + 1)
 	deformed.emit(center, rim_r)
 	return touched
@@ -623,6 +627,42 @@ func crater(center: Vector3, radius: float, depth: float) -> Array[Vector2i]:
 # --------------------------------------------------------------------------------------
 
 const DEPTH_RES := 2      # depth texels per terrain cell (4 mm texels: crisper shoreline)
+
+## Quest profile: a crater's chunk meshes are rebuilt over the next frames (one per
+## frame) instead of all in the impact frame; heights (physics) change at once.
+static var defer_meshes := false
+var _pending_chunks: Array[Vector2i] = []
+
+
+func _process(_delta: float) -> void:
+	if not _pending_chunks.is_empty():
+		var c: Vector2i = _pending_chunks.pop_front()
+		_build_chunk(c.x, c.y)
+
+
+func pending_rebuilds() -> int:
+	return _pending_chunks.size()
+
+
+var _hts0 := PackedFloat32Array()
+var _scorch0 := PackedFloat32Array()
+
+
+## Remember the undamaged surface (after the props stamped their AO).
+func snapshot() -> void:
+	_hts0 = hts.duplicate()
+	_scorch0 = scorch.duplicate()
+
+
+## Every crater undone: heights, scorch, meshes and the water depth texture.
+func reset_damage() -> void:
+	if _hts0.is_empty():
+		return
+	hts = _hts0.duplicate()
+	scorch = _scorch0.duplicate()
+	_pending_chunks.clear()
+	build_meshes()
+	_rebuild_depth_image(0, 0, NX, NZ)
 
 
 func _rebuild_depth_image(i0: int, j0: int, i1: int, j1: int) -> void:

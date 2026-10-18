@@ -16,6 +16,9 @@ var env: Environment
 var set_root: Node3D
 var mr := false
 var quest := false
+## Sun shadows: OFF by default everywhere (owner, after build 1: they made the Quest
+## build heavy). Desktop screenshots can opt in with `-- --shadows`.
+static var shadows := false
 
 
 func _ready() -> void:
@@ -59,10 +62,15 @@ func apply_quest() -> void:
 	quest = true
 	env.glow_enabled = false
 	env.adjustment_enabled = false   # a full-screen pass on the Compatibility renderer
+	env.fog_enabled = false
+	env.volumetric_fog_enabled = false
+	env.ssao_enabled = false
+	env.ssil_enabled = false
+	env.sdfgi_enabled = false
 	fill.visible = false
+	sun.shadow_enabled = false       # no shadow-casting light at all on Quest
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL
 	sun.directional_shadow_max_distance = 1.5
-	sun.shadow_blur = 1.0
 
 
 func _environment() -> void:
@@ -102,7 +110,7 @@ func _lights() -> void:
 	sun.light_color = Color(1.0, 0.94, 0.84)
 	sun.light_energy = 1.0
 	sun.rotation = Vector3(deg_to_rad(-47.0), deg_to_rad(-38.0), 0)
-	sun.shadow_enabled = true
+	sun.shadow_enabled = shadows
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
 	sun.directional_shadow_max_distance = 3.0
 	sun.directional_shadow_split_1 = 0.25
