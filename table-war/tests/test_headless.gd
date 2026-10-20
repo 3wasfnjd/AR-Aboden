@@ -717,12 +717,28 @@ func _xr_tests(island: Island, phys: PhysicsTest) -> void:
 	xg2._on_panel("rot_l")   # rotation stays on the stick / grip (and this id)
 	check("panel rotate button turns 15 deg", _near(wrapf(xg2.cur_yaw - y0, -PI, PI), PI / 12.0, 1e-4) and qd.global_transform.origin == base_before)
 
-	# weapon switching: left stick Y flick and a tap with the right ray on the panel
-	xg2.select_weapon("ballistic")
+	# zoom: left stick Y scales the scene, the foot stays put, clamped to 0.4-1.5
+	var k0 := xg2.diorama.global_transform.basis.get_scale().x
+	var foot0 := xg2.diorama.global_transform.origin
 	xg2.rig.sim_stick["left"] = Vector2(0.0, 1.0)
-	await process_frame
-	await process_frame
+	for f in 20:
+		await process_frame
 	xg2.rig.sim_stick["left"] = Vector2.ZERO
+	await process_frame
+	var k1 := xg2.diorama.global_transform.basis.get_scale().x
+	xg2.scale_island(100.0)
+	var kmax := xg2.diorama.global_transform.basis.get_scale().x
+	xg2.scale_island(0.0001)
+	var kmin := xg2.diorama.global_transform.basis.get_scale().x
+	check("left stick Y zooms the island (foot fixed, 0.4x-1.5x)", k1 > k0 * 1.05 and xg2.diorama.global_transform.origin.is_equal_approx(foot0) and _near(kmax, 1.5) and _near(kmin, 0.4), "%.3f -> %.3f" % [k0, k1])
+	xg2.place_scale = k0
+	xg2.scale_island(1.0)
+	# weapon switching: right stick Y flick and a tap with the right ray on the panel
+	xg2.select_weapon("ballistic")
+	xg2.rig.sim_stick["right"] = Vector2(0.0, 1.0)
+	await process_frame
+	await process_frame
+	xg2.rig.sim_stick["right"] = Vector2.ZERO
 	await process_frame
 	var after_flick := xg2.weapon
 	await process_frame   # panel placed at the left hand this frame
@@ -731,7 +747,7 @@ func _xr_tests(island: Island, phys: PhysicsTest) -> void:
 	var ph := xg2.panel.hit(eye_p, (bc - eye_p).normalized())
 	if not ph.is_empty() and ph.id != "":
 		xg2.panel.press(ph.id)
-	check("panel: left stick flick and right-ray tap switch the weapon", after_flick == "cruise" and ph.get("id", "") == "w_artillery" and xg2.weapon == "artillery" and qp.weapon == "artillery" and xg2.panel.selected == "artillery", "flick -> %s, tap -> %s" % [after_flick, ph.get("id", "")])
+	check("panel: right stick flick and right-ray tap switch the weapon", after_flick == "cruise" and ph.get("id", "") == "w_artillery" and xg2.weapon == "artillery" and qp.weapon == "artillery" and xg2.panel.selected == "artillery", "flick -> %s, tap -> %s" % [after_flick, ph.get("id", "")])
 
 	# lock + fire: right ray on the island, right grip locks (red), trigger fires from the hand
 	var tl := Vector3(0.1, 0.0, 0.1)

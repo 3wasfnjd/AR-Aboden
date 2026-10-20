@@ -9,6 +9,7 @@ var props: IslandProps
 var water: IslandWater
 var base: DioramaBase
 var life: CityLife
+var dome: GlassDome
 var build_ms := 0
 
 
@@ -40,6 +41,9 @@ func build() -> void:
 	life.name = "CityLife"
 	add_child(life)
 	life.build(self)
+	dome = GlassDome.new()
+	add_child(dome)
+	dome.build()
 	build_ms = Time.get_ticks_msec() - t0
 
 

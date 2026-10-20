@@ -19,11 +19,13 @@ extends Node3D
 ##   right grip                 lock / unlock the target (marker turns red)
 ##   right trigger              fire the selected weapon (locked target, else the
 ##                              pointed spot); on the panel: press the button
-##   left stick Y (flick)       next / previous weapon;  X: rotate the island
+##   left stick X / Y           rotate / zoom the island (0.4x-1.5x, base fixed)
+##   right stick Y (flick)      next / previous weapon
 ##   A slow motion · B re-place · left stick click FPS panel · left menu = B
 
 const ROT_RATE := 1.2            # rad/s at full left stick
 const ROT_TICK := PI / 12.0      # haptic tick every 15 degrees
+const ZOOM_RATE := 0.75          # left stick Y: e-folds per second (Mafateeh's resize speed)
 const ROT_STEP := PI / 12.0      # panel rotate buttons
 ## Launch point relative to the right controller's aim pose: just above / ahead of it.
 const LAUNCH_OFFSET := Vector3(0.0, 0.035, -0.06)
@@ -329,7 +331,7 @@ func _update_board(force := false) -> void:
 		dir = Vector2(0, 1)
 	dir = dir.normalized()
 	# opposite side of the island from the player, raised above the mountain
-	board.position = Vector3(-dir.x * 0.42, 0.28, -dir.y * 0.42)
+	board.position = Vector3(-dir.x * 0.6, 0.3, -dir.y * 0.6)   # outside the glass dome
 	board.rotation = Vector3(0, atan2(dir.x, dir.y), 0)
 	if force:
 		_board_acc = 0.0
@@ -367,6 +369,12 @@ func reset_island() -> void:
 		cooldown[id] = 0.0
 	_aim_key = Vector4(INF, INF, INF, INF)
 	_destruction_dirty = true
+
+
+## Zoom the pinned island by `k` (0.4x-1.5x): its foot stays where it stands.
+func scale_island(k: float) -> void:
+	place_scale = Placement.clamp_scale(place_scale * k)
+	diorama.transform = Placement.pinned_transform(cur_p, cur_yaw, place_scale)
 
 
 ## Turn the pinned island about its own vertical axis: only the yaw changes, the base
@@ -516,10 +524,15 @@ func _step_pinned(dt: float) -> void:
 	var ls := rig.stick("left")
 	if absf(ls.x) > Placement.DEADZONE:
 		rotate_island(-ls.x * ROT_RATE * dt)
-	if absf(ls.y) > 0.7 and _flick_armed:
+	# left stick Y: zoom the whole scene (as in Mafateeh), the base stays on the table
+	if absf(ls.y) > Placement.DEADZONE:
+		scale_island(exp(ls.y * ZOOM_RATE * dt))
+	# right stick Y flick: next / previous weapon
+	var rs := rig.stick("right")
+	if absf(rs.y) > 0.7 and _flick_armed:
 		_flick_armed = false
-		select_weapon(WeaponTable.next_id(weapon, 1 if ls.y > 0.0 else -1))
-	elif absf(ls.y) < 0.3:
+		select_weapon(WeaponTable.next_id(weapon, 1 if rs.y > 0.0 else -1))
+	elif absf(rs.y) < 0.3:
 		_flick_armed = true
 	if not _grab.is_empty() and rig.tracked("left"):
 		var a := _hand_angle()
