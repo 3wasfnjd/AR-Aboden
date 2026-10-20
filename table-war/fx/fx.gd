@@ -98,6 +98,31 @@ func explosion(p: Vector3, scale := 1.0) -> void:
 		puff(p + Vector3(0, 0.002 + k * 0.0012, 0), d * rng.randf_range(0.02, 0.06) * scale, 0.004 * scale, 0.022 * scale, rng.randf_range(2.0, 3.6), c, 3, 0.012, 1.5)
 
 
+## Nuclear test: white flash, rising fireball, stem and mushroom cap (fire-lit, then
+## grey), a dust shock ring racing over the ground, ripples on the sea.
+func nuke(p: Vector3, r: float) -> void:
+	var up := Vector3.UP
+	puff(p + up * 0.02, Vector3.ZERO, 0.06, 0.42, 0.45, Color(1.0, 1.0, 0.95), 1, 0.0, 0.0)
+	puff(p + up * 0.01, Vector3.ZERO, 0.03, 0.16, 1.1, Color(1.0, 0.85, 0.5), 1, 0.02, 0.0)
+	for k in 16:
+		var d := Vector3(rng.randf_range(-1, 1), rng.randf_range(0.2, 1.0), rng.randf_range(-1, 1)).normalized()
+		puff(p + d * 0.01 + up * 0.012, d * 0.03 + up * 0.03, 0.02, 0.06, rng.randf_range(2.5, 3.5), Color(1.0, rng.randf_range(0.55, 0.8), 0.25, 1.0), 2, 0.035, 1.5)
+	for k in 20:
+		var off := Vector3(rng.randf_range(-0.006, 0.006), 0.0, rng.randf_range(-0.006, 0.006))
+		puff(p + off + up * (0.01 + k * 0.009), up * 0.02, 0.014, 0.034, rng.randf_range(7.0, 9.0), Color(0.62, 0.58, 0.54, 0.9), 3, 0.008, 1.2)
+	for k in 36:
+		var a := TAU * k / 36.0 + rng.randf_range(-0.1, 0.1)
+		var d2 := Vector3(cos(a), 0.0, sin(a))
+		var h := 0.19 + rng.randf_range(-0.02, 0.03)
+		puff(p + up * h + d2 * rng.randf_range(0.01, 0.03), d2 * rng.randf_range(0.02, 0.04) + up * 0.012, 0.03, 0.075, rng.randf_range(8.0, 10.0), Color(0.80, 0.76, 0.72, 0.9), 3, 0.004, 0.7)
+	for k in 48:
+		var a2 := TAU * k / 48.0
+		var d3 := Vector3(cos(a2), 0.0, sin(a2))
+		puff(p + d3 * 0.01 + up * 0.003, d3 * rng.randf_range(0.20, 0.28) + up * 0.004, 0.008, 0.03, rng.randf_range(2.0, 2.8), Color(0.78, 0.70, 0.58, 0.85), 0, 0.002, 2.2)
+	ripple(p, r * 1.6, 3.0)
+	ripple(p, r * 1.1, 2.4, 0.4)
+
+
 ## A ship hit: short fireball on the hull and a black oil-smoke column (no ground dust).
 func ship_fire(p: Vector3, scale := 1.0) -> void:
 	puff(p + Vector3(0, 0.003, 0), Vector3.ZERO, 0.008 * scale, 0.022 * scale, 0.1, Color(1.0, 0.92, 0.7), 1, 0.0, 0.0)

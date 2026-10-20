@@ -21,8 +21,9 @@ extends RefCounted
 ##   split       submunitions released at 62 % of the flight, falling within `spread`
 ##   crater_k    crater depth factor (bunker buster digs deep)
 ##   wings       draw wings on the body (cruise, drone, anti-ship)
+##   nuke        nuclear test: everything within `nuke_r` is destroyed, mushroom cloud
 
-const IDS := ["ballistic", "cruise", "artillery", "mlrs", "cluster", "hypersonic", "bunker", "drone", "antiship"]
+const IDS := ["ballistic", "cruise", "artillery", "mlrs", "cluster", "hypersonic", "bunker", "drone", "antiship", "nuke"]
 
 const WEAPONS := {
 	"ballistic": {
@@ -88,6 +89,13 @@ const WEAPONS := {
 		"cooldown": 5.0, "ammo": 4, "reload": 10.0, "glow": false, "wings": true,
 		"trail": 0.02, "trail_col": Color(0.92, 0.92, 0.90, 0.45),
 		"length": 0.003, "radius": 0.0005, "col": Color(0.60, 0.62, 0.66),
+	},
+	"nuke": {
+		"id": "nuke", "name_ar": "قنبلة نووية", "name_en": "Nuclear missile",
+		"arc": "lofted", "flight": [3.4, 3.8], "blast": 1.0, "ejecta": 20, "nuke": true, "nuke_r": 0.16,
+		"cooldown": 30.0, "ammo": 1, "reload": 90.0, "glow": true,
+		"trail": 0.012, "trail_col": Color(0.95, 0.95, 0.92, 0.6),
+		"length": 0.0042, "radius": 0.0008, "col": Color(0.92, 0.92, 0.90),
 	},
 	# not selectable: the bomblets a cluster missile releases
 	"submunition": {

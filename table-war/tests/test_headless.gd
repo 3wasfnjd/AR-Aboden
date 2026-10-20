@@ -331,6 +331,38 @@ func _initialize() -> void:
 		guard += 1
 	check("a warship hit at sea is destroyed (splash, no crater)", not ship.alive and phys.last_impact_kind == "water", "kind %s" % phys.last_impact_kind)
 
+	# --- the player's warship behind the mountain; the nuclear test -----------------
+	var shp := island.ship
+	var sp0 := shp.position
+	check("player warship floats in deep water behind the mountain (inside the dome)", island.props._hs(sp0.x, sp0.z) < -0.02 and sp0.z < -0.3 and Vector2(sp0.x, sp0.z).length() + PlayerShip.L * 0.5 < GlassDome.R, "at %s" % sp0)
+	var lp_v := phys.default_origin("ballistic")
+	var lp_g := phys.default_origin("artillery")
+	check("shots leave the ship's launchers (cells for missiles, the bow gun for shells)", lp_v.distance_to(sp0) < 0.1 and lp_g.distance_to(sp0) < 0.1 and lp_v.distance_to(lp_g) > 0.02, "%s / %s" % [lp_v, lp_g])
+	island.reset_damage()
+	var ncen := Vector3(island.layout.town_center.x, 0, island.layout.town_center.y)
+	ncen.y = island.height_at(ncen.x, ncen.z)
+	var alive_city := 0
+	for st in island.props.structures:
+		if st.kind in Missions.CIVIL and Vector2(st.pos.x - ncen.x, st.pos.z - ncen.z).length() < 0.1:
+			alive_city += 1
+	var pct0 := float(island.props.destruction().pct)
+	phys.fire(ncen, Vector3.INF, "nuke")
+	var gn := 0
+	while phys.flying and gn < 4000:
+		phys.advance(1.0 / 60.0)
+		gn += 1
+	var left_city := 0
+	for st in island.props.structures:
+		if st.alive and Vector2(st.pos.x - ncen.x, st.pos.z - ncen.z).length() < 0.1 and IslandProps.TARGETS.has(st.kind):
+			left_city += 1
+	var pct1 := float(island.props.destruction().pct)
+	check("nuclear test: mushroom cloud, everything within its radius destroyed", phys.last_impact_kind == "nuke" and left_city == 0 and alive_city > 50 and pct1 > pct0 + 25.0 and phys.fx.puffs.size() > 80 and island.life.alive_near(ncen, 0.12) == 0 and shp.visible, "kind %s, %d left of %d, %.0f%% -> %.0f%%, puffs %d" % [phys.last_impact_kind, left_city, alive_city, pct0, pct1, phys.fx.puffs.size()])
+	for k in 200:
+		phys.advance(1.0 / 60.0)
+		await process_frame
+	check("nuclear test: the destroyed tiles re-upload over the next frames", island.props._pending_tiles.is_empty())
+	phys.reset_island()
+
 	await _xr_tests(island, phys)
 
 	print("RESULT ", "OK" if failures == 0 else "FAILED (%d)" % failures)

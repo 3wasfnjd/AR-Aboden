@@ -278,7 +278,31 @@ func _run_shots() -> void:
 	tilt_rect.visible = false
 	if only == "" or "f" in only:
 		await _physics_shots()
+	if "n" in only:
+		await _nuke_shots()
 	get_tree().quit()
+
+
+## The nuclear test on the city centre (shots n_nuke_*), and the player's ship.
+func _nuke_shots() -> void:
+	phys.reset_island()
+	var c := island.layout.town_center
+	var tgt := Vector3(c.x, island.height_at(c.x, c.y), c.y)
+	_apply_preset("hero")
+	await _frames(4)
+	await _capture("n_ship")
+	phys.fire(tgt, Vector3.INF, "nuke")
+	var g := 0
+	while phys.flying and g < 4000:
+		phys.advance(1.0 / 60.0)
+		g += 1
+	for t in [0.15, 1.5, 5.0]:
+		var steps := int(t * 60.0)
+		for k in steps:
+			phys.advance(1.0 / 60.0)
+		await _frames(2)
+		await _capture("n_nuke_%0.1f" % t)
+		phys.manual = true
 
 
 func _physics_shots() -> void:

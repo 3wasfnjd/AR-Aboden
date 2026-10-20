@@ -220,7 +220,11 @@ func _build_wet_marks() -> void:
 # ------------------------------------------------------------------------------------
 
 ## The player's launch point when there is no tracked hand (desktop, tests).
-func default_origin() -> Vector3:
+## Launch point: the weapon's launcher on the player's warship (build 8), else the
+## desktop "player hand".
+func default_origin(wid := "") -> Vector3:
+	if island and island.ship:
+		return island.ship.launch_point(wid if wid != "" else weapon)
 	return DESKTOP_HAND
 
 
@@ -233,7 +237,7 @@ func surface(x: float, z: float) -> float:
 
 func plan(tgt: Vector3, origin := Vector3.INF, wid := "") -> Dictionary:
 	var w := WeaponTable.get_weapon(wid if wid != "" else weapon)
-	var o := origin if origin != Vector3.INF else default_origin()
+	var o := origin if origin != Vector3.INF else default_origin(w.id)
 	return WeaponFlight.plan(w, o, tgt, surface, G)
 
 
@@ -283,7 +287,7 @@ func hide_preview() -> void:
 
 func fire(tgt: Vector3, origin := Vector3.INF, wid := "") -> Dictionary:
 	var w := WeaponTable.get_weapon(wid if wid != "" else weapon)
-	var o := origin if origin != Vector3.INF else default_origin()
+	var o := origin if origin != Vector3.INF else default_origin(w.id)
 	# MLRS: the rest of the salvo follows a rocket every 90 ms, scattered round the target
 	for k in range(1, int(w.get("salvo", 1))):
 		_pending.append({"delay": k * 0.09, "origin": o, "tgt": _scatter(tgt, float(w.spread)), "wid": w.id})
@@ -488,6 +492,9 @@ func _impact(p: Vector3, w: Dictionary) -> void:
 		sfx.play("thump", ps2, 0.35 + 0.2 * b)
 		impacted.emit(ps2, last_impact_kind)
 		return
+	if bool(w.get("nuke", false)):
+		_nuke(p, w)
+		return
 	last_impact_kind = "land"
 	var rng := RandomNumberGenerator.new()
 	rng.seed = impact_count * 977
@@ -530,6 +537,29 @@ func _impact(p: Vector3, w: Dictionary) -> void:
 		var start := p + Vector3(cos(a), 0, sin(a)) * rng.randf_range(0.0, cr * 0.5) + Vector3(0, 0.002, 0)
 		debris.spawn(start, Basis(Vector3(rng.randf(), rng.randf(), rng.randf()).normalized(), rng.randf() * TAU), Vector3(s, s * rng.randf_range(0.6, 1.0), s * rng.randf_range(0.7, 1.1)), vel, Vector3(rng.randf_range(-20, 20), rng.randf_range(-20, 20), rng.randf_range(-20, 20)), c, 0)
 	impacted.emit(p, last_impact_kind)
+
+
+## The nuclear test: a wide flash, fireball and mushroom cloud, a shock ring over the
+## ground, everything within `nuke_r` destroyed (only the nearest buildings break into
+## pieces; the tiles re-upload over the next frames), a wide scorched area and a crater.
+func _nuke(p: Vector3, w: Dictionary) -> void:
+	last_impact_kind = "nuke"
+	var r: float = w.nuke_r
+	var ps := Vector3(p.x, maxf(p.y, IslandTerrain.SEA), p.z)
+	fx.nuke(ps, r)
+	sfx.play("boom", ps, 1.5)
+	sfx.play("thump", ps, 1.5)
+	if island.terrain.height_at(p.x, p.z) > IslandTerrain.SEA:
+		island.terrain.crater(p, 0.034, 0.012)
+	island.terrain.scorch_area(p, r * 0.85)
+	var frags := island.props.blast(ps, r, 10)
+	for f in frags:
+		debris.spawn(f.pos, f.basis, f.half, f.vel * 2.0, f.ang, f.col, 1)
+	island.props.on_crater(p, r * 0.8)
+	if island.life:
+		island.life.on_blast(ps, r)
+	debris.wake_near(ps, r)
+	impacted.emit(ps, last_impact_kind)
 
 
 ## Darker, glossier wet sand where a shell hit the shallows (pooled, fades in ~40 s).

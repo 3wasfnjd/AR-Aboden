@@ -92,6 +92,7 @@ func reset_damage() -> void:
 	craters.clear()
 	_crater_grid.clear()
 	_pending_drapes.clear()
+	_pending_tiles.clear()
 	_rebuild_structures()
 	_build_drapes()
 
@@ -522,7 +523,7 @@ func _place_ships() -> void:
 	_add_ship("cargo", Vector2(L.harbour_x0 + Scale.m(95.0), L.quay_z + Scale.m(13.0)), 0.0, Vector3(0.085, 0.006, 0.015))
 	_add_ship("cargo", Vector2(0.24, 0.33), deg_to_rad(-20.0), Vector3(0.09, 0.006, 0.016))
 	_add_ship("frigate", Vector2(-0.06, 0.34), deg_to_rad(15.0), Vector3(0.06, 0.006, 0.010))
-	_add_ship("frigate", Vector2(0.06, -0.33), deg_to_rad(170.0), Vector3(0.065, 0.006, 0.011))
+	_add_ship("frigate", Vector2(-0.07, -0.33), deg_to_rad(170.0), Vector3(0.065, 0.006, 0.011))
 	_add_ship("frigate", Vector2(-0.40, -0.18), deg_to_rad(120.0), Vector3(0.055, 0.006, 0.0095))
 	var small := [[Vector2(L.pier_x - Scale.m(9.0), L.quay_z + Scale.m(30.0)), deg_to_rad(90), Color(0.95, 0.95, 0.93)],
 		[Vector2(L.pier_x + Scale.m(11.0), L.quay_z + Scale.m(60.0)), deg_to_rad(-90), Color(0.92, 0.35, 0.25)],
@@ -667,6 +668,7 @@ var _arr_ruin := {}
 
 
 var _warm_next := 0
+var _pending_tiles: Array = []
 
 
 ## Prepare the ruin meshes a few per frame after the build, so a hit only concatenates.
@@ -1054,7 +1056,7 @@ func _footprint_dist(s: Dictionary, p: Vector3) -> float:
 
 ## Destroy fragile structures within `radius` of `center`; returns pre-fractured
 ## chunks: [{pos, basis, half, col, vel, ang}] ready for the debris system.
-func blast(center: Vector3, radius: float) -> Array[Dictionary]:
+func blast(center: Vector3, radius: float, max_fractured := 1000) -> Array[Dictionary]:
 	var frags: Array[Dictionary] = []
 	var changed := false
 	var hit_tiles := []
@@ -1068,9 +1070,16 @@ func blast(center: Vector3, radius: float) -> Array[Dictionary]:
 		changed = true
 		if not _struct_tile(s) in hit_tiles:
 			hit_tiles.append(_struct_tile(s))
-		frags.append_array(_fracture(s, center))
+		if max_fractured > 0:
+			max_fractured -= 1
+			frags.append_array(_fracture(s, center))
 	if changed:
-		_rebuild_structures(hit_tiles)
+		# a big blast: the nearest two tiles now, the rest one per frame (no long frame)
+		var now := hit_tiles.slice(0, 2)
+		for t in hit_tiles.slice(2):
+			if not t in _pending_tiles:
+				_pending_tiles.append(t)
+		_rebuild_structures(now)
 	return frags
 
 
@@ -2066,7 +2075,10 @@ func _place_buoys() -> void:
 func _process(_delta: float) -> void:
 	if not _pending_drapes.is_empty():
 		_build_drapes([_pending_drapes.pop_front()])
-	_warm_ruins(6)
+	if not _pending_tiles.is_empty():
+		_rebuild_structures([_pending_tiles.pop_front()])
+	else:
+		_warm_ruins(6)
 	var t := Time.get_ticks_msec() * 0.001
 	for b in boats:
 		var n: Node3D = b.node

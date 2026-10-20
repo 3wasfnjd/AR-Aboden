@@ -627,6 +627,33 @@ func crater(center: Vector3, radius: float, depth: float) -> Array[Vector2i]:
 	return touched
 
 
+## Scorch a wide area without changing the heights (the nuclear test): the colour fades
+## from black at the centre to the rim; the touched chunk meshes are rebuilt.
+func scorch_area(center: Vector3, radius: float) -> void:
+	var i0 := clampi(int(floor((center.x - radius - ox) / CELL)), 0, NX)
+	var i1 := clampi(int(ceil((center.x + radius - ox) / CELL)), 0, NX)
+	var j0 := clampi(int(floor((center.z - radius - oz) / CELL)), 0, NZ)
+	var j1 := clampi(int(ceil((center.z + radius - oz) / CELL)), 0, NZ)
+	for j in range(j0, j1 + 1):
+		for i in range(i0, i1 + 1):
+			var k := idx(i, j)
+			var v := vpos(i, j)
+			var d := Vector2(v.x - center.x, v.z - center.z).length() / radius
+			if d < 1.0 and v.y > SEA:
+				scorch[k] = maxf(scorch[k], clampf(1.15 - d, 0.0, 1.0))
+	var nci := NX / CX
+	var ncj := NZ / CZ
+	for cj in range(clampi(j0 / CZ, 0, ncj - 1), clampi(j1 / CZ, 0, ncj - 1) + 1):
+		for ci in range(clampi(i0 / CX, 0, nci - 1), clampi(i1 / CX, 0, nci - 1) + 1):
+			if chunk_nodes.is_empty():
+				continue
+			if defer_meshes:
+				if not Vector2i(ci, cj) in _pending_chunks:
+					_pending_chunks.append(Vector2i(ci, cj))
+			else:
+				_build_chunk(ci, cj)
+
+
 # --------------------------------------------------------------------------------------
 # Water depth texture (read by the water shader)
 # --------------------------------------------------------------------------------------

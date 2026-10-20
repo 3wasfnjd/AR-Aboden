@@ -1,0 +1,94 @@
+class_name PlayerShip
+extends MeshInstance3D
+## The player's warship: a big toy cruiser anchored in deep water behind the mountain.
+## Every weapon launches from its own launcher on board (island-local points, so it
+## moves / turns / scales with the diorama); the player's hand only aims.
+## Not a target: strikes never hit it (it is not in IslandProps.structures).
+##   vls     ballistic / hypersonic / cluster / bunker buster (vertical cells, forward)
+##   box     cruise / anti-ship (angled box launchers, midships)
+##   gun     artillery (bow turret)
+##   pod     MLRS rocket pod (aft)
+##   ramp    kamikaze drone (stern ramp)
+##   silo    the nuclear missile (red hatch amidships)
+
+const POS := Vector2(0.17, -0.365)
+const YAW := 0.0
+const L := 0.17
+const B := 0.028
+const FB := 0.004                  # deck height above the water
+
+## Launcher of each weapon, ship-local: [point, upward kick of the first metre].
+const LAUNCHERS := {
+	"vls": Vector3(0.040, FB + 0.0035, 0.0),
+	"box": Vector3(-0.004, FB + 0.006, 0.0),
+	"gun": Vector3(0.082, FB + 0.0045, 0.0),
+	"pod": Vector3(-0.040, FB + 0.0065, 0.0),
+	"ramp": Vector3(-0.080, FB + 0.0025, 0.0),
+	"silo": Vector3(0.016, FB + 0.0012, 0.0),
+}
+const WEAPON_LAUNCHER := {
+	"ballistic": "vls", "hypersonic": "vls", "cluster": "vls", "bunker": "vls",
+	"cruise": "box", "antiship": "box", "artillery": "gun", "mlrs": "pod", "drone": "ramp", "nuke": "silo",
+}
+
+const HULL := Color(0.52, 0.57, 0.63)
+const DECK := Color(0.40, 0.44, 0.48)
+const DARK := Color(0.18, 0.20, 0.23)
+const SUPER := Color(0.66, 0.70, 0.75)
+const RED := Color(0.85, 0.18, 0.15)
+
+
+func build() -> void:
+	name = "PlayerShip"
+	var mb := MeshBuilder.new()
+	Toon._hull(mb, L, B, FB, HULL, DECK)
+	# superstructure: bridge block, funnel, mast with radar panels
+	mb.box(Vector3(-0.012, FB + 0.0045, 0), Vector3(0.034, 0.009, B * 0.62), SUPER)
+	mb.box(Vector3(-0.006, FB + 0.0105, 0), Vector3(0.016, 0.004, B * 0.5), SUPER.lightened(0.08))
+	mb.box(Vector3(0.0, FB + 0.0105, 0), Vector3(0.004, 0.0022, B * 0.48), Color(0.25, 0.40, 0.55))
+	mb.cylinder(Vector3(-0.004, FB + 0.0125, 0), 0.0009, 0.0004, 0.016, 6, DARK)
+	mb.box(Vector3(-0.004, FB + 0.024, 0), Vector3(0.0008, 0.0035, 0.008), DARK)
+	mb.box(Vector3(-0.024, FB + 0.011, 0), Vector3(0.008, 0.007, 0.007), DARK.lightened(0.15))
+	# bow gun turret + barrel
+	mb.cylinder(Vector3(0.068, FB, 0), 0.0045, 0.004, 0.0035, 12, SUPER)
+	mb.box(Vector3(0.076, FB + 0.0025, 0), Vector3(0.012, 0.0009, 0.0009), DARK)
+	# forward vertical launch cells (4 x 6 hatches)
+	mb.box(Vector3(0.040, FB + 0.0012, 0), Vector3(0.018, 0.0024, B * 0.5), DECK.darkened(0.1))
+	for i in 4:
+		for j in 6:
+			mb.box(Vector3(0.033 + i * 0.0045, FB + 0.0025, (j - 2.5) * 0.0022), Vector3(0.0036, 0.0002, 0.0018), DARK)
+	# nuclear silo hatch (red) between the cells and the bridge
+	mb.cylinder(Vector3(0.016, FB, 0), 0.004, 0.004, 0.0012, 14, RED, true, RED.darkened(0.2))
+	mb.cylinder(Vector3(0.016, FB + 0.0012, 0), 0.0012, 0.0012, 0.0002, 10, Color(1.0, 0.85, 0.2))
+	# angled box launchers (cruise / anti-ship), both sides
+	for side in [-1.0, 1.0]:
+		var saved := mb.xform
+		mb.xform = saved * Transform3D(Basis(Vector3(0, 0, 1), deg_to_rad(30.0)), Vector3(-0.004, FB + 0.003, side * B * 0.3))
+		for k in 2:
+			mb.box(Vector3(0, 0, (k - 0.5) * 0.0032), Vector3(0.014, 0.0028, 0.003), Color(0.46, 0.50, 0.44))
+		mb.xform = saved
+	# aft rocket pod (MLRS) on a turntable
+	mb.cylinder(Vector3(-0.040, FB, 0), 0.0035, 0.0035, 0.0018, 10, SUPER)
+	var saved2 := mb.xform
+	mb.xform = saved2 * Transform3D(Basis(Vector3(0, 0, 1), deg_to_rad(40.0)), Vector3(-0.040, FB + 0.0045, 0))
+	mb.box(Vector3.ZERO, Vector3(0.012, 0.005, 0.007), Color(0.46, 0.50, 0.38))
+	for i in 3:
+		for j in 3:
+			mb.box(Vector3(0.0061, (i - 1) * 0.0015, (j - 1) * 0.002), Vector3(0.0002, 0.0011, 0.0011), DARK)
+	mb.xform = saved2
+	# stern drone ramp + two parked drones
+	mb.box(Vector3(-0.074, FB + 0.0012, 0), Vector3(0.018, 0.0016, B * 0.55), DECK.lightened(0.1))
+	for side in [-1.0, 1.0]:
+		mb.box(Vector3(-0.078, FB + 0.0024, side * 0.004), Vector3(0.004, 0.0006, 0.0010), Color(0.86, 0.86, 0.82))
+		mb.box(Vector3(-0.078, FB + 0.0026, side * 0.004), Vector3(0.0012, 0.0004, 0.006), Color(0.86, 0.86, 0.82))
+	# flag on the mast and a hull number band
+	mb.box(Vector3(0.05, FB - 0.0018, B * 0.5 + 0.0002), Vector3(0.012, 0.0022, 0.0002), Color(0.95, 0.95, 0.93))
+	mesh = mb.commit(null, MeshBuilder.vc_material(0.6))
+	cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	transform = Transform3D(Basis(Vector3.UP, YAW), Vector3(POS.x, IslandTerrain.SEA, POS.y))
+
+
+## Island-local launch point of a weapon (its launcher on board).
+func launch_point(wid: String) -> Vector3:
+	var key: String = WEAPON_LAUNCHER.get(wid, "vls")
+	return transform * (LAUNCHERS[key] as Vector3)

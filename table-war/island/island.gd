@@ -10,6 +10,7 @@ var water: IslandWater
 var base: DioramaBase
 var life: CityLife
 var dome: GlassDome
+var ship: PlayerShip
 var build_ms := 0
 
 
@@ -41,6 +42,9 @@ func build() -> void:
 	life.name = "CityLife"
 	add_child(life)
 	life.build(self)
+	ship = PlayerShip.new()
+	add_child(ship)
+	ship.build()
 	dome = GlassDome.new()
 	add_child(dome)
 	dome.build()

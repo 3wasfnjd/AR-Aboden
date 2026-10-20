@@ -413,12 +413,13 @@ func unpin() -> void:
 
 
 ## World launch point: just above / ahead of the right controller.
+## Shots leave the selected weapon's launcher on the player's warship (the hand aims).
 func launch_point_world() -> Vector3:
-	return rig.aim_transform("right") * LAUNCH_OFFSET
+	return diorama.global_transform * launch_point_local()
 
 
 func launch_point_local() -> Vector3:
-	return diorama.global_transform.affine_inverse() * launch_point_world()
+	return phys.default_origin(weapon)
 
 
 func fire() -> bool:

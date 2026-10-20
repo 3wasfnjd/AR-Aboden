@@ -16,7 +16,7 @@ extends Node3D
 signal pressed(id: String)
 
 const W := 0.21
-const H := 0.17
+const H := 0.198
 const CARD_H := 0.026
 const BG := Color(0.035, 0.05, 0.04)
 const FRAME := Color(0.40, 0.85, 0.45, 0.95)
@@ -38,7 +38,8 @@ const CAT_INFO := {
 }
 const CODES := {"ballistic": "BM-1  BALLISTIC", "cruise": "CM-2  CRUISE", "artillery": "AR-3  ARTILLERY",
 	"mlrs": "RS-4  MLRS x8", "cluster": "CL-5  CLUSTER", "hypersonic": "HG-6  HYPERSONIC",
-	"bunker": "BB-7  BUNKER BUSTER", "drone": "UV-8  KAMIKAZE DRONE", "antiship": "AS-9  ANTI-SHIP"}
+	"bunker": "BB-7  BUNKER BUSTER", "drone": "UV-8  KAMIKAZE DRONE", "antiship": "AS-9  ANTI-SHIP",
+	"nuke": "N-10  NUCLEAR TEST"}
 
 var buttons: Array[Dictionary] = []   # {id, rect: Rect2 (panel-local, metres), bg, mat, kind}
 var hover := ""
@@ -109,8 +110,15 @@ func _ready() -> void:
 		var w := WeaponTable.get_weapon(id)
 		var cx2 := W * 0.5 - 0.006 - bw2 * 0.5 - (i % cols) * (bw2 + gap)
 		var wy := row0 - (i / cols) * (ch + gap)
-		_button("w_" + id, Rect2(cx2 - bw2 * 0.5, wy - ch * 0.5, bw2, ch), "card")
-		_frame(Rect2(cx2 - bw2 * 0.5, wy - ch * 0.5, bw2, ch), FRAME_DIM, 0.0003)
+		var card_w := bw2
+		if id == "nuke":
+			# the nuclear test: one wide red card under the grid
+			card_w = W - 0.012
+			cx2 = 0.0
+		_button("w_" + id, Rect2(cx2 - card_w * 0.5, wy - ch * 0.5, card_w, ch), "nuke" if id == "nuke" else "card")
+		_frame(Rect2(cx2 - card_w * 0.5, wy - ch * 0.5, card_w, ch), ALERT if id == "nuke" else FRAME_DIM, 0.0003)
+		if id == "nuke":
+			bw2 = card_w * 0.4
 		var icon := _icon(id)
 		icon.position = Vector3(cx2 - bw2 * 0.33, wy + 0.0035, 0.0006)
 		icon.scale = Vector3.ONE * 0.62
@@ -274,6 +282,19 @@ func _icon(id: String) -> MeshInstance3D:
 		"drone":
 			tri.call(Vector2(s * 1.2, 0), Vector2(-s * 0.9, s * 1.1), Vector2(-s * 0.5, 0))
 			tri.call(Vector2(s * 1.2, 0), Vector2(-s * 0.5, 0), Vector2(-s * 0.9, -s * 1.1))
+		"nuke":
+			# radiation trefoil: three blades round a dot
+			for b in 3:
+				var a0 := TAU * b / 3.0 + PI / 6.0
+				for k in 6:
+					var t0 := a0 + PI / 3.0 * k / 6.0
+					var t1 := a0 + PI / 3.0 * (k + 1) / 6.0
+					tri.call(Vector2(cos(t0), sin(t0)) * s * 0.45, Vector2(cos(t1), sin(t1)) * s * 1.3, Vector2(cos(t0), sin(t0)) * s * 1.3)
+					tri.call(Vector2(cos(t0), sin(t0)) * s * 0.45, Vector2(cos(t1), sin(t1)) * s * 0.45, Vector2(cos(t1), sin(t1)) * s * 1.3)
+			for k in 10:
+				var u0 := TAU * k / 10.0
+				var u1 := TAU * (k + 1) / 10.0
+				tri.call(Vector2.ZERO, Vector2(cos(u1), sin(u1)) * s * 0.3, Vector2(cos(u0), sin(u0)) * s * 0.3)
 		"antiship":
 			tri.call(Vector2(s * 1.5, 0), Vector2(s * 0.9, s * 0.2), Vector2(s * 0.9, -s * 0.2))
 			tri.call(Vector2(s * 0.9, s * 0.2), Vector2(-s * 1.2, s * 0.2), Vector2(s * 0.9, -s * 0.2))
@@ -311,9 +332,11 @@ func set_selected(id: String) -> void:
 func _paint() -> void:
 	for b in buttons:
 		var on: bool = (b.id == "w_" + selected) or (b.id == "slow" and _slow_on)
-		var card: bool = b.kind == "card"
+		var card: bool = b.kind != "btn"
 		var c: Color
-		if on:
+		if b.kind == "nuke":
+			c = Color(0.75, 0.10, 0.06) if on else (Color(0.38, 0.06, 0.04) if b.id == hover else Color(0.22, 0.04, 0.03))
+		elif on:
 			c = CARD_ON if card else BTN_ON
 		elif b.id == hover:
 			c = CARD_HOVER if card else BTN_HOVER

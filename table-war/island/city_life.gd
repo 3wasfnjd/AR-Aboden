@@ -157,7 +157,7 @@ func on_blast(p: Vector3, r: float) -> void:
 			if is_car(i):
 				a_col[i] = Color(0.10, 0.09, 0.08)   # burnt wreck stays on the street
 			continue
-		if d < PANIC_R:
+		if d < maxf(PANIC_R, r * 2.0):
 			a_panic[i] = PANIC_T * rng.randf_range(0.8, 1.2)
 			# heading towards the blast: turn round at once
 			var df := Vector2(nodes[a_from[i]].x, nodes[a_from[i]].z).distance_to(p2)
