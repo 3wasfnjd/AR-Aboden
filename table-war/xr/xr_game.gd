@@ -85,6 +85,12 @@ var stage_id := ""
 var table_centre := Vector3.INF
 var _screen_hit := {}
 var markers: TargetMarkers
+## Aim (build 15): the right ray is smoothed (hand tremor at 1 m is several mm on the
+## island) and snaps onto an objective within SNAP_R of the pointed spot.
+const AIM_SMOOTH := 18.0         # 1/s: exponential smoothing of the aim direction
+const SNAP_R := 0.016            # island-local m
+var _aim_dir := Vector3.ZERO
+var snapped := false
 
 var ghost: MeshInstance3D
 var ghost_mat: StandardMaterial3D
@@ -851,7 +857,12 @@ func _step_pinned(dt: float) -> void:
 		if panel.visible:
 			_panel_hit = panel.hit(r[0], r[1])
 		if _panel_hit.is_empty():
-			world_hit = aim_at(r[0], r[1])
+			var d: Vector3 = r[1]
+			if _aim_dir == Vector3.ZERO or _aim_dir.dot(d) < 0.95:
+				_aim_dir = d
+			else:
+				_aim_dir = _aim_dir.slerp(d, 1.0 - exp(-AIM_SMOOTH * dt)).normalized()
+			world_hit = aim_at(r[0], _aim_dir)
 		else:
 			world_hit = _panel_hit.point
 	else:
@@ -904,8 +915,8 @@ func aim_at(origin: Vector3, dir: Vector3) -> Variant:
 			var d: Vector3 = lr[1]
 			var hit: Variant = island.terrain.raycast(o + d * float(lr[2]), d, float(lr[3]) - float(lr[2]) + 0.004)
 			if hit != null:
-				aim_target = hit
-				world_hit = diorama.global_transform * (hit as Vector3)
+				aim_target = _snap(hit)
+				world_hit = diorama.global_transform * (aim_target as Vector3)
 	var tgt: Variant = locked if locked != null else aim_target
 	if tgt == null:
 		if _aim_key.x != INF:
@@ -923,6 +934,26 @@ func aim_at(origin: Vector3, dir: Vector3) -> Variant:
 		phys.aim(tgt, lp, weapon, locked != null)
 		_aim_key = key
 	return world_hit
+
+
+## The nearest standing objective within SNAP_R of an island-local point (campaign), else
+## the point itself.
+func _snap(p: Vector3) -> Vector3:
+	snapped = false
+	if not campaign_vr or not run.running or markers == null:
+		return p
+	var best := SNAP_R
+	var out := p
+	for st in markers.targets:
+		if not st.alive:
+			continue
+		var q: Vector3 = st.pos
+		var d := Vector2(q.x - p.x, q.z - p.z).length()
+		if d < best:
+			best = d
+			out = Vector3(q.x, island.surface_at(q.x, q.z), q.z)
+			snapped = true
+	return out
 
 
 func _step_fps(delta: float) -> void:

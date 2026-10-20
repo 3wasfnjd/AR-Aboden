@@ -74,8 +74,8 @@ func setup() -> void:
 		var dot := MeshInstance3D.new()
 		dot.name = "Dot"
 		var torus := TorusMesh.new()
-		torus.inner_radius = 0.003
-		torus.outer_radius = 0.0045
+		torus.inner_radius = 0.005
+		torus.outer_radius = 0.0075
 		torus.rings = 16
 		torus.ring_segments = 6
 		dot.mesh = torus

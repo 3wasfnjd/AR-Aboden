@@ -556,6 +556,24 @@ func _campaign_tests(island: Island, phys: PhysicsTest) -> void:
 	res.clear()
 	phys.reset_island()
 	check("no launchers left: no more enemy missiles", none)
+	# the drone swarm: six small drones from the stern ramp, spread over the target
+	var stgt := Vector3(0.10, 0.0, 0.05)
+	stgt.y = island.surface_at(stgt.x, stgt.z)
+	var imp_s := phys.impact_count
+	phys.fire(stgt, Vector3.INF, "swarm")
+	var far_s := 0.0
+	var pts_s: Array = []
+	var on_imp := func(p: Vector3, _k: String) -> void: pts_s.append(p)
+	phys.impacted.connect(on_imp)
+	for f in 72 * 12:
+		phys.advance(1.0 / 72.0)
+		if not phys.flying:
+			break
+	phys.impacted.disconnect(on_imp)
+	for q in pts_s:
+		far_s = maxf(far_s, Vector2((q as Vector3).x - stgt.x, (q as Vector3).z - stgt.z).length())
+	check("drone swarm: 6 drones, 6 small blasts within %.0f mm of the target (%d)" % [far_s * 1000.0, phys.impact_count - imp_s], phys.impact_count - imp_s == 6 and far_s < 0.035 and WeaponTable.IDS.has("swarm"))
+	phys.reset_island()
 
 
 func pulses_of(x: XRGame) -> int:
@@ -1062,6 +1080,18 @@ func _xr_tests(island: Island, phys: PhysicsTest) -> void:
 	var to2 := xg3.flow == "briefing" and xg3.screen.selected == "c1s2"
 	xg3._on_screen("campaign")
 	check("NEXT briefs stage 2; CAMPAIGN goes back to the map", to2 and xg3.flow == "menu" and xg3.screen.page == "campaign")
+	# aim snap: pointing 1 cm off the radar dome during its stage aims at the dome itself
+	xg3.start_stage("c1s1")
+	var rd := Vector3.ZERO
+	for stc in qi.props.structures:
+		if stc.kind == "radar_sphere":
+			rd = stc.pos
+	var near_pt := Vector3(rd.x + 0.01, 0.0, rd.z)
+	var sn := xg3._snap(near_pt)
+	var far_pt := Vector3(rd.x + 0.05, 0.0, rd.z)
+	var sf := xg3._snap(far_pt)
+	check("aim snaps onto an objective within 1.6 cm, not beyond", xg3.snapped == false and Vector2(sn.x - rd.x, sn.z - rd.z).length() < 1e-4 and sf == far_pt)
+	xg3.back_to_campaign()
 	# civilians in the aimed blast turn the ring yellow
 	var town := Vector3(qi.layout.town_center.x, 0.0, qi.layout.town_center.y)
 	town.y = qi.surface_at(town.x, town.z)

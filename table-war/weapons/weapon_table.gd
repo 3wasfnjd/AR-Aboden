@@ -17,7 +17,8 @@ extends RefCounted
 ##   ammo        rounds when full; one round comes back every `reload` s
 ##   glow        re-entry glow on the way down (ballistic missile)
 ##   trail       smoke trail puff interval (s) and tint
-##   salvo       rockets per trigger pull, landing within `spread` of the target (MLRS)
+##   salvo       rockets per trigger pull, landing within `spread` of the target (MLRS,
+##               the drone swarm); salvo_gap s between two of them (0.09)
 ##   split       submunitions released at 62 % of the flight, falling within `spread`
 ##   crater_k    crater depth factor (bunker buster digs deep)
 ##   wings       draw wings on the body (cruise, drone, anti-ship)
@@ -26,7 +27,7 @@ extends RefCounted
 ##               deck; a jet is back only when it has landed: reload 0)
 ##   nuke        nuclear test: everything within `nuke_r` is destroyed, mushroom cloud
 
-const IDS := ["ballistic", "cruise", "artillery", "mlrs", "cluster", "hypersonic", "bunker", "drone", "antiship", "jet", "nuke"]
+const IDS := ["ballistic", "cruise", "artillery", "mlrs", "cluster", "hypersonic", "bunker", "drone", "antiship", "jet", "swarm", "nuke"]
 
 const WEAPONS := {
 	"ballistic": {
@@ -85,6 +86,14 @@ const WEAPONS := {
 		"cooldown": 2.5, "ammo": 10, "reload": 5.0, "glow": false, "wings": true,
 		"trail": 0.25, "trail_col": Color(0.9, 0.9, 0.9, 0.15),
 		"length": 0.0026, "radius": 0.00045, "col": Color(0.86, 0.86, 0.82),
+	},
+	"swarm": {
+		"id": "swarm", "name_ar": "سرب مسيّرات", "name_en": "Drone swarm",
+		"arc": "cruise", "flight": [2.0, 9.0], "speed": 0.26, "cruise_alt": 0.016, "blast": 0.35, "ejecta": 8,
+		"cooldown": 6.0, "ammo": 3, "reload": 12.0, "glow": false, "wings": true,
+		"salvo": 6, "spread": 0.022, "salvo_gap": 0.22,
+		"trail": 0.3, "trail_col": Color(0.9, 0.9, 0.9, 0.12),
+		"length": 0.0017, "radius": 0.0003, "col": Color(0.74, 0.76, 0.72),
 	},
 	"antiship": {
 		"id": "antiship", "name_ar": "صاروخ مضاد للسفن", "name_en": "Anti-ship missile",

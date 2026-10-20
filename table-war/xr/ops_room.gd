@@ -14,8 +14,13 @@ extends Node3D
 const R := 3.4                   # room radius (octagon)
 const H := 2.9                   # ceiling
 const SIDES := 8
-const TABLE_H := 0.75            # the hologram table top (the diorama base stands on it)
-const SEA_Y := -9.0              # the sea, below the ops room (we are high in the ship)
+const TABLE_H := 0.6             # the hologram table top (the diorama base stands on it): low, to look down on the city
+const SEA_Y := -1.6              # the sea, below the ops room (we are high in the ship)
+## The world outside the windows is built small and close (a stylized backdrop): all of
+## it within OUT_MAX metres, inside the headset camera's far plane (60 m) and its depth
+## precision. Built at real scale (hundreds of metres) it flickered at the far plane.
+const OUT_K := 0.1
+const OUT_MAX := 55.0
 const HULL := Color(0.20, 0.23, 0.27)
 const HULL_DARK := Color(0.13, 0.15, 0.18)
 const PANEL := Color(0.27, 0.31, 0.36)
@@ -104,10 +109,10 @@ func _shell(mb: MeshBuilder, glow: MeshBuilder) -> void:
 		mb.tri_out(m0, a0, a1, FLOOR if k % 2 == 0 else FLOOR.lightened(0.04), up)
 		mb.tri_out(m0, a1, m1, FLOOR if k % 2 == 0 else FLOOR.lightened(0.04), up)
 		# glowing ring on the floor round the table
-		var g0 := _corner(k, 1.12) + up * 0.003
-		var g1 := _corner(k + 1, 1.12) + up * 0.003
-		var h0 := _corner(k, 1.16) + up * 0.003
-		var h1 := _corner(k + 1, 1.16) + up * 0.003
+		var g0 := _corner(k, 1.12) + up * 0.008
+		var g1 := _corner(k + 1, 1.12) + up * 0.008
+		var h0 := _corner(k, 1.16) + up * 0.008
+		var h1 := _corner(k + 1, 1.16) + up * 0.008
 		glow.tri_out(g0, h0, h1, GLOW_CYAN.darkened(0.35), up)
 		glow.tri_out(g0, h1, g1, GLOW_CYAN.darkened(0.35), up)
 	# walls
@@ -135,9 +140,9 @@ func _shell(mb: MeshBuilder, glow: MeshBuilder) -> void:
 			var g1: Vector3 = a0.lerp(a1, 0.92) + inward.normalized() * 0.01
 			_quad(glow, g0, g1, 2.12, 2.15, GLOW_CYAN.darkened(0.2), inward)
 		# vertical ribs at the corners
-		var rib := (a0 - table).normalized() * 0.0
+		var rib := inward.normalized() * 0.02
 		var t0 := a0 + (a1 - a0).normalized() * 0.07 + rib
-		_quad(mb, a0, t0, 0.0, H, TRIM.darkened(0.2), inward)
+		_quad(mb, a0 + rib, t0, 0.0, H, TRIM.darkened(0.2), inward)
 	# ceiling with light strips
 	for k in SIDES:
 		var a0 := _corner(k, R) + Vector3(0, H, 0)
@@ -187,8 +192,8 @@ func _consoles(mb: MeshBuilder, glow: MeshBuilder) -> void:
 			glow.box(Vector3(0, 1.08, -0.012), Vector3(0.74, 0.40, 0.004), Color(0.03, 0.08, 0.12).lerp(col, 0.12))
 			for b in 4:
 				var w := _rng.randf_range(0.15, 0.55)
-				glow.box(Vector3(-0.3 + w * 0.5, 0.96 + b * 0.07, -0.016), Vector3(w, 0.022, 0.003), col)
-			glow.box(Vector3(0.22, 1.18, -0.016), Vector3(0.18, 0.12, 0.003), col.lightened(0.2))
+				glow.box(Vector3(-0.3 + w * 0.5, 0.96 + b * 0.07, -0.022), Vector3(w, 0.022, 0.003), col)
+			glow.box(Vector3(0.22, 1.18, -0.022), Vector3(0.18, 0.12, 0.003), col.lightened(0.2))
 			glow.xform = gsaved
 			# seat
 			var seat: Vector3 = c + inward * 0.7
@@ -216,15 +221,14 @@ func _crew(mb: MeshBuilder, v: int) -> void:
 	mb.box(Vector3(0, 1.20, 0.03), Vector3(0.18, 0.015, 0.08), uniform.darkened(0.35))        # peak
 	for sx in [-1.0, 1.0]:
 		mb.box(Vector3(sx * 0.2, 0.86, 0.06), Vector3(0.08, 0.08, 0.34), uniform.lightened(0.05))   # arms on the desk
-	mb.box(Vector3(0.105, 1.13, -0.08), Vector3(0.02, 0.05, 0.05), Color(0.20, 0.21, 0.24))   # headset ear cup
 
 
 ## The hologram table: a round steel pedestal; its top (TABLE_H) carries the diorama base.
 func _pedestal(mb: MeshBuilder, glow: MeshBuilder) -> void:
 	mb.cylinder(table, 0.42, 0.36, 0.08, 16, HULL_DARK)
 	mb.cylinder(table + Vector3(0, 0.08, 0), 0.30, 0.30, TABLE_H - 0.16, 16, HULL)
-	mb.cylinder(table + Vector3(0, TABLE_H - 0.08, 0), 0.36, 0.585, 0.08, 24, PANEL, true, TRIM)
-	glow.cylinder(table + Vector3(0, TABLE_H - 0.088, 0), 0.37, 0.37, 0.006, 24, GLOW_CYAN, false)
+	mb.cylinder(table + Vector3(0, TABLE_H - 0.083, 0), 0.36, 0.585, 0.08, 24, PANEL, true, TRIM)
+	glow.cylinder(table + Vector3(0, TABLE_H - 0.091, 0), 0.37, 0.37, 0.006, 24, GLOW_CYAN, false)
 	glow.cylinder(table + Vector3(0, 0.08, 0), 0.305, 0.305, 0.012, 16, GLOW_CYAN.darkened(0.3), false)
 
 
@@ -232,7 +236,7 @@ func _pedestal(mb: MeshBuilder, glow: MeshBuilder) -> void:
 
 func _sea(mb: MeshBuilder) -> void:
 	# low-poly swell: a fan of facets out to the horizon, darker far away
-	var rings := [6.0, 14.0, 30.0, 60.0, 120.0, 240.0, 480.0]
+	var rings := [4.0, 7.0, 12.0, 20.0, 30.0, 42.0, 52.0]
 	var seg := 28
 	var c := Vector3(table.x, SEA_Y, table.z)
 	for i in rings.size() - 1:
@@ -241,7 +245,7 @@ func _sea(mb: MeshBuilder) -> void:
 		for s in seg:
 			var a0 := TAU * s / seg
 			var a1 := TAU * (s + 1) / seg
-			var j0 := _rng.randf_range(-0.25, 0.25) * (1.0 + i)
+			var j0 := _rng.randf_range(-0.03, 0.03) * (1.0 + i)
 			var p := [c + Vector3(cos(a0) * r0, j0 * 0.2, sin(a0) * r0), c + Vector3(cos(a1) * r0, 0.0, sin(a1) * r0),
 				c + Vector3(cos(a0) * r1, 0.0, sin(a0) * r1), c + Vector3(cos(a1) * r1, j0 * 0.3, sin(a1) * r1)]
 			var col := SEA_NEAR.lerp(SEA_DEEP, float(i) / (rings.size() - 2)).lightened(_rng.randf_range(-0.04, 0.04))
@@ -253,8 +257,8 @@ func _sea(mb: MeshBuilder) -> void:
 func _fleet(mb: MeshBuilder) -> void:
 	var ships := [[Vector3(-35, 0, -70), 22.0, 0.3], [Vector3(40, 0, -95), 28.0, -0.2], [Vector3(-90, 0, -150), 34.0, 0.1], [Vector3(110, 0, -180), 40.0, 0.5]]
 	for s in ships:
-		var p: Vector3 = table + (s[0] as Vector3) + Vector3(0, SEA_Y, 0)
-		var L: float = s[1]
+		var p: Vector3 = table + (s[0] as Vector3) * OUT_K * 1.6 + Vector3(0, SEA_Y, 0)
+		var L: float = float(s[1]) * OUT_K * 1.6
 		var saved := mb.xform
 		mb.xform = Transform3D(Basis(Vector3.UP, float(s[2])), p)
 		var hull := Color(0.42, 0.46, 0.52)
@@ -278,9 +282,9 @@ func _fleet(mb: MeshBuilder) -> void:
 func _islands(mb: MeshBuilder) -> void:
 	var isl := [[Vector3(-160, 0, -380), 60.0, 14.0], [Vector3(90, 0, -420), 90.0, 22.0], [Vector3(260, 0, -330), 50.0, 10.0], [Vector3(-320, 0, -260), 70.0, 12.0]]
 	for s in isl:
-		var c: Vector3 = table + (s[0] as Vector3) + Vector3(0, SEA_Y, 0)
-		var r: float = s[1]
-		var h: float = s[2]
+		var c: Vector3 = table + (s[0] as Vector3).normalized() * 47.0 + Vector3(0, SEA_Y, 0)
+		var r: float = float(s[1]) * OUT_K * 1.2
+		var h: float = float(s[2]) * OUT_K * 1.2
 		var seg := 9
 		var top := c + Vector3(_rng.randf_range(-r * 0.2, r * 0.2), h, 0)
 		for k in seg:
@@ -299,8 +303,8 @@ func _islands(mb: MeshBuilder) -> void:
 ## The sky: a low-poly dome, vertex-coloured gradient, unshaded (no sky shader pass).
 func _sky_dome() -> Mesh:
 	var mb := MeshBuilder.new()
-	var c := Vector3(table.x, SEA_Y - 2.0, table.z)
-	var R2 := 900.0
+	var c := Vector3(table.x, SEA_Y - 0.5, table.z)
+	var R2 := OUT_MAX
 	var rows := 6
 	var seg := 24
 	for j in rows:

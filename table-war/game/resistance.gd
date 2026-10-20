@@ -28,7 +28,7 @@ const CIWS_P := 0.5
 const ENEMY_KINDS := ["launcher_truck", "silo_open", "silo"]
 const INTERCEPT := {
 	"ballistic": 0.35, "cruise": 0.6, "artillery": 0.0, "mlrs": 0.2, "cluster": 0.35, "hypersonic": 0.08,
-	"bunker": 0.35, "drone": 0.75, "antiship": 0.4, "jet": 0.4, "nuke": 0.3, "submunition": 0.0, "jetbomb": 0.0,
+	"bunker": 0.35, "drone": 0.75, "swarm": 0.6, "antiship": 0.4, "jet": 0.4, "nuke": 0.3, "submunition": 0.0, "jetbomb": 0.0,
 }
 const MAX_MISSILES := 6
 

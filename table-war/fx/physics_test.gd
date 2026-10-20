@@ -171,7 +171,7 @@ func _shell_mesh(w: Dictionary) -> Mesh:
 	mb.cylinder(Vector3.ZERO, r, r, L * 0.7, 8, w.col)
 	mb.cylinder(Vector3(0, L * 0.7, 0), r, 0.0, L * 0.3, 8, (w.col as Color).lightened(0.2))
 	if bool(w.get("wings", false)):
-		var span := 1.5 if id == "drone" else (0.75 if id == "jet" else 0.9)
+		var span := 1.5 if id in ["drone", "swarm"] else (0.75 if id == "jet" else 0.9)
 		mb.box(Vector3(0, L * 0.45, 0), Vector3(L * span, L * 0.12, r * 0.4), w.col)   # wings
 	if id == "jet":
 		mb.box(Vector3(0, L * 0.08, r * 1.3), Vector3(L * 0.05, L * 0.18, r * 1.8), (w.col as Color).darkened(0.15))   # tail fin
@@ -322,7 +322,7 @@ func fire(tgt: Vector3, origin := Vector3.INF, wid := "") -> Dictionary:
 	var o := origin if origin != Vector3.INF else default_origin(w.id)
 	# MLRS: the rest of the salvo follows a rocket every 90 ms, scattered round the target
 	for k in range(1, int(w.get("salvo", 1))):
-		_pending.append({"delay": k * 0.09, "origin": o, "tgt": _scatter(tgt, float(w.spread)), "wid": w.id})
+		_pending.append({"delay": k * float(w.get("salvo_gap", 0.09)), "origin": o, "tgt": _scatter(tgt, float(w.spread)), "wid": w.id})
 	return _launch(w, o, tgt)
 
 
@@ -459,6 +459,16 @@ func _step_flights(dt: float) -> void:
 			i += 1
 			continue
 		var s := surface(p.x, p.z)
+		if pl.type == "cruise" and t >= float(pl.T) and s > -INF:
+			# the end of a terrain-following path is its target: an earlier blast may
+			# have dug the ground away under it (a crater), it still goes off there
+			var w0: Dictionary = f.w
+			_end_flight(i)
+			if flights.is_empty():
+				hide_preview()
+			var pe := _path_end(pl)
+			_impact(Vector3(pe.x, minf(pe.y, s), pe.z), w0)
+			continue
 		if t > 0.05 and s > -INF and p.y <= s + 1e-6:
 			var lo := t_prev
 			var hi := t
@@ -494,6 +504,11 @@ func _step_flights(dt: float) -> void:
 		_orient(f)
 		_trail(f, p, dt)
 		i += 1
+
+
+static func _path_end(pl: Dictionary) -> Vector3:
+	var pts: PackedVector3Array = pl.pts
+	return pts[pts.size() - 1]
 
 
 func _orient(f: Dictionary) -> void:

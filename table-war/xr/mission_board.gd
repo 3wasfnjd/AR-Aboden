@@ -13,8 +13,9 @@ extends Node3D
 
 const TEX := Vector2i(1280, 520)
 const AZ_HALF := 0.62              # half the patch width, radians round the dome
-const H0 := 0.23                   # patch bottom / top above the sea (model units)
-const H1 := 0.385
+const H0 := 0.06                   # patch bottom / top above the sea (model units): the low
+const H1 := 0.20                   # band of the glass on the player's side (build 15), so the
+                                   # city stays clear when looking down on it from above
 const OUTSET := 0.002              # just outside the glass
 const FRAME := Color(0.45, 1.0, 0.55)
 const TEXT := Color(0.86, 1.0, 0.88)

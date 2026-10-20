@@ -30,7 +30,7 @@ const LAUNCHERS := {
 }
 const WEAPON_LAUNCHER := {
 	"ballistic": "vls", "hypersonic": "vls", "cluster": "vls", "bunker": "vls",
-	"cruise": "box", "antiship": "box", "artillery": "gun", "mlrs": "pod", "drone": "ramp", "nuke": "silo", "jet": "deck",
+	"cruise": "box", "antiship": "box", "artillery": "gun", "mlrs": "pod", "drone": "ramp", "swarm": "ramp", "nuke": "silo", "jet": "deck",
 }
 
 const HULL := Color(0.52, 0.57, 0.63)
