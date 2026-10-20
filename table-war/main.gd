@@ -409,7 +409,7 @@ func _run_mr_preview() -> void:
 	x.missions.step(23.0, island.props)
 	cam.set_view(spot + Vector3(0, 0.12, -0.05), 0.0, 22.0, 0.95, 70.0)
 	await _frames(1)
-	x.rig.camera.global_transform = cam.global_transform   # the screen rides on the eyes
+	x.rig.camera.global_transform = cam.global_transform   # the screen turns to this eye
 	x._update_board(true)
 	await _capture("x_board")
 	# the tablet in the left hand, from the eye (the screen in the view off for this one)

@@ -876,7 +876,7 @@ func _xr_tests(island: Island, phys: PhysicsTest) -> void:
 	xg2._on_button("left", "ax", true)
 	var hidden := not xg2.board.visible
 	xg2._on_button("left", "ax", true)
-	check("left X hides / shows the mission screen (in the view)", hidden and xg2.board.visible and xg2.board.get_parent() == xg2.rig.camera)
+	check("left X hides / shows the mission screen (on the dome glass)", hidden and xg2.board.visible and xg2.board.get_parent() == xg2.diorama)
 	xg2.select_mission("")
 	check("free play: the screen shows the island's destruction, RESET is back", xg2.board.title.text.contains("لعب حر") and (xg2.panel._btn_labels["reset"][1] as Label3D).text == "RESET")
 	check("B un-pins (place again)", xg2.state == "placing" and not xg2.panel.visible)

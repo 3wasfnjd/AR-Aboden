@@ -98,7 +98,7 @@ func setup(r: Room, d: Node3D, isl: Island, p: PhysicsTest) -> void:
 	missions.load_best()
 	board = MissionBoard.new()
 	board.name = "MissionBoard"
-	rig.camera.add_child(board)
+	diorama.add_child(board)
 	for id in WeaponTable.IDS:
 		var w := WeaponTable.get_weapon(id)
 		ammo[id] = int(w.ammo)
@@ -322,12 +322,14 @@ func select_mission(id: String) -> void:
 	rig.pulse("left", 0.2, 0.02)
 
 
-## The mission screen in the view: its content, shown unless hidden with left X.
+## The mission screen on the dome glass, on the player's side: its content, shown
+## unless hidden with left X.
 func _update_board(force := false) -> void:
 	if board == null:
 		return
 	board.show_state(missions, island.props)
 	board.visible = board_shown
+	board.face_toward(diorama.global_transform.affine_inverse() * rig.head_transform().origin)
 	if force:
 		_board_acc = 0.0
 

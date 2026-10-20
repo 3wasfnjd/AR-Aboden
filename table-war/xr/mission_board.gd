@@ -1,8 +1,10 @@
 class_name MissionBoard
 extends Node3D
-## Mission screen in the player's view (build 13): a transparent, holographic display
-## curved round the eyes, in the upper part of the view (a child of the XR camera).
-## Left X shows / hides it. In free play it shows the island's destruction.
+## Mission screen ON the glass dome, on the player's side (build 13): a transparent,
+## holographic display that follows the curve of the glass in front of the player and
+## turns round the dome as they walk (a child of the diorama at the dome's centre, so
+## it scales with the model). Left X shows / hides it. In free play it shows the
+## island's destruction.
 ##
 ## The content (mission name, objective + progress, clock, civilian losses, three
 ## stars, result) is laid out in 2D inside a SubViewport with a transparent
@@ -10,10 +12,10 @@ extends Node3D
 ## re-renders only when the text changes (about once a second while the clock runs).
 
 const TEX := Vector2i(1280, 520)
-const DIST := 0.75                 # m from the eyes
-const AZ_HALF := 0.30              # half the strip width, radians round the eyes
-const Y0 := 0.11                   # strip bottom / top (m above eye level at DIST)
-const Y1 := 0.29
+const AZ_HALF := 0.62              # half the patch width, radians round the dome
+const H0 := 0.23                   # patch bottom / top above the sea (model units)
+const H1 := 0.385
+const OUTSET := 0.002              # just outside the glass
 const FRAME := Color(0.45, 1.0, 0.55)
 const TEXT := Color(0.86, 1.0, 0.88)
 const TEXT_DIM := Color(0.60, 0.85, 0.64)
@@ -51,11 +53,12 @@ func _ready() -> void:
 	m.cull_mode = BaseMaterial3D.CULL_DISABLED
 	m.albedo_texture = viewport.get_texture()
 	m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
-	m.render_priority = 20         # over the scene: a head-up display
-	m.no_depth_test = true
+	m.render_priority = 4          # over the dome glass, under the panel
+	m.no_depth_test = false
 	screen.material_override = m
 	screen.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(screen)
+	position = Vector3(0, IslandTerrain.SEA, 0)
 
 
 ## The 2D layout: a faint green tint, a frame with corner brackets, scan lines, text.
@@ -64,7 +67,7 @@ func _build_ui() -> void:
 	root.size = Vector2(TEX)
 	viewport.add_child(root)
 	var tint := ColorRect.new()
-	tint.color = Color(0.10, 0.35, 0.16, 0.16)
+	tint.color = Color(0.02, 0.10, 0.05, 0.62)   # dark glass behind the text: readable over the island
 	tint.position = Vector2(20, 20)
 	tint.size = Vector2(TEX) - Vector2(40, 40)
 	root.add_child(tint)
@@ -216,20 +219,35 @@ static func _star_points(r: float) -> PackedVector2Array:
 	return pts
 
 
-## A strip of a cylinder round the eyes (camera-local, -z ahead), upper part of the view.
+## Turn the screen round the dome to the side facing the island-local point `eye_l`.
+func face_toward(eye_l: Vector3) -> void:
+	var dir := Vector2(eye_l.x, eye_l.z)
+	if dir.length_squared() < 1e-6:
+		dir = Vector2(0, 1)
+	rotation = Vector3(0, -atan2(dir.y, dir.x), 0)
+
+
+## A patch of the dome lathe (local azimuth 0 = +x), just outside the glass, read from
+## outside the dome.
 func _patch_mesh() -> ArrayMesh:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var na := 24
+	var R := GlassDome.R + OUTSET
+	var KR := GlassDome.K * GlassDome.R
+	var t0 := asin(clampf(H0 / KR, 0.0, 1.0))
+	var t1 := asin(clampf(H1 / KR, 0.0, 1.0))
+	var na := 40
+	var nt := 12
+	var pt := func(i: int, j: int) -> Vector3:
+		var az := lerpf(-AZ_HALF, AZ_HALF, float(i) / na)
+		var t := lerpf(t0, t1, float(j) / nt)
+		return Vector3(R * cos(t) * cos(az), GlassDome.K * R * sin(t), R * cos(t) * sin(az))
 	for i in na:
-		var a0 := lerpf(-AZ_HALF, AZ_HALF, float(i) / na)
-		var a1 := lerpf(-AZ_HALF, AZ_HALF, float(i + 1) / na)
-		var u0 := float(i) / na
-		var u1 := float(i + 1) / na
-		var q := [Vector3(sin(a0) * DIST, Y0, -cos(a0) * DIST), Vector3(sin(a1) * DIST, Y0, -cos(a1) * DIST),
-			Vector3(sin(a1) * DIST, Y1, -cos(a1) * DIST), Vector3(sin(a0) * DIST, Y1, -cos(a0) * DIST)]
-		var uv := [Vector2(u0, 1.0), Vector2(u1, 1.0), Vector2(u1, 0.0), Vector2(u0, 0.0)]
-		for k in [0, 1, 2, 0, 2, 3]:
-			st.set_uv(uv[k])
-			st.add_vertex(q[k])
+		for j in nt:
+			var q := [pt.call(i, j), pt.call(i + 1, j), pt.call(i + 1, j + 1), pt.call(i, j + 1)]
+			var uv := [Vector2(1.0 - float(i) / na, 1.0 - float(j) / nt), Vector2(1.0 - float(i + 1) / na, 1.0 - float(j) / nt),
+				Vector2(1.0 - float(i + 1) / na, 1.0 - float(j + 1) / nt), Vector2(1.0 - float(i) / na, 1.0 - float(j + 1) / nt)]
+			for k in [0, 1, 2, 0, 2, 3]:
+				st.set_uv(uv[k])
+				st.add_vertex(q[k])
 	return st.commit()
