@@ -1276,7 +1276,7 @@ func _drape_roads() -> void:
 	# roads (8 m two-lane)
 	var rb := MeshBuilder.new()
 	for r in L.road_samples():
-		_ribbon(rb, r, IslandLayout.ROAD_W, 0.00032)
+		_ribbon(rb, r, IslandLayout.ROAD_W, 0.0008)
 	_add_drape(rb, shader, 0, 0.0)
 
 
@@ -1287,7 +1287,7 @@ func _drape_runway() -> void:
 	var shader := load("res://island/marking.gdshader")
 	# runway 600 x 25 m with ICAO-style markings
 	var rwb := MeshBuilder.new()
-	_rect_grid(rwb, L.runway_center, rd, Vector2(L.runway_len, L.runway_w), 0.0005)
+	_rect_grid(rwb, L.runway_center, rd, Vector2(L.runway_len, L.runway_w), 0.0009)
 	_add_drape(rwb, shader, 1, L.runway_len)
 	_build_designators()
 
@@ -1299,10 +1299,10 @@ func _drape_taxi() -> void:
 	var shader := load("res://island/marking.gdshader")
 	# parallel taxiway + end/middle connectors (15 m, yellow centreline)
 	var tb := MeshBuilder.new()
-	_rect_grid(tb, L.runway_center + north * L.taxi_offset, rd, Vector2(L.runway_len - Scale.m(20.0), L.taxi_w), 0.00045)
+	_rect_grid(tb, L.runway_center + north * L.taxi_offset, rd, Vector2(L.runway_len - Scale.m(20.0), L.taxi_w), 0.00085)
 	for along in [-L.runway_len * 0.5 + Scale.m(20.0), 0.0, L.runway_len * 0.5 - Scale.m(20.0)]:
 		var c: Vector2 = L.runway_center + rd * along + north * L.taxi_offset * 0.5
-		_rect_grid(tb, c, north, Vector2(L.taxi_offset - L.runway_w * 0.5 - L.taxi_w * 0.5 + Scale.m(4.0), L.taxi_w), 0.00042)
+		_rect_grid(tb, c, north, Vector2(L.taxi_offset - L.runway_w * 0.5 - L.taxi_w * 0.5 + Scale.m(4.0), L.taxi_w), 0.00082)
 	_add_drape(tb, shader, 4, 0.0)
 
 
@@ -1313,16 +1313,16 @@ func _drape_concrete() -> void:
 	var shader := load("res://island/marking.gdshader")
 	# apron, silo pad, HAS links, plant yard (concrete)
 	var cb := MeshBuilder.new()
-	_rect_grid(cb, L.apron_center, rd, L.apron_size, 0.0004)
-	_rect_grid(cb, L.apron_center - north * (L.apron_size.y * 0.5 + Scale.m(5.0)), north, Vector2(Scale.m(12.0), Scale.m(40.0)), 0.00041)
-	_rect_grid(cb, L.silo_center, rd, Vector2(Scale.m(150.0), Scale.m(80.0)), 0.0004)
+	_rect_grid(cb, L.apron_center, rd, L.apron_size, 0.0008)
+	_rect_grid(cb, L.apron_center - north * (L.apron_size.y * 0.5 + Scale.m(5.0)), north, Vector2(Scale.m(12.0), Scale.m(40.0)), 0.00081)
+	_rect_grid(cb, L.silo_center, rd, Vector2(Scale.m(150.0), Scale.m(80.0)), 0.0008)
 	for st in structures:
 		if st.has("link"):
 			var lk: Array = st.link
 			var p0: Vector2 = lk[0]
 			var p1: Vector2 = lk[1]
-			_rect_grid(cb, (p0 + p1) * 0.5, (p1 - p0).normalized(), Vector2(p0.distance_to(p1), Scale.m(16.0)), 0.00041)
-	_rect_grid(cb, L.plant_center, Vector2.RIGHT, L.plant_size, 0.0004)
+			_rect_grid(cb, (p0 + p1) * 0.5, (p1 - p0).normalized(), Vector2(p0.distance_to(p1), Scale.m(16.0)), 0.00081)
+	_rect_grid(cb, L.plant_center, Vector2.RIGHT, L.plant_size, 0.0008)
 	_rect_grid(cb, Vector2((L.harbour_x0 + L.harbour_x1) * 0.5, (L.quay_land_z + 0.002 + L.quay_z) * 0.5), Vector2.RIGHT, Vector2(L.harbour_x1 - L.harbour_x0, L.quay_z - L.quay_land_z - 0.002), 0.0, IslandTerrain.SEA + L.quay_height + 0.00035)
 	_add_drape(cb, shader, 2, 0.0)
 
@@ -1743,6 +1743,9 @@ func _rock_mesh(seed: int) -> ArrayMesh:
 
 const VEG_TILES := 2          # 2 x 2 spatial tiles per species -> per-tile LOD switching
 const LOD_DIST := 0.55        # m camera distance where trees swap to the low mesh
+## Build 10: no palm trees (they read as noise at this scale), no LOD swapping.
+static var palms_on := false
+static var veg_lod := false
 ## Quest profile: one MultiMesh per species and level, per-instance LOD in the vertex
 ## shader (island/veg_lod.gdshader) -> 2 draw calls per species instead of 8.
 static var merged_veg := false
@@ -1756,6 +1759,11 @@ var _veg_shader: Shader
 ## Build tiled MultiMeshes. `lo` (optional) is drawn beyond LOD_DIST; with
 ## `cull_far` the species simply disappears beyond `far` (grass tufts).
 func _make_species(name: String, hi: Mesh, lo: Mesh, xfs: Array[Transform3D], cols: Array[Color], cull_far := false, far := LOD_DIST) -> void:
+	if not veg_lod:
+		# one mesh at every distance: switching hi / lo by head distance made whole
+		# tiles of trees pop back and forth (flicker) as the player moved
+		lo = null
+		cull_far = false
 	var tiles := 1 if merged_veg else VEG_TILES
 	var nt := tiles * tiles
 	var buckets: Array = []
@@ -1903,7 +1911,8 @@ func _place_vegetation() -> void:
 		if hs > 0.0022 and hs < 0.006 and _veg_ok(p, 0.0022, 0.92, 0.004) and _spacing_ok(palms, p, 0.006):
 			if p.distance_to(L.sabkha_center) > L.sabkha_radius:
 				add_palm.call(p)
-	_make_species("palm", _palm_mesh(), _palm_lo_mesh(), palms, palm_c)
+	if palms_on:
+		_make_species("palm", _palm_mesh(), _palm_lo_mesh(), palms, palm_c)
 
 	# acacias on the dry inland plains
 	var aca: Array[Transform3D] = []

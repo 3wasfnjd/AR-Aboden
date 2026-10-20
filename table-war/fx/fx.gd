@@ -235,15 +235,36 @@ func step(dt: float) -> void:
 		var q: Dictionary = puffs[k]
 		q.age += dt
 		if q.age >= q.life:
-			# swap-remove: O(1), order does not matter for drawing
-			puffs[k] = puffs[puffs.size() - 1]
-			puffs.pop_back()
+			# ordered removal: a swap-remove reshuffled the draw order of the blended
+			# puffs every time one died (smoke flickering where puffs overlap)
+			puffs.remove_at(k)
 			continue
 		var v: Vector3 = q.v
 		v *= exp(-q.drag * dt)
 		v.y += q.rise * dt
+		var np: Vector3 = (q.p as Vector3) + v * dt
+		# the glass dome holds the smoke in: the puff (with its radius) slides along it
+		var t: float = q.age / q.life
+		var rad: float = lerpf(q.s0, q.s1, 1.0 - pow(1.0 - t, 2.0)) * 0.7
+		var rr := Vector2(np.x, np.z).length()
+		var rmax := GlassDome.R - rad - 0.003
+		if rr > rmax and rr > 1e-6:
+			np.x *= maxf(rmax, 0.0) / rr
+			np.z *= maxf(rmax, 0.0) / rr
+			v.x *= 0.3
+			v.z *= 0.3
+		var top := WeaponFlight.dome_ceiling(np.x, np.z) + WeaponFlight.DOME_MARGIN - rad
+		if np.y > top:
+			np.y = maxf(top, minf(np.y, IslandTerrain.SEA + 0.002))
+			v.y = minf(v.y, 0.0)
+			# spread out under the glass instead
+			var out := Vector2(np.x, np.z)
+			if out.length_squared() > 1e-8:
+				out = out.normalized() * 0.004
+				v.x += out.x * dt * 10.0
+				v.z += out.y * dt * 10.0
 		q.v = v
-		q.p = (q.p as Vector3) + v * dt
+		q.p = np
 		q.rot += q.spin * dt
 		k += 1
 	if flash_e > 0.0:

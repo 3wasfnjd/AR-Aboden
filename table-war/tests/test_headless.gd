@@ -213,13 +213,12 @@ func _initialize() -> void:
 			if absf(n - round(n)) > 0.01 or n < 0.99 or n > 30.5:
 				storey_bad += 1
 	check("buildings are whole toy storeys", storey_bad == 0, "%d off-grid" % storey_bad)
-	var palm_h := []
-	var sp: Dictionary = island.props.species["palm"]
-	for xf in (sp.xf as Array).slice(0, 50):
-		palm_h.append((xf as Transform3D).basis.get_scale().y * 0.9 * Scale.RATIO)
-	var pmin: float = palm_h.min()
-	var pmax: float = palm_h.max()
-	check("date palms 10-17 m tall", pmin > 10.0 and pmax < 17.0, "%.1f-%.1f m" % [pmin, pmax])
+	# build 10: no palms, and no tree LOD swapping (it popped as the head moved)
+	var lod_nodes := 0
+	for mmi in island.props.find_children("MM_*", "MultiMeshInstance3D", false, false):
+		if (mmi as MultiMeshInstance3D).visibility_range_end > 0.0 or (mmi as MultiMeshInstance3D).visibility_range_begin > 0.0:
+			lod_nodes += 1
+	check("no palm trees, no vegetation LOD swapping", not island.props.species.has("palm") and island.props.species.has("acacia") and lod_nodes == 0, "%s, %d LOD nodes" % [island.props.species.keys(), lod_nodes])
 
 	# --- crater deforms height ----------------------------------------------------
 	var c := Vector3(0.25, 0.0, -0.02)
@@ -375,6 +374,26 @@ func _initialize() -> void:
 	check("no shot from the ship goes through the glass dome", through.is_empty(), str(through))
 	phys.reset_island()
 
+	# everything stays under the glass dome: debris thrown hard and rising smoke
+	phys.debris.clear()
+	phys.fx.clear()
+	for k in 30:
+		phys.debris.spawn(Vector3(0.05 + k * 0.01, 0.15, 0.0), Basis(), Vector3(0.001, 0.001, 0.001), Vector3(0.3, 1.2, 0.2), Vector3.ZERO, Color.WHITE, 1)
+	for k in 40:
+		phys.fx.puff(Vector3(0.3 + k * 0.004, 0.2, 0.1), Vector3(0.1, 0.3, 0.0), 0.01, 0.04, 6.0, Color(0.5, 0.5, 0.5, 0.8), 3, 0.05, 0.2)
+	var out := 0
+	for f in 240:
+		phys.advance(1.0 / 60.0)
+		for p in phys.debris.all_positions():
+			if (p as Vector3).y > WeaponFlight.dome_ceiling(p.x, p.z) + WeaponFlight.DOME_MARGIN + 0.001 or Vector2(p.x, p.z).length() > GlassDome.R:
+				out += 1
+		for q in phys.fx.puffs:
+			var qp2: Vector3 = q.p
+			if qp2.y > WeaponFlight.dome_ceiling(qp2.x, qp2.z) + WeaponFlight.DOME_MARGIN + 0.001 or Vector2(qp2.x, qp2.z).length() > GlassDome.R:
+				out += 1
+	check("debris and smoke stay inside the glass dome", out == 0, "%d samples outside" % out)
+	phys.debris.clear()
+	phys.fx.clear()
 	await _xr_tests(island, phys)
 
 	print("RESULT ", "OK" if failures == 0 else "FAILED (%d)" % failures)
@@ -508,7 +527,7 @@ func _xr_tests(island: Island, phys: PhysicsTest) -> void:
 		var g := mmi as MultiMeshInstance3D
 		if g.material_override is ShaderMaterial:
 			tiles_ok = false
-	check("Quest: 2x2 vegetation tiles with LOD ranges, no grass tufts", tiles_ok and (qi.props.species["palm"].hi as Array).size() == 4, "%d draw nodes, species %s" % [mmis.size(), qi.props.species.keys()])
+	check("Quest: 2x2 vegetation tiles, no grass tufts", tiles_ok and (qi.props.species["acacia"].hi as Array).size() == 4, "%d draw nodes, species %s" % [mmis.size(), qi.props.species.keys()])
 	check("Quest: opaque sea variant", (qi.water.shader_mat.shader as Shader).resource_path.ends_with("water_opaque.gdshader"))
 	var qp := PhysicsTest.new()
 	qd.add_child(qp)

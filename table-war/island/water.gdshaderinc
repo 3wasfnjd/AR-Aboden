@@ -11,7 +11,7 @@ uniform vec3 col_mid : source_color = vec3(0.10, 0.64, 0.88);
 uniform vec3 col_deep : source_color = vec3(0.05, 0.34, 0.74);
 uniform vec3 col_foam : source_color = vec3(0.97, 0.98, 0.96);
 uniform float wave_amp = 0.00022;
-uniform float ripple = 0.035;
+uniform float ripple = 0.0;
 uniform float radius = 0.5;
 uniform vec3 seabed : source_color = vec3(0.74, 0.70, 0.56);   // opaque variant only
 
@@ -87,11 +87,11 @@ void fragment() {
 
 
 	// foam: a crisp lapping line at the waterline + a broken outer surf line
-	float fn = vnoise(p * 300.0 + vec2(t * 0.25, -t * 0.18));
-	float lap = 0.00035 + 0.00025 * sin(t * 1.3 + fn * 4.0);
-	float line1 = (1.0 - smoothstep(lap, lap + 0.00035, d)) * step(-0.0004, d);
+	float fn = vnoise(p * 120.0 + vec2(t * 0.25, -t * 0.18));
+	float lap = 0.0007 + 0.0003 * sin(t * 1.3 + fn * 4.0);
+	float line1 = (1.0 - smoothstep(lap, lap + 0.0008, d)) * step(-0.0004, d);
 	float surf_d = 0.0016 + 0.0004 * sin(t * 0.9 + p.x * 90.0);
-	float line2 = (1.0 - smoothstep(0.0, 0.00028, abs(d - surf_d))) * smoothstep(0.35, 0.7, fn);
+	float line2 = (1.0 - smoothstep(0.0, 0.0006, abs(d - surf_d))) * smoothstep(0.35, 0.7, fn);
 	float foam = clamp(max(line1 * smoothstep(0.15, 0.45, fn) * 1.2, line2 * 0.8), 0.0, 1.0);
 	col = mix(col, col_foam, foam);
 	alpha = max(alpha, foam * 0.95);
@@ -106,7 +106,7 @@ void fragment() {
 	ALBEDO = clamp(col, 0.0, 1.0);
 	ALPHA = clamp(alpha, 0.0, 1.0);
 #endif
-	ROUGHNESS = mix(0.07, 0.55, foam);
-	SPECULAR = 0.3;
+	ROUGHNESS = mix(0.45, 0.8, foam);   // no glints on the toy sea (they sparkled)
+	SPECULAR = 0.12;
 	METALLIC = 0.0;
 }

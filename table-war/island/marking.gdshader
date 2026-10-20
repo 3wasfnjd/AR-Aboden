@@ -16,6 +16,8 @@ float vnoise(vec2 p) {
 	return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y);
 }
 float aa(float d) { float w = max(fwidth(d), 1e-5); return 1.0 - smoothstep(-w, w, d); }
+// 1 while a pattern of this period covers several pixels, 0 once it would alias
+float keep(float x, float period) { return 1.0 - smoothstep(0.25, 0.6, fwidth(x) / period); }
 vec3 lin(vec3 c) { return pow(c, vec3(2.2)); }
 
 void vertex() { wp = (tw_island_inv * (MODEL_MATRIX * vec4(VERTEX, 1.0))).xyz; }
@@ -24,14 +26,15 @@ void fragment() {
 	float u = UV.x;
 	float v = UV.y;
 	float av = abs(v);
-	float n = vnoise(wp.xz * 900.0) * 0.5 + vnoise(wp.xz * 3000.0) * 0.5;
+	float n = vnoise(wp.xz * 140.0);   // coarse wear only (fine noise shimmered in the headset)
 	vec3 c;
 	if (kind == 0) {
 		c = vec3(0.58, 0.56, 0.52) * (0.92 + 0.16 * n);
 		// dusty shoulders
 		c = mix(c, vec3(0.62, 0.56, 0.46), smoothstep(0.62, 1.0, av) * 0.75);
-		float dash = step(fract(u / 0.0045), 0.5);
-		c = mix(c, vec3(0.86, 0.83, 0.72), aa(av - 0.05) * dash * 0.45);
+		float k0 = keep(u, 0.0045);
+		float dash = mix(0.5, step(fract(u / 0.0045), 0.5), k0);
+		c = mix(c, vec3(0.86, 0.83, 0.72), aa(av - 0.05) * dash * 0.45 * keep(v, 0.1));
 	} else if (kind == 1) {
 		// runway 600 x 25 m, all distances in model metres (1:2000)
 		c = vec3(0.40, 0.40, 0.41) * (0.9 + 0.2 * n);
@@ -40,9 +43,9 @@ void fragment() {
 		vec3 W = vec3(0.92);
 		c = mix(c, W, aa(abs(av - 0.955) - 0.035));                         // edge lines 0.9 m
 		float e = min(u, run_len - u);                                     // distance from nearest end
-		float dash = step(fract((u - 0.020) / 0.025), 0.6);                // 30 m dash / 20 m gap
+		float dash = mix(0.6, step(fract((u - 0.020) / 0.025), 0.6), keep(u, 0.025));   // 30 m dash / 20 m gap
 		c = mix(c, W, aa(av - 0.036) * dash * step(0.040, e));             // centreline 0.9 m
-		float key = step(0.5, fract(av * 4.0 + 0.25)) * step(av, 0.85);   // threshold piano keys
+		float key = mix(0.5, step(0.5, fract(av * 4.0 + 0.25)), keep(av, 0.25)) * step(av, 0.85);   // threshold piano keys
 		c = mix(c, W, key * step(0.003, e) * step(e, 0.018));
 		float aim = step(0.075, e) * step(e, 0.0975) * step(0.28, av) * step(av, 0.52);  // aiming point
 		c = mix(c, W, aim);
@@ -61,10 +64,10 @@ void fragment() {
 	} else {
 		c = vec3(0.70, 0.69, 0.66) * (0.94 + 0.1 * n);
 		vec2 g = fract(wp.xz / 0.004);
-		float joint = max(aa(g.x - 0.04), aa(g.y - 0.04));
+		float joint = max(aa(g.x - 0.04), aa(g.y - 0.04)) * keep(wp.x, 0.004) * keep(wp.z, 0.004);
 		c *= 1.0 - joint * 0.18;
 		// oil stains
-		c *= 1.0 - 0.12 * smoothstep(0.7, 0.95, vnoise(wp.xz * 300.0));
+		c *= 1.0 - 0.12 * smoothstep(0.7, 0.95, vnoise(wp.xz * 120.0));
 	}
 	ALBEDO = lin(c * COLOR.rgb);
 	ROUGHNESS = 0.9;

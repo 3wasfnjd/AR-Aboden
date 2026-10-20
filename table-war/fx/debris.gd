@@ -329,6 +329,19 @@ func _integrate(b: Dictionary, dt: float) -> void:
 			w = Vector3.ZERO
 	else:
 		b.still = 0.0
+	# the glass dome holds everything in: a piece reaching it bounces back inside
+	var ceil := WeaponFlight.dome_ceiling(p.x, p.z) + WeaponFlight.DOME_MARGIN - 0.002
+	var rr := Vector2(p.x, p.z).length()
+	var rmax := GlassDome.R - 0.004
+	if p.y > ceil or rr > rmax:
+		var n := Vector3(p.x, (p.y - IslandTerrain.SEA) / (GlassDome.K * GlassDome.K), p.z).normalized()
+		if rr > rmax:
+			p.x *= rmax / rr
+			p.z *= rmax / rr
+		p.y = minf(p.y, maxf(WeaponFlight.dome_ceiling(p.x, p.z) + WeaponFlight.DOME_MARGIN - 0.002, IslandTerrain.SEA))
+		var vn := v.dot(n)
+		if vn > 0.0:
+			v -= n * vn * 1.4
 	b.p = p
 	b.v = v
 	b.w = w
