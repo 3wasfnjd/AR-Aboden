@@ -58,6 +58,9 @@ var _rot_acc := 0.0
 var _flick_armed := true
 var _panel_hit := {}
 var _destruction_dirty := true
+var missions := Missions.new()
+var board: MissionBoard
+var _board_acc := 0.0
 
 var ghost: MeshInstance3D
 var ghost_mat: StandardMaterial3D
@@ -88,6 +91,11 @@ func setup(r: Room, d: Node3D, isl: Island, p: PhysicsTest) -> void:
 	panel.visible = false
 	add_child(panel)
 	panel.pressed.connect(_on_panel)
+	missions.load_best()
+	board = MissionBoard.new()
+	board.name = "MissionBoard"
+	board.visible = false
+	diorama.add_child(board)
 	for id in WeaponTable.IDS:
 		var w := WeaponTable.get_weapon(id)
 		ammo[id] = int(w.ammo)
@@ -281,6 +289,11 @@ func _on_panel(id: String) -> void:
 			toggle_slow()
 		"reset":
 			reset_island()
+			if missions.active != "":
+				missions.start(island.props)
+				rig.pulse("left", 0.5, 0.05)
+		"m_prev", "m_next":
+			select_mission(Missions.cycle(missions.active, -1 if id == "m_prev" else 1))
 		"rot_l":
 			rotate_island(ROT_STEP)
 		"rot_r":
@@ -288,6 +301,38 @@ func _on_panel(id: String) -> void:
 		_:
 			if id.begins_with("w_"):
 				select_weapon(id.substr(2))
+
+
+## Pick a mission ("" = free play): the board shows it, RESET turns into START.
+func select_mission(id: String) -> void:
+	missions.select(id)
+	if id == "":
+		panel.set_button_text("reset", "إعادة", "RESET")
+	else:
+		panel.set_button_text("reset", "ابدأ", "START")
+	_update_board(true)
+	rig.pulse("left", 0.2, 0.02)
+
+
+## The board stands behind the island's far side and turns (yaw only) to the player.
+func _update_board(force := false) -> void:
+	if board == null:
+		return
+	board.show_state(missions, island.props)
+	if not board.visible:
+		return
+	var head := rig.head_transform().origin
+	var inv := diorama.global_transform.affine_inverse()
+	var hl := inv * head
+	var dir := Vector2(hl.x, hl.z)
+	if dir.length_squared() < 1e-6:
+		dir = Vector2(0, 1)
+	dir = dir.normalized()
+	# opposite side of the island from the player, raised above the mountain
+	board.position = Vector3(-dir.x * 0.42, 0.28, -dir.y * 0.42)
+	board.rotation = Vector3(0, atan2(dir.x, dir.y), 0)
+	if force:
+		_board_acc = 0.0
 
 
 func select_weapon(id: String) -> void:
@@ -377,6 +422,7 @@ func fire() -> bool:
 		return false
 	var w := WeaponTable.get_weapon(weapon)
 	phys.fire(tgt, launch_point_local(), weapon)
+	missions.on_shot()
 	ammo[weapon] = int(ammo[weapon]) - 1
 	cooldown[weapon] = float(w.cooldown)
 	rig.pulse("right", 0.8, 0.07)
@@ -481,6 +527,14 @@ func _step_pinned(dt: float) -> void:
 			var yaw := float(_grab.yaw0) + wrapf(a - float(_grab.a0), -PI, PI)
 			rotate_island(wrapf(yaw - cur_yaw, -PI, PI))
 	_place_panel(dt)
+	if missions.step(dt, island.props):
+		rig.pulse("right", 0.9 if missions.result == "won" else 0.4, 0.25)
+		rig.pulse("left", 0.9 if missions.result == "won" else 0.4, 0.25)
+		_destruction_dirty = true
+	_board_acc += dt
+	if _board_acc > 0.1:
+		_board_acc = 0.0
+		_update_board()
 	# right ray: the panel first, else the island
 	var world_hit: Variant = null
 	_panel_hit = {}

@@ -51,6 +51,7 @@ var meter_bar: MeshInstance3D
 var _cat_ui := {}                     # cat -> {label: Label3D, bar: MeshInstance3D, w, x0}
 var _weapon_ui := {}                  # id -> {pips: [MeshInstance3D], bar, bw, cx, state: Label3D}
 var _slow_on := false
+var _btn_labels := {}                 # button id -> [Arabic Label3D, English Label3D]
 var _font: Font
 
 
@@ -136,15 +137,15 @@ func _ready() -> void:
 	var ty := -H * 0.5 + 0.0235
 	target_label = _text("-", Vector3(0, ty, 0.0006), 26, AMBER)
 	# --- buttons ------------------------------------------------------------------
-	var names := [["slow", "بطيء", "SLOW-MO"], ["reset", "إعادة", "RESET"], ["rot_l", "< تدوير", "ROTATE <"], ["rot_r", "تدوير >", "ROTATE >"]]
+	# the island turns with the left stick / left grip; the last two buttons pick a mission
+	var names := [["slow", "بطيء", "SLOW-MO"], ["reset", "إعادة", "RESET"], ["m_prev", "< مهمة", "MISSION <"], ["m_next", "مهمة >", "MISSION >"]]
 	var gw := (W - 0.012 - 0.003 * 3) / 4.0
 	var by := -H * 0.5 + 0.0105
 	for i in names.size():
 		var cx3 := W * 0.5 - 0.006 - gw * 0.5 - i * (gw + 0.003)
 		_button(names[i][0], Rect2(cx3 - gw * 0.5, by - 0.0075, gw, 0.015), "btn")
 		_frame(Rect2(cx3 - gw * 0.5, by - 0.0075, gw, 0.015), FRAME_DIM, 0.0003)
-		_text(names[i][1], Vector3(cx3, by + 0.002, 0.0006), 26, TEXT)
-		_text(names[i][2], Vector3(cx3, by - 0.0035, 0.0006), 18, TEXT_DIM)
+		_btn_labels[names[i][0]] = [_text(names[i][1], Vector3(cx3, by + 0.002, 0.0006), 26, TEXT), _text(names[i][2], Vector3(cx3, by - 0.0035, 0.0006), 18, TEXT_DIM)]
 	set_selected(WeaponTable.IDS[0])
 
 
@@ -375,6 +376,13 @@ func update_state(ammo: Dictionary, cool: Dictionary, target_text: String, slow:
 	if slow != _slow_on:
 		_slow_on = slow
 		_paint()
+
+
+## Relabel a bottom button (reset becomes START while a mission is selected).
+func set_button_text(id: String, ar: String, en: String) -> void:
+	if _btn_labels.has(id):
+		_set_text(_btn_labels[id][0], ar)
+		_set_text(_btn_labels[id][1], en)
 
 
 ## Destruction meter: IslandProps.destruction() -> {pct, left, cats}.

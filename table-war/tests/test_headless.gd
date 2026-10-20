@@ -160,6 +160,49 @@ func _initialize() -> void:
 	life.spawn()
 	check("city life: reset brings everyone back", life.alive_count() == life.agent_count())
 
+	# --- missions: objectives, clock, stars, civilian losses ------------------------
+	var ms := Missions.new()
+	var empty_goals := []
+	for md in Missions.LIST:
+		ms.select(md.id)
+		var pr0 := ms.progress(island.props)
+		if int(pr0[1]) <= 0:
+			empty_goals.append(md.id)
+	check("every mission has targets on the island", empty_goals.is_empty(), str(empty_goals))
+	check("mission selector cycles free play -> missions -> free play", Missions.cycle("", 1) == "precision" and Missions.cycle("precision", -1) == "" and Missions.cycle("total", 1) == "")
+	island.reset_damage()
+	ms.select("blackout")
+	ms.start(island.props)
+	ms.step(5.0, island.props)
+	for st in island.props.structures:
+		if IslandProps.TARGETS.has(st.kind) and IslandProps.TARGETS[st.kind][0] == "power":
+			st.alive = false
+	var ended := ms.step(1.0, island.props)
+	check("mission: objective done fast with no civilian losses = 3 stars", ended and ms.result == "won" and ms.stars == 3 and int(ms.best.get("blackout", 0)) == 3, "%s %d stars" % [ms.result, ms.stars])
+	island.reset_damage()
+	ms.select("oil")
+	ms.start(island.props)
+	var hit_civ := 0
+	for st in island.props.structures:
+		if st.kind == "house" and hit_civ < 5:
+			st.alive = false
+			hit_civ += 1
+	ms.step(100.0, island.props)
+	for st in island.props.structures:
+		if IslandProps.TARGETS.has(st.kind) and IslandProps.TARGETS[st.kind][0] == "oil":
+			st.alive = false
+	ms.step(1.0, island.props)
+	check("mission: late and with civilian losses = 1 star", ms.result == "won" and ms.stars == 1 and ms.civilians(island.props) == 5, "%s %d stars, civ %d" % [ms.result, ms.stars, ms.civilians(island.props)])
+	island.reset_damage()
+	ms.select("fleet")
+	ms.start(island.props)
+	var steps_f := 0
+	while ms.running and steps_f < 200:
+		ms.step(1.0, island.props)
+		steps_f += 1
+	check("mission: time runs out = failed, no stars", ms.result == "failed" and ms.stars == 0 and ms.time_left == 0.0)
+	island.reset_damage()
+
 	# --- scale consistency (1:2000) -------------------------------------------------
 	var rl := island.layout.runway_len * Scale.RATIO
 	check("runway 600 m x 25 m", absf(rl - 600.0) < 1.0 and absf(island.layout.runway_w * Scale.RATIO - 25.0) < 0.5, "%.0f m x %.1f m" % [rl, island.layout.runway_w * Scale.RATIO])
@@ -671,7 +714,7 @@ func _xr_tests(island: Island, phys: PhysicsTest) -> void:
 	check("after turning, idle: no drift (120 frames)", idle_drift == 0)
 	# panel rotate buttons
 	var y0 := xg2.cur_yaw
-	xg2.panel.press("rot_l")
+	xg2._on_panel("rot_l")   # rotation stays on the stick / grip (and this id)
 	check("panel rotate button turns 15 deg", _near(wrapf(xg2.cur_yaw - y0, -PI, PI), PI / 12.0, 1e-4) and qd.global_transform.origin == base_before)
 
 	# weapon switching: left stick Y flick and a tap with the right ray on the panel
@@ -723,6 +766,14 @@ func _xr_tests(island: Island, phys: PhysicsTest) -> void:
 	xg2.panel.press("reset")
 	check("panel reset island clears craters and the lock", qi.props.craters.is_empty() and xg2.locked == null)
 	xg2._on_button("right", "by", true)
+	# missions on the panel: pick one, START, the board shows it
+	xg2.panel.press("m_next")
+	var picked := xg2.missions.active
+	xg2.panel.press("reset")
+	await process_frame
+	check("panel: mission picked, START runs it, board shown", picked == "precision" and xg2.missions.running and xg2.board.visible and xg2.board.title.text.contains("ضربة جراحية") and (xg2.panel._btn_labels["reset"][1] as Label3D).text == "START", "%s running %s" % [picked, xg2.missions.running])
+	xg2.select_mission("")
+	check("free play hides the board", not xg2.board.visible and (xg2.panel._btn_labels["reset"][1] as Label3D).text == "RESET")
 	check("B un-pins (place again)", xg2.state == "placing" and not xg2.panel.visible)
 	xg2.rig.sim = false
 	xg2.set_mode("vr")

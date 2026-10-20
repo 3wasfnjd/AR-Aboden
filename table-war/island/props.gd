@@ -351,7 +351,19 @@ func _place_city() -> void:
 	var C := L.town_center
 	var P := IslandLayout.CITY_PITCH
 	var inner := P - IslandLayout.ROAD_W - 0.002
-	var specials := ["stadium", "mall", "tv_tower", "mall"]
+	var specials := ["stadium", "mall", "mall"]
+	# the TV tower (a mission target) always stands: the first free ring block gets it
+	for gz in range(-5, 5):
+		var done := false
+		for gx in range(-5, 5):
+			var tb := C + Vector2((gx + 0.5) * P, (gz + 0.5) * P)
+			var td := tb.distance_to(C) / L.town_radius
+			if td > 0.5 and td < 0.72 and _city_lot(tb, Vector3(0.006, 0.075, 0.006)):
+				add_structure("tv_tower", tb, 0.0, Vector3(0.006, 0.075, 0.006), Toon.WHITE)
+				done = true
+				break
+		if done:
+			break
 	add_structure("fort", L.fort_pos, deg_to_rad(8.0), Vector3(Scale.m(56.0), Scale.m(9.0), Scale.m(56.0)), Color(0.86, 0.70, 0.48))
 	for gz in range(-5, 5):
 		for gx in range(-5, 5):

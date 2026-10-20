@@ -373,8 +373,21 @@ func _run_mr_preview() -> void:
 		room.set_root.transform = Transform3D(Basis(Vector3.UP, x.cur_yaw), spot)
 		phys.aim(tgt, hand_l, "ballistic", true)
 		await _capture("x_%s_preview" % m)
-	# the tablet in the left hand, from the eye
+	# mission board above the island
 	x.set_mode("mr")
+	x.select_mission("blackout")
+	x.missions.start(island.props)
+	var kp := 0
+	for st in island.props.structures:
+		if IslandProps.TARGETS.has(st.kind) and IslandProps.TARGETS[st.kind][0] == "power" and kp < 3:
+			st.alive = false
+			kp += 1
+	x.missions.step(23.0, island.props)
+	x.rig.camera.global_position = spot + Vector3(0, 0.45, 0.75)
+	x._update_board(true)
+	cam.set_view(spot + Vector3(0, 0.12, -0.05), 0.0, 22.0, 0.95, 55.0)
+	await _capture("x_board")
+	# the tablet in the left hand, from the eye
 	var eye := spot + Vector3(-0.05, 0.62, 0.70)
 	var ppos := eye + Vector3(-0.12, -0.2, -0.22)
 	x.panel.visible = true
