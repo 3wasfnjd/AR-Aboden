@@ -1,51 +1,104 @@
 class_name MissionBoard
 extends Node3D
-## Mission board floating above the far edge of the island (a child of the diorama,
-## so it scales with the model; xr_game.gd turns it to face the player). Shows the
-## mission name, the objective with its progress, the clock, civilian losses, three
-## stars (drawn as meshes: the UI font has no star glyph) and the result.
+## Mission screen ON the glass dome: a transparent, holographic control display that
+## follows the curve of the glass on the far side of the island (xr_game.gd turns it
+## to face the player as they walk round). A child of the diorama at the dome's
+## centre, so it scales with the model.
+##
+## The content (mission name, objective + progress, clock, civilian losses, three
+## stars, result) is laid out in 2D inside a SubViewport with a transparent
+## background, and that texture is mapped onto a patch of the dome surface (same
+## lathe as island/dome.gd, just inside the glass). The viewport re-renders only
+## when the text changes (about once a second while the clock runs).
 
-const W := 0.52
-const H := 0.20
-const BG := Color(0.035, 0.05, 0.04)
-const FRAME := Color(0.40, 0.85, 0.45)
-const TEXT := Color(0.86, 1.0, 0.86)
-const TEXT_DIM := Color(0.55, 0.75, 0.56)
-const AMBER := Color(1.0, 0.72, 0.22)
-const ALERT := Color(1.0, 0.22, 0.16)
-const GOLD := Color(1.0, 0.80, 0.18)
-const STAR_OFF := Color(0.22, 0.26, 0.22)
+const TEX := Vector2i(1280, 520)
+const AZ_HALF := 0.85              # half the patch width, radians round the dome
+const H0 := 0.13                   # patch bottom / top above the sea (m, model units)
+const H1 := 0.37
+const INSET := 0.0025              # just inside the glass
+const FRAME := Color(0.45, 1.0, 0.55)
+const TEXT := Color(0.86, 1.0, 0.88)
+const TEXT_DIM := Color(0.60, 0.85, 0.64)
+const AMBER := Color(1.0, 0.76, 0.28)
+const ALERT := Color(1.0, 0.30, 0.22)
+const GOLD := Color(1.0, 0.82, 0.22)
+const STAR_OFF := Color(0.45, 0.60, 0.48, 0.45)
 
-var title: Label3D
-var goal: Label3D
-var goal_en: Label3D
-var info: Label3D
-var result: Label3D
-var best_label: Label3D
-var stars: Array[MeshInstance3D] = []
-var _font: Font
+var viewport: SubViewport
+var screen: MeshInstance3D
+var title: Label
+var goal: Label
+var goal_en: Label
+var info: Label
+var result: Label
+var best_label: Label
+var stars: Array[Polygon2D] = []
+var _dirty := true
 
 
 func _ready() -> void:
-	_font = XRGame.ui_font()
-	add_child(_quad(Vector2(W, H), BG, Vector3(0, 0, -0.001)))
-	for r in [[Vector2(0, H * 0.5), Vector2(W, 0.002)], [Vector2(0, -H * 0.5), Vector2(W, 0.002)],
-			[Vector2(-W * 0.5, 0), Vector2(0.002, H)], [Vector2(W * 0.5, 0), Vector2(0.002, H)]]:
-		add_child(_quad(r[1], FRAME, Vector3(r[0].x, r[0].y, -0.0005)))
-	title = _text(Vector3(0, H * 0.5 - 0.024, 0), 190, TEXT)
-	goal = _text(Vector3(0, H * 0.5 - 0.058, 0), 130, AMBER)
-	goal_en = _text(Vector3(0, H * 0.5 - 0.082, 0), 90, TEXT_DIM)
-	info = _text(Vector3(0, H * 0.5 - 0.112, 0), 120, TEXT_DIM)
-	result = _text(Vector3(-W * 0.17, -H * 0.5 + 0.03, 0), 150, FRAME)
-	best_label = _text(Vector3(W * 0.3, -H * 0.5 + 0.012, 0), 80, TEXT_DIM)
+	viewport = SubViewport.new()
+	viewport.size = TEX
+	viewport.transparent_bg = true
+	viewport.disable_3d = true
+	viewport.render_target_update_mode = SubViewport.UPDATE_ONCE
+	add_child(viewport)
+	_build_ui()
+	screen = MeshInstance3D.new()
+	screen.name = "DomeScreen"
+	screen.mesh = _patch_mesh()
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	m.albedo_texture = viewport.get_texture()
+	m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	m.render_priority = 4          # over the dome glass, under the panel
+	m.no_depth_test = false
+	screen.material_override = m
+	screen.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(screen)
+	position = Vector3(0, IslandTerrain.SEA, 0)
+
+
+## The 2D layout: a faint green tint, a frame with corner brackets, scan lines, text.
+func _build_ui() -> void:
+	var root := Control.new()
+	root.size = Vector2(TEX)
+	viewport.add_child(root)
+	var tint := ColorRect.new()
+	tint.color = Color(0.10, 0.35, 0.16, 0.16)
+	tint.position = Vector2(20, 20)
+	tint.size = Vector2(TEX) - Vector2(40, 40)
+	root.add_child(tint)
+	for k in range(30, TEX.y - 30, 12):
+		var sl := ColorRect.new()
+		sl.color = Color(0.45, 1.0, 0.55, 0.035)
+		sl.position = Vector2(24, k)
+		sl.size = Vector2(TEX.x - 48, 2)
+		root.add_child(sl)
+	_frame(root, Rect2(20, 20, TEX.x - 40, TEX.y - 40), Color(FRAME, 0.55), 3)
+	for c in [Vector2(14, 14), Vector2(TEX.x - 14, 14), Vector2(14, TEX.y - 14), Vector2(TEX.x - 14, TEX.y - 14)]:
+		var sx := 1.0 if c.x < TEX.x * 0.5 else -1.0
+		var sy := 1.0 if c.y < TEX.y * 0.5 else -1.0
+		_bar(root, Rect2(Vector2(minf(c.x, c.x + sx * 70), c.y - 4), Vector2(70, 8)), FRAME)
+		_bar(root, Rect2(Vector2(c.x - 4, minf(c.y, c.y + sy * 70)), Vector2(8, 70)), FRAME)
+	var font := XRGame.ui_font()
+	title = _label(root, font, 64, TEXT, Rect2(40, 34, TEX.x - 80, 80))
+	_bar(root, Rect2(60, 118, TEX.x - 120, 3), Color(FRAME, 0.5))
+	goal = _label(root, font, 50, AMBER, Rect2(40, 132, TEX.x - 80, 66))
+	goal_en = _label(root, font, 36, TEXT_DIM, Rect2(40, 196, TEX.x - 80, 50))
+	info = _label(root, font, 46, TEXT_DIM, Rect2(40, 252, TEX.x - 80, 60))
+	_bar(root, Rect2(60, 326, TEX.x - 120, 3), Color(FRAME, 0.5))
+	result = _label(root, font, 56, FRAME, Rect2(40, 350, TEX.x * 0.6, 80))
+	best_label = _label(root, font, 30, TEXT_DIM, Rect2(TEX.x * 0.62, 440, TEX.x * 0.33, 40))
 	for k in 3:
-		var s := MeshInstance3D.new()
-		s.mesh = _star_mesh(0.016)
-		s.material_override = _mat(STAR_OFF)
-		s.position = Vector3(W * 0.3 + (k - 1) * 0.04, -H * 0.5 + 0.036, 0.0002)
-		s.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		add_child(s)
-		stars.append(s)
+		var p := Polygon2D.new()
+		p.polygon = _star_points(34.0)
+		p.position = Vector2(TEX.x * 0.70 + k * 92, 392)
+		p.color = STAR_OFF
+		root.add_child(p)
+		stars.append(p)
 
 
 ## Board contents from the mission state; `m` = Missions, `props` for progress.
@@ -66,79 +119,117 @@ func show_state(m: Missions, props: IslandProps) -> void:
 	if int(d.civ_max) < 9999:
 		civ_txt = "خسائر مدنية: %d من %d" % [civ, int(d.civ_max)]
 	_put(info, "%s     %s" % [civ_txt, Missions.clock(m.time_left)])
-	info.modulate = ALERT if m.running and m.time_left < 10.0 else TEXT_DIM
+	_tint(info, ALERT if m.running and m.time_left < 10.0 else TEXT_DIM)
 	var lit := m.stars
 	match m.result:
 		"won":
 			_put(result, "تمت المهمة · MISSION COMPLETE")
-			result.modulate = FRAME
+			_tint(result, FRAME)
 		"failed":
 			_put(result, "فشلت المهمة · MISSION FAILED")
-			result.modulate = ALERT
+			_tint(result, ALERT)
 		_:
 			if m.running:
 				_put(result, "جارية · IN PROGRESS")
-				result.modulate = AMBER
+				_tint(result, AMBER)
 				lit = 0
 			else:
 				_put(result, "اضغط ابدأ · PRESS START")
-				result.modulate = TEXT_DIM
-			if not m.running:
+				_tint(result, TEXT_DIM)
 				lit = int(m.best.get(m.active, 0))
 	for k in 3:
-		(stars[k].material_override as StandardMaterial3D).albedo_color = GOLD if k < lit else STAR_OFF
+		var c := GOLD if k < lit else STAR_OFF
+		if stars[k].color != c:
+			stars[k].color = c
+			_dirty = true
 	_put(best_label, "أفضل نتيجة · BEST" if m.result == "" and not m.running else "")
+	if _dirty:
+		_dirty = false
+		viewport.render_target_update_mode = SubViewport.UPDATE_ONCE
 
 
-func _put(l: Label3D, t: String) -> void:
+## Turn the screen to the side of the dome opposite the island-local point `from_l`.
+func face_from(from_l: Vector3) -> void:
+	var dir := Vector2(from_l.x, from_l.z)
+	if dir.length_squared() < 1e-6:
+		dir = Vector2(0, 1)
+	var a := atan2(-dir.y, -dir.x)    # azimuth of the far side
+	rotation = Vector3(0, -a, 0)
+
+
+func _put(l: Label, t: String) -> void:
 	if l.text != t:
 		l.text = t
+		_dirty = true
 
 
-func _mat(c: Color) -> StandardMaterial3D:
-	var m := StandardMaterial3D.new()
-	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	m.albedo_color = c
-	m.cull_mode = BaseMaterial3D.CULL_DISABLED
-	return m
+func _tint(l: Label, c: Color) -> void:
+	if l.modulate != c:
+		l.modulate = c
+		_dirty = true
 
 
-func _quad(size: Vector2, c: Color, pos: Vector3) -> MeshInstance3D:
-	var q := QuadMesh.new()
-	q.size = size
-	var mi := MeshInstance3D.new()
-	mi.mesh = q
-	mi.material_override = _mat(c)
-	mi.position = pos
-	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	return mi
-
-
-func _text(pos: Vector3, size: int, c: Color) -> Label3D:
-	var l := Label3D.new()
-	l.font = _font
-	l.font_size = size
-	l.pixel_size = 0.0001
+func _label(root: Control, font: Font, size: int, c: Color, r: Rect2) -> Label:
+	var l := Label.new()
+	l.position = r.position
+	l.size = r.size
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	l.add_theme_font_override("font", font)
+	l.add_theme_font_size_override("font_size", size)
+	l.add_theme_color_override("font_outline_color", Color(0.0, 0.12, 0.04, 0.8))
+	l.add_theme_constant_override("outline_size", 6)
 	l.modulate = c
-	l.outline_size = 0
-	l.position = pos
-	l.double_sided = false
-	l.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	add_child(l)
+	root.add_child(l)
 	return l
 
 
-## Five-pointed star in the XY plane.
-static func _star_mesh(r: float) -> ArrayMesh:
+func _bar(root: Control, r: Rect2, c: Color) -> void:
+	var b := ColorRect.new()
+	b.color = c
+	b.position = r.position
+	b.size = r.size
+	root.add_child(b)
+
+
+func _frame(root: Control, r: Rect2, c: Color, t: float) -> void:
+	_bar(root, Rect2(r.position, Vector2(r.size.x, t)), c)
+	_bar(root, Rect2(Vector2(r.position.x, r.end.y - t), Vector2(r.size.x, t)), c)
+	_bar(root, Rect2(r.position, Vector2(t, r.size.y)), c)
+	_bar(root, Rect2(Vector2(r.end.x - t, r.position.y), Vector2(t, r.size.y)), c)
+
+
+static func _star_points(r: float) -> PackedVector2Array:
+	var pts := PackedVector2Array()
+	for k in 10:
+		var a := -PI * 0.5 + TAU * k / 10.0
+		var rr := r if k % 2 == 0 else r * 0.42
+		pts.append(Vector2(cos(a) * rr, sin(a) * rr))
+	return pts
+
+
+## A patch of the dome lathe (local azimuth 0 = +x), just inside the glass. u runs so
+## the text reads left to right for someone looking at it from the island's centre
+## side (through the near glass and over the island).
+func _patch_mesh() -> ArrayMesh:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var pts: Array[Vector3] = []
-	for k in 10:
-		var a := PI * 0.5 + TAU * k / 10.0
-		var rr := r if k % 2 == 0 else r * 0.42
-		pts.append(Vector3(cos(a) * rr, sin(a) * rr, 0))
-	for k in 10:
-		st.add_vertex(Vector3.ZERO)
-		st.add_vertex(pts[(k + 1) % 10])
-		st.add_vertex(pts[k])
+	var R := GlassDome.R - INSET
+	var KR := GlassDome.K * GlassDome.R
+	var t0 := asin(clampf(H0 / KR, 0.0, 1.0))
+	var t1 := asin(clampf(H1 / KR, 0.0, 1.0))
+	var na := 40
+	var nt := 12
+	var pt := func(i: int, j: int) -> Vector3:
+		var az := lerpf(-AZ_HALF, AZ_HALF, float(i) / na)
+		var t := lerpf(t0, t1, float(j) / nt)
+		return Vector3(R * cos(t) * cos(az), GlassDome.K * R * sin(t), R * cos(t) * sin(az))
+	for i in na:
+		for j in nt:
+			var q := [pt.call(i, j), pt.call(i + 1, j), pt.call(i + 1, j + 1), pt.call(i, j + 1)]
+			var uv := [Vector2(float(i) / na, 1.0 - float(j) / nt), Vector2(float(i + 1) / na, 1.0 - float(j) / nt),
+				Vector2(float(i + 1) / na, 1.0 - float(j + 1) / nt), Vector2(float(i) / na, 1.0 - float(j + 1) / nt)]
+			for k in [0, 1, 2, 0, 2, 3]:
+				st.set_uv(uv[k])
+				st.add_vertex(q[k])
 	return st.commit()

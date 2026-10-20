@@ -16,7 +16,7 @@ extends Node3D
 signal pressed(id: String)
 
 const W := 0.21
-const H := 0.198
+const H := 0.21
 const CARD_H := 0.026
 const BG := Color(0.035, 0.05, 0.04)
 const FRAME := Color(0.40, 0.85, 0.45, 0.95)
@@ -36,6 +36,19 @@ const CAT_INFO := {
 	"city": ["مدينة", "CITY"], "oil": ["نفط", "OIL"], "power": ["كهرباء", "POWER"], "water": ["تحلية", "WATER"],
 	"port": ["ميناء", "PORT"], "military": ["عسكري", "MIL"], "navy": ["سفن", "NAVY"],
 }
+## One line about each weapon, shown for the selected one.
+const DESC := {
+	"ballistic": "قوس عالٍ وسقوط حاد بتوهج · انفجار قوي",
+	"cruise": "يطير منخفضًا ويتبع التضاريس · دقيق",
+	"artillery": "قذائف سريعة وكثيرة · انفجار صغير",
+	"mlrs": "8 صواريخ متتالية تتوزع حول الهدف",
+	"cluster": "ينفتح في الجو · 10 قنيبلات تغطي المنطقة",
+	"hypersonic": "يصل في ثانية تقريبًا · انفجار كبير",
+	"bunker": "سقوط شبه عمودي · حفرة عميقة للمخابئ",
+	"drone": "بطيئة على ارتفاع · دقيقة · انفجار صغير",
+	"antiship": "يطير ملاصقًا لسطح البحر · قوي على السفن",
+	"nuke": "تجربة نووية · يدمر كل شيء في دائرة واسعة",
+}
 const CODES := {"ballistic": "BM-1  BALLISTIC", "cruise": "CM-2  CRUISE", "artillery": "AR-3  ARTILLERY",
 	"mlrs": "RS-4  MLRS x8", "cluster": "CL-5  CLUSTER", "hypersonic": "HG-6  HYPERSONIC",
 	"bunker": "BB-7  BUNKER BUSTER", "drone": "UV-8  KAMIKAZE DRONE", "antiship": "AS-9  ANTI-SHIP",
@@ -45,6 +58,7 @@ var buttons: Array[Dictionary] = []   # {id, rect: Rect2 (panel-local, metres), 
 var hover := ""
 var selected := ""
 var target_label: Label3D
+var desc_label: Label3D            # what the selected weapon does (Arabic)
 var status_label: Label3D
 var pct_label: Label3D
 var left_label: Label3D
@@ -65,15 +79,15 @@ func _ready() -> void:
 	_brackets()
 	# --- header -----------------------------------------------------------------
 	var top := H * 0.5
-	_text("القيادة والسيطرة", Vector3(W * 0.5 - 0.006, top - 0.008, 0.0004), 40, TEXT, HORIZONTAL_ALIGNMENT_RIGHT)
-	_text("FIRE CONTROL", Vector3(-W * 0.5 + 0.006, top - 0.008, 0.0004), 34, TEXT_DIM, HORIZONTAL_ALIGNMENT_LEFT)
-	status_label = _text("READY · جاهز", Vector3(0, top - 0.008, 0.0004), 30, FRAME)
+	_text("القيادة والسيطرة", Vector3(W * 0.5 - 0.006, top - 0.008, 0.0004), 48, TEXT, HORIZONTAL_ALIGNMENT_RIGHT)
+	_text("FIRE CONTROL", Vector3(-W * 0.5 + 0.006, top - 0.008, 0.0004), 40, TEXT_DIM, HORIZONTAL_ALIGNMENT_LEFT)
+	status_label = _text("READY · جاهز", Vector3(0, top - 0.008, 0.0004), 38, FRAME)
 	_line(Vector2(-W * 0.5 + 0.004, top - 0.0145), Vector2(W * 0.5 - 0.004, top - 0.0145), FRAME_DIM)
 	# --- destruction meter ---------------------------------------------------------
 	var my := top - 0.026
-	pct_label = _text("0%", Vector3(-W * 0.5 + 0.022, my - 0.002, 0.0004), 80, ALERT)
-	_text("تدمير الجزيرة", Vector3(W * 0.5 - 0.006, my + 0.003, 0.0004), 32, TEXT, HORIZONTAL_ALIGNMENT_RIGHT)
-	_text("ISLAND DESTROYED", Vector3(-W * 0.5 + 0.044, my + 0.003, 0.0004), 26, TEXT_DIM, HORIZONTAL_ALIGNMENT_LEFT)
+	pct_label = _text("0%", Vector3(-W * 0.5 + 0.022, my - 0.002, 0.0004), 96, ALERT)
+	_text("تدمير الجزيرة", Vector3(W * 0.5 - 0.006, my + 0.003, 0.0004), 40, TEXT, HORIZONTAL_ALIGNMENT_RIGHT)
+	_text("ISLAND DESTROYED", Vector3(-W * 0.5 + 0.044, my + 0.003, 0.0004), 32, TEXT_DIM, HORIZONTAL_ALIGNMENT_LEFT)
 	var bar_w := W - 0.05
 	var bar_x0 := -W * 0.5 + 0.044
 	add_child(_quad(Vector2(bar_w, 0.0035), Color(0.15, 0.04, 0.03), Vector3(bar_x0 + bar_w * 0.5, my - 0.0045, 0.0002)))
@@ -81,7 +95,7 @@ func _ready() -> void:
 	meter_bar.set_meta("w", bar_w)
 	meter_bar.set_meta("x0", bar_x0)
 	add_child(meter_bar)
-	left_label = _text("", Vector3(W * 0.5 - 0.006, my - 0.0095, 0.0004), 24, TEXT_DIM, HORIZONTAL_ALIGNMENT_RIGHT)
+	left_label = _text("", Vector3(W * 0.5 - 0.006, my - 0.0095, 0.0004), 30, TEXT_DIM, HORIZONTAL_ALIGNMENT_RIGHT)
 	# category chips
 	var cats: Array = IslandProps.CATEGORIES
 	var cw := (W - 0.012) / cats.size()
@@ -90,8 +104,8 @@ func _ready() -> void:
 		var c: String = cats[i]
 		var cx := W * 0.5 - 0.006 - cw * (i + 0.5)   # right to left (Arabic reading order)
 		add_child(_quad(Vector2(cw - 0.0015, 0.0085), CARD, Vector3(cx, cy, 0.0001)))
-		_text(String(CAT_INFO[c][0]), Vector3(cx, cy + 0.0018, 0.0004), 22, TEXT)
-		var lb := _text("0/0", Vector3(cx, cy - 0.0016, 0.0004), 20, TEXT_DIM)
+		_text(String(CAT_INFO[c][0]), Vector3(cx, cy + 0.0018, 0.0004), 28, TEXT)
+		var lb := _text("0/0", Vector3(cx, cy - 0.0018, 0.0004), 26, TEXT_DIM)
 		var bw := cw - 0.004
 		add_child(_quad(Vector2(bw, 0.0009), Color(0, 0, 0), Vector3(cx, cy - 0.0034, 0.0003)))
 		var bar := _quad(Vector2(bw, 0.0009), ALERT, Vector3(cx, cy - 0.0034, 0.0005))
@@ -123,8 +137,8 @@ func _ready() -> void:
 		icon.position = Vector3(cx2 - bw2 * 0.33, wy + 0.0035, 0.0006)
 		icon.scale = Vector3.ONE * 0.62
 		add_child(icon)
-		_text(String(w.name_ar), Vector3(cx2 + bw2 * 0.45, wy + 0.0075, 0.0006), 26, TEXT, HORIZONTAL_ALIGNMENT_RIGHT)
-		_text(String(CODES.get(id, id.to_upper())), Vector3(cx2 + bw2 * 0.45, wy + 0.0025, 0.0006), 17, TEXT_DIM, HORIZONTAL_ALIGNMENT_RIGHT)
+		_text(String(w.name_ar), Vector3(cx2 + bw2 * 0.45, wy + 0.0075, 0.0006), 34, TEXT, HORIZONTAL_ALIGNMENT_RIGHT)
+		_text(String(CODES.get(id, id.to_upper())), Vector3(cx2 + bw2 * 0.45, wy + 0.0023, 0.0006), 22, TEXT_DIM, HORIZONTAL_ALIGNMENT_RIGHT)
 		# ammo pips (one per round, or per tenth of a big magazine)
 		var pips: Array = []
 		var np := mini(int(w.ammo), PIP_MAX)
@@ -133,17 +147,18 @@ func _ready() -> void:
 			var pip := _quad(Vector2(pw * 0.7, 0.0018), AMBER, Vector3(cx2 + bw2 * 0.45 - pw * (k + 0.5), wy - 0.003, 0.0006))
 			add_child(pip)
 			pips.append(pip)
-		var ammo_txt := _text("×%d" % int(w.ammo), Vector3(cx2 - bw2 * 0.45, wy - 0.003, 0.0006), 19, AMBER, HORIZONTAL_ALIGNMENT_LEFT)
+		var ammo_txt := _text("×%d" % int(w.ammo), Vector3(cx2 - bw2 * 0.45, wy - 0.003, 0.0006), 26, AMBER, HORIZONTAL_ALIGNMENT_LEFT)
 		var rb := bw2 * 0.55
 		var bx := cx2 + bw2 * 0.45 - rb * 0.5
 		add_child(_quad(Vector2(rb, 0.0013), Color(0, 0, 0), Vector3(bx, wy - 0.0085, 0.0004)))
 		var bar2 := _quad(Vector2(rb, 0.0013), FRAME, Vector3(bx, wy - 0.0085, 0.0006))
 		add_child(bar2)
-		var st := _text("READY · جاهز", Vector3(cx2 - bw2 * 0.45, wy - 0.0085, 0.0006), 15, FRAME, HORIZONTAL_ALIGNMENT_LEFT)
+		var st := _text("READY · جاهز", Vector3(cx2 - bw2 * 0.45, wy - 0.0086, 0.0006), 21, FRAME, HORIZONTAL_ALIGNMENT_LEFT)
 		_weapon_ui[id] = {"pips": pips, "ammo": ammo_txt, "bar": bar2, "bw": rb, "cx": bx, "state": st, "max": int(w.ammo)}
 	# --- target readout ------------------------------------------------------------
-	var ty := -H * 0.5 + 0.0235
-	target_label = _text("-", Vector3(0, ty, 0.0006), 26, AMBER)
+	var ty := -H * 0.5 + 0.0225
+	target_label = _text("-", Vector3(0, ty, 0.0006), 32, AMBER)
+	desc_label = _text("", Vector3(0, ty + 0.0075, 0.0006), 30, TEXT)
 	# --- buttons ------------------------------------------------------------------
 	# the island turns with the left stick / left grip; the last two buttons pick a mission
 	var names := [["slow", "بطيء", "SLOW-MO"], ["reset", "إعادة", "RESET"], ["m_prev", "< مهمة", "MISSION <"], ["m_next", "مهمة >", "MISSION >"]]
@@ -153,7 +168,7 @@ func _ready() -> void:
 		var cx3 := W * 0.5 - 0.006 - gw * 0.5 - i * (gw + 0.003)
 		_button(names[i][0], Rect2(cx3 - gw * 0.5, by - 0.0075, gw, 0.015), "btn")
 		_frame(Rect2(cx3 - gw * 0.5, by - 0.0075, gw, 0.015), FRAME_DIM, 0.0003)
-		_btn_labels[names[i][0]] = [_text(names[i][1], Vector3(cx3, by + 0.002, 0.0006), 26, TEXT), _text(names[i][2], Vector3(cx3, by - 0.0035, 0.0006), 18, TEXT_DIM)]
+		_btn_labels[names[i][0]] = [_text(names[i][1], Vector3(cx3, by + 0.0022, 0.0006), 34, TEXT), _text(names[i][2], Vector3(cx3, by - 0.0036, 0.0006), 22, TEXT_DIM)]
 	set_selected(WeaponTable.IDS[0])
 
 
@@ -326,6 +341,9 @@ func _icon(id: String) -> MeshInstance3D:
 
 func set_selected(id: String) -> void:
 	selected = id
+	if desc_label:
+		_set_text(desc_label, "%s:  %s" % [WeaponTable.get_weapon(id).name_ar, DESC.get(id, "")])
+		desc_label.modulate = ALERT if id == "nuke" else TEXT
 	_paint()
 
 

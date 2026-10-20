@@ -25,6 +25,7 @@ extends Node3D
 
 const ROT_RATE := 1.2            # rad/s at full left stick
 const ROT_TICK := PI / 12.0      # haptic tick every 15 degrees
+const PANEL_SCALE := 1.2         # the tablet is drawn 20 % larger than its layout units
 const ZOOM_RATE := 0.75          # left stick Y: e-folds per second (Mafateeh's resize speed)
 const ROT_STEP := PI / 12.0      # panel rotate buttons
 ## Launch point relative to the right controller's aim pose: just above / ahead of it.
@@ -316,23 +317,15 @@ func select_mission(id: String) -> void:
 	rig.pulse("left", 0.2, 0.02)
 
 
-## The board stands behind the island's far side and turns (yaw only) to the player.
+## The mission screen on the dome glass turns round the dome to face the player.
 func _update_board(force := false) -> void:
 	if board == null:
 		return
 	board.show_state(missions, island.props)
 	if not board.visible:
 		return
-	var head := rig.head_transform().origin
-	var inv := diorama.global_transform.affine_inverse()
-	var hl := inv * head
-	var dir := Vector2(hl.x, hl.z)
-	if dir.length_squared() < 1e-6:
-		dir = Vector2(0, 1)
-	dir = dir.normalized()
-	# opposite side of the island from the player, raised above the mountain
-	board.position = Vector3(-dir.x * 0.6, 0.3, -dir.y * 0.6)   # outside the glass dome
-	board.rotation = Vector3(0, atan2(dir.x, dir.y), 0)
+	# the screen sits on the dome's glass, on the far side from the player
+	board.face_from(diorama.global_transform.affine_inverse() * rig.head_transform().origin)
 	if force:
 		_board_acc = 0.0
 
@@ -576,7 +569,7 @@ func _place_panel(_dt: float) -> void:
 	var to_eye := eye - pos
 	if to_eye.length_squared() < 1e-6:
 		return
-	panel.global_transform = Transform3D(Basis.looking_at(to_eye.normalized(), Vector3.UP, true), pos)
+	panel.global_transform = Transform3D(Basis.looking_at(to_eye.normalized(), Vector3.UP, true).scaled(Vector3.ONE * PANEL_SCALE), pos)
 
 
 func _update_panel() -> void:
