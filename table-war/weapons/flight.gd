@@ -31,7 +31,39 @@ static func plan(w: Dictionary, from: Vector3, to: Vector3, surface: Callable, g
 	var T := lerpf(float(fl[0]), float(fl[1]), clampf(dist / 1.6, 0.0, 1.0))
 	var gv := Vector3(0, -g, 0)
 	var v := (to - from - 0.5 * gv * T * T) / T
+	# keep the whole arc under the glass dome: a shorter flight is a lower arc
+	if inside_dome(from) and inside_dome(to):
+		for _i in 16:
+			if _arc_under_dome(from, v, g, T):
+				break
+			T *= 0.9
+			v = (to - from - 0.5 * gv * T * T) / T
 	return {"type": "ballistic", "p0": from, "v0": v, "T": T, "g": g, "to": to}
+
+
+const DOME_MARGIN := 0.02
+
+
+## Highest a shot may fly at (x, z): under the glass dome over the island, with a margin.
+static func dome_ceiling(x: float, z: float) -> float:
+	var r2 := x * x + z * z
+	var R := GlassDome.R
+	if r2 >= R * R:
+		return IslandTerrain.SEA
+	return IslandTerrain.SEA + GlassDome.K * sqrt(R * R - r2) - DOME_MARGIN
+
+
+static func inside_dome(p: Vector3) -> bool:
+	return p.y <= dome_ceiling(p.x, p.z) + DOME_MARGIN
+
+
+static func _arc_under_dome(p0: Vector3, v: Vector3, g: float, T: float) -> bool:
+	for k in range(1, 32):
+		var t := T * k / 32.0
+		var p := p0 + v * t + 0.5 * Vector3(0, -g, 0) * t * t
+		if p.y > dome_ceiling(p.x, p.z):
+			return false
+	return true
 
 
 static func position_at(pl: Dictionary, t: float) -> Vector3:

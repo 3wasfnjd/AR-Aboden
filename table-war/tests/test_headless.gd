@@ -361,6 +361,18 @@ func _initialize() -> void:
 		phys.advance(1.0 / 60.0)
 		await process_frame
 	check("nuclear test: the destroyed tiles re-upload over the next frames", island.props._pending_tiles.is_empty())
+	# every weapon from the ship stays under the glass dome, to targets all over the island
+	var through := []
+	for wid in WeaponTable.IDS:
+		for tz in [Vector2(0.07, 0.05), Vector2(-0.3, 0.1), Vector2(0.33, 0.03), Vector2(-0.03, -0.16), Vector2(0.0, 0.3), Vector2(-0.4, -0.15)]:
+			var tg3 := Vector3(tz.x, island.surface_at(tz.x, tz.y), tz.y)
+			var pl3 := phys.plan(tg3, Vector3.INF, wid)
+			for k in 64:
+				var pp3 := WeaponFlight.position_at(pl3, float(pl3.T) * k / 64.0)
+				if pp3.y > WeaponFlight.dome_ceiling(pp3.x, pp3.z) + WeaponFlight.DOME_MARGIN:
+					through.append("%s->%s" % [wid, tz])
+					break
+	check("no shot from the ship goes through the glass dome", through.is_empty(), str(through))
 	phys.reset_island()
 
 	await _xr_tests(island, phys)
