@@ -131,7 +131,8 @@ func start() -> bool:
 	vp.use_xr = true
 	# Tile GPU: 4x MSAA is cheap and keeps the millimetre-scale model crisp.
 	vp.msaa_3d = Viewport.MSAA_4X
-	xr_interface.foveation_level = 1
+	# medium fixed foveation (the periphery is cheaper; the centre stays full detail)
+	xr_interface.foveation_level = 2
 	xr_interface.foveation_dynamic = true
 	# Quest refresh rate: keep the runtime default (72 Hz).
 	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)

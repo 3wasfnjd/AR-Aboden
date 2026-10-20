@@ -298,7 +298,9 @@ func _build_labels() -> void:
 	fps_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	fps_label.position = Vector3(0.0, -0.02, 0.06)   # under the tablet
 	fps_label.rotation.x = deg_to_rad(-55.0)
-	fps_label.visible = false
+	# build 17 test: shown from the start (left stick click hides it) so the frame rate
+	# can be read when the island shakes
+	fps_label.visible = campaign_vr
 	rig.hands["left"].grip.add_child(fps_label)
 
 
