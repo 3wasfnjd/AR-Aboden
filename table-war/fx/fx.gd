@@ -98,29 +98,92 @@ func explosion(p: Vector3, scale := 1.0) -> void:
 		puff(p + Vector3(0, 0.002 + k * 0.0012, 0), d * rng.randf_range(0.02, 0.06) * scale, 0.004 * scale, 0.022 * scale, rng.randf_range(2.0, 3.6), c, 3, 0.012, 1.5)
 
 
-## Nuclear test: white flash, rising fireball, stem and mushroom cap (fire-lit, then
-## grey), a dust shock ring racing over the ground, ripples on the sea.
+## Nuclear test (build 16): a sequence over ~10 s, not one burst. A blinding flash and a
+## white-hot fireball that RISES to the top of the glass dome, a stem of dust and smoke
+## sucked up behind it from the ground, the mushroom cap rolling outward at the top and
+## spreading under the glass (FxSystem.step keeps every puff inside the dome), a brief
+## condensation ring round the stem, a base surge of dust racing over the ground, ripples
+## on the sea, and a haze that hangs under the dome and fades over ~25 s.
+## The rising part is a NukeEmitter stepped in step(): it feeds puffs every frame along
+## the fireball's path. Big puffs, few of them (the Quest's puff cap and fill rate).
+const NUKE_TOP := 0.33          # fireball height above the blast point at the end of the rise
+const NUKE_RISE_T := 2.6        # s: e-folding time of the rise
+const NUKE_EMIT := 9.0          # s of feeding the stem and the cap
+var nukes: Array[Dictionary] = []   # {p, r, t, acc}
+
+
 func nuke(p: Vector3, r: float) -> void:
 	var up := Vector3.UP
-	puff(p + up * 0.02, Vector3.ZERO, 0.06, 0.42, 0.45, Color(1.0, 1.0, 0.95), 1, 0.0, 0.0)
-	puff(p + up * 0.01, Vector3.ZERO, 0.03, 0.16, 1.1, Color(1.0, 0.85, 0.5), 1, 0.02, 0.0)
-	for k in 16:
-		var d := Vector3(rng.randf_range(-1, 1), rng.randf_range(0.2, 1.0), rng.randf_range(-1, 1)).normalized()
-		puff(p + d * 0.01 + up * 0.012, d * 0.03 + up * 0.03, 0.02, 0.06, rng.randf_range(2.5, 3.5), Color(1.0, rng.randf_range(0.55, 0.8), 0.25, 1.0), 2, 0.035, 1.5)
-	for k in 20:
-		var off := Vector3(rng.randf_range(-0.006, 0.006), 0.0, rng.randf_range(-0.006, 0.006))
-		puff(p + off + up * (0.01 + k * 0.009), up * 0.02, 0.014, 0.034, rng.randf_range(7.0, 9.0), Color(0.62, 0.58, 0.54, 0.9), 3, 0.008, 1.2)
-	for k in 36:
-		var a := TAU * k / 36.0 + rng.randf_range(-0.1, 0.1)
-		var d2 := Vector3(cos(a), 0.0, sin(a))
-		var h := 0.19 + rng.randf_range(-0.02, 0.03)
-		puff(p + up * h + d2 * rng.randf_range(0.01, 0.03), d2 * rng.randf_range(0.02, 0.04) + up * 0.012, 0.03, 0.075, rng.randf_range(8.0, 10.0), Color(0.80, 0.76, 0.72, 0.9), 3, 0.004, 0.7)
-	for k in 48:
-		var a2 := TAU * k / 48.0
-		var d3 := Vector3(cos(a2), 0.0, sin(a2))
-		puff(p + d3 * 0.01 + up * 0.003, d3 * rng.randf_range(0.20, 0.28) + up * 0.004, 0.008, 0.03, rng.randf_range(2.0, 2.8), Color(0.78, 0.70, 0.58, 0.85), 0, 0.002, 2.2)
-	ripple(p, r * 1.6, 3.0)
-	ripple(p, r * 1.1, 2.4, 0.4)
+	# flash: a huge white bloom and a hot core on the ground
+	puff(p + up * 0.03, Vector3.ZERO, 0.08, 0.55, 0.5, Color(1.0, 1.0, 0.96), 1, 0.0, 0.0)
+	puff(p + up * 0.015, Vector3.ZERO, 0.04, 0.2, 1.4, Color(1.0, 0.9, 0.6), 1, 0.0, 0.0)
+	# base surge: a dust wall racing outwards over the ground
+	for k in 40:
+		var a := TAU * k / 40.0 + rng.randf_range(-0.05, 0.05)
+		var d := Vector3(cos(a), 0.0, sin(a))
+		puff(p + d * 0.012 + up * 0.004, d * rng.randf_range(0.18, 0.26) + up * 0.006, 0.012, 0.05, rng.randf_range(2.8, 3.8), Color(0.80, 0.72, 0.60, 0.85), 0, 0.003, 1.6)
+	ripple(p, r * 1.7, 3.2)
+	ripple(p, r * 1.2, 2.6, 0.35)
+	ripple(p, r * 0.8, 2.0, 0.7)
+	nukes.append({"p": p, "r": r, "t": 0.0, "acc": 0.0, "ring": false})
+
+
+## Fireball centre height above the blast point at time t.
+static func nuke_height(t: float) -> float:
+	return NUKE_TOP * (1.0 - exp(-t / NUKE_RISE_T))
+
+
+func _step_nukes(dt: float) -> void:
+	var i := 0
+	while i < nukes.size():
+		var n: Dictionary = nukes[i]
+		n.t += dt
+		var t: float = n.t
+		if t > NUKE_EMIT:
+			nukes.remove_at(i)
+			continue
+		var p: Vector3 = n.p
+		var h := nuke_height(t)
+		var c := p + Vector3(0, h, 0)
+		var vy := NUKE_TOP / NUKE_RISE_T * exp(-t / NUKE_RISE_T)
+		var hot := clampf(1.0 - t / 4.0, 0.0, 1.0)      # 1 = fire-lit, 0 = cold grey
+		n.acc += dt
+		# ~14 puffs a second (fewer as it cools)
+		var every := lerpf(0.11, 0.05, hot)
+		while float(n.acc) >= every:
+			n.acc = float(n.acc) - every
+			# the cap: a rolling ring round the centre, widening as it rises; grey-brown
+			# smoke lit orange from inside while it is hot, white-grey when it cools
+			var a := rng.randf() * TAU
+			var out := Vector3(cos(a), 0.0, sin(a))
+			var grow := clampf(t / 6.0, 0.0, 1.0)
+			var cap_r := 0.015 + 0.11 * grow
+			var ring := rng.randf_range(0.55, 1.0) if rng.randf() < 0.7 else rng.randf_range(0.0, 0.5)
+			var size1 := lerpf(0.05, 0.13, grow)
+			var cool := Color(0.66, 0.60, 0.55, 0.95).lerp(Color(0.82, 0.80, 0.78, 0.9), rng.randf())
+			var pos := c + out * cap_r * ring + Vector3(0, rng.randf_range(-0.012, 0.02) - 0.02 * ring * ring, 0)
+			# rolling: the rim curls outward and down, the core keeps rising
+			var vel := out * rng.randf_range(0.01, 0.03) * (0.5 + ring) + Vector3(0, vy * (1.0 - 0.6 * ring) - 0.004 * ring, 0)
+			# fire-lit (kind 3) only while it is hot: later puffs are plain grey smoke
+			puff(pos, vel, size1 * 0.5, size1, rng.randf_range(13.0, 19.0), cool, 3 if rng.randf() < hot * 0.8 else 0, 0.0, 0.25)
+			if rng.randf() < hot:
+				# fire glow inside the cap (additive)
+				puff(c + out * cap_r * 0.4 * rng.randf(), Vector3(0, vy, 0), size1 * 0.4, size1 * 0.8, rng.randf_range(1.0, 1.8),
+					Color(1.0, rng.randf_range(0.5, 0.7), 0.2), 1, 0.0, 0.5)
+			# the stem: dust and smoke drawn up from the ground behind the fireball
+			if t < 7.0:
+				var hs := rng.randf_range(0.0, maxf(h - 0.03, 0.0))
+				var off := Vector3(rng.randf_range(-0.016, 0.016), 0.0, rng.randf_range(-0.016, 0.016))
+				puff(p + off + Vector3(0, 0.005 + hs, 0), Vector3(0, vy * 0.7 + 0.004, 0), 0.016, 0.045 + 0.025 * hs / NUKE_TOP, rng.randf_range(10.0, 14.0),
+					Color(0.50, 0.46, 0.42, 0.9), 3 if rng.randf() < hot else 0, 0.0, 0.6)
+		# condensation ring: a white collar round the stem, briefly, at ~1.5 s
+		if not n.ring and t > 1.4:
+			n.ring = true
+			for k in 28:
+				var a2 := TAU * k / 28.0
+				var d2 := Vector3(cos(a2), 0.0, sin(a2))
+				puff(p + Vector3(0, h * 0.65, 0) + d2 * 0.05, d2 * 0.05, 0.012, 0.035, 1.6, Color(0.97, 0.98, 1.0, 0.7), 0, 0.0, 1.2)
+		i += 1
 
 
 ## A ship hit: short fireball on the hull and a black oil-smoke column (no ground dust).
@@ -246,6 +309,7 @@ func _build_ripples() -> void:
 
 func clear() -> void:
 	puffs.clear()
+	nukes.clear()
 	ripples.clear()
 	flash_e = 0.0
 	flash_light.visible = false
@@ -253,6 +317,7 @@ func clear() -> void:
 
 
 func step(dt: float) -> void:
+	_step_nukes(dt)
 	var k := 0
 	while k < puffs.size():
 		var q: Dictionary = puffs[k]

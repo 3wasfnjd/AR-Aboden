@@ -556,6 +556,29 @@ func _campaign_tests(island: Island, phys: PhysicsTest) -> void:
 	res.clear()
 	phys.reset_island()
 	check("no launchers left: no more enemy missiles", none)
+	# the nuclear cloud rises to the top of the dome and stays under the glass
+	phys.fx.clear()
+	var np0 := Vector3(0.05, 0.0, 0.0)
+	np0.y = island.surface_at(np0.x, np0.z)
+	phys.fx.nuke(np0, 0.16)
+	var top_n := 0.0
+	var out_n := 0
+	var top_t := 0.0
+	for f in 60 * 12:
+		phys.fx.step(1.0 / 60.0)
+		for q in phys.fx.puffs:
+			var qp: Vector3 = q.p
+			var t01: float = q.age / q.life
+			var rad: float = lerpf(q.s0, q.s1, 1.0 - pow(1.0 - t01, 2.0)) * 0.7
+			if qp.y + rad > top_n:
+				top_n = qp.y + rad
+				top_t = f / 60.0
+			if qp.y > WeaponFlight.dome_ceiling(qp.x, qp.z) + WeaponFlight.DOME_MARGIN + 0.001:
+				out_n += 1
+	var dome_top := IslandTerrain.SEA + GlassDome.K * GlassDome.R
+	check("nuclear cloud: rises over ~%.0f s to the top of the dome (%.3f of %.3f m) and stays under the glass" % [top_t, top_n - IslandTerrain.SEA, dome_top - IslandTerrain.SEA],
+		top_n > dome_top - 0.03 and out_n == 0 and top_t > 3.0, "%d outside" % out_n)
+	phys.fx.clear()
 	# the drone swarm: six small drones from the stern ramp, spread over the target
 	var stgt := Vector3(0.10, 0.0, 0.05)
 	stgt.y = island.surface_at(stgt.x, stgt.z)

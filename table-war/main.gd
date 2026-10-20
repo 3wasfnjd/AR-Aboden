@@ -55,7 +55,7 @@ static func apply_quest_profile() -> void:
 	DebrisSystem.max_awake = 28        # CPU budget: older awake ones freeze + bake
 	DebrisSystem.max_age = 2.5
 	IslandProps.max_chunks = 20        # fracture pieces per building
-	FxSystem.cap = 220                 # smoke / dust / water puffs
+	FxSystem.cap = 260                 # smoke / dust / water puffs (the nuke cloud needs ~200)
 
 
 ## Quest: nothing casts a shadow (the sun has none either; Room.apply_quest).
@@ -405,7 +405,12 @@ func _run_vr_preview() -> void:
 		["v_briefing3", Vector3(0.0, 1.35, -2.0), "brief3"],
 		["v_play", Vector3(0.0, 0.8, -1.0), "play"],
 		["v_debrief", Vector3(0.0, 1.35, -2.0), "debrief"],
+		["v_nuke1", Vector3(0.0, 0.85, -1.0), "nuke:1.0"],
+		["v_nuke2", Vector3(0.0, 0.85, -1.0), "nuke:3.0"],
+		["v_nuke3", Vector3(0.0, 0.85, -1.0), "nuke:6.0"],
+		["v_nuke4", Vector3(0.0, 0.85, -1.0), "nuke:11.0"],
 	]
+	var nuke_t := 0.0
 	for sh in shots:
 		match String(sh[2]):
 			"brief":
@@ -431,6 +436,18 @@ func _run_vr_preview() -> void:
 						st.alive = false
 				phys.manual = false
 				x._process(1.0 / 72.0)
+		if String(sh[2]).begins_with("nuke:"):
+			if nuke_t == 0.0:
+				x.back_to_campaign()
+				x.screen.visible = false
+				phys.manual = true
+				var np := Vector3(0.05, 0.0, 0.02)
+				np.y = island.surface_at(np.x, np.z)
+				phys._nuke(np, WeaponTable.get_weapon("nuke"))
+			var want := float(String(sh[2]).substr(5))
+			while nuke_t < want:
+				phys.advance(1.0 / 60.0)
+				nuke_t += 1.0 / 60.0
 		var c := Camera3D.new()
 		c.fov = 82.0
 		c.near = 0.01
