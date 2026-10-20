@@ -176,12 +176,13 @@ func _build_plate() -> void:
 	mi.mesh = pb.commit(null, _brass())
 	add_child(mi)
 	tri_total += pb.tri_count()
-	add_child(_engraving("JAZIRAT AL-SABKHA", 0.0036, Vector3(0, top + 0.00115, zc - 0.0016)))
-	add_child(_engraving("WAR TABLE  ·  SCALE 1 : 2000  ·  PROTOTYPE", 0.0017, Vector3(0, top + 0.00115, zc + 0.0030)))
+	add_child(_engraving("حرب البارجة", 0.0042, Vector3(0, top + 0.00115, zc - 0.0016)))
+	add_child(_engraving("عبودين قيمز  ·  ABODEN GAMES", 0.0019, Vector3(0, top + 0.00115, zc + 0.0031)))
 
 
 func _engraving(text: String, height: float, pos: Vector3) -> Label3D:
 	var l := Label3D.new()
+	l.font = XRGame.ui_font()   # Cairo with the Arabic glyphs
 	l.text = text
 	l.font_size = 96
 	l.outline_size = 0
