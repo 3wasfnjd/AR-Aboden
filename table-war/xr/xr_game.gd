@@ -30,6 +30,15 @@ const ZOOM_RATE := 0.75          # left stick Y: e-folds per second (Mafateeh's 
 const ROT_STEP := PI / 12.0      # panel rotate buttons
 ## Launch point relative to the right controller's aim pose: just above / ahead of it.
 const LAUNCH_OFFSET := Vector3(0.0, 0.035, -0.06)
+## Build 14: the campaign in VR. The player stands in the battleship's operations room
+## (xr/ops_room.gd); the island stands on the hologram table in front of them (no
+## placement on a real table); the room's big screen (xr/campaign_screen.gd) shows the
+## campaign, the team's briefing, the debrief and the pause menu. Set by main.gd for the
+## headset build; the tests also run the old mixed-reality flow with it off.
+static var campaign_vr := false
+const TABLE_AHEAD := 1.0         # m from the start position to the table centre
+const SCREEN_BEYOND := 1.3       # m beyond the table centre to the big screen
+const SCREEN_Y := 1.5
 
 var room: Room
 var diorama: Node3D
@@ -65,6 +74,17 @@ var missions := Missions.new()
 var board: MissionBoard
 var board_shown := true          # left X toggles the mission screen
 var _board_acc := 0.0
+
+# campaign (build 14)
+var flow := ""                   # "", "menu", "briefing", "playing", "paused", "debrief"
+var ops: OpsRoom
+var screen: CampaignScreen
+var progress := Progress.new()
+var run := StageRun.new()
+var stage_id := ""
+var table_centre := Vector3.INF
+var _screen_hit := {}
+var markers: TargetMarkers
 
 var ghost: MeshInstance3D
 var ghost_mat: StandardMaterial3D
@@ -107,6 +127,25 @@ func setup(r: Room, d: Node3D, isl: Island, p: PhysicsTest) -> void:
 	phys.weapon = weapon
 	phys.impacted.connect(_on_impact)
 	phys.sortie_landed.connect(_on_sortie_landed)
+	if campaign_vr:
+		_setup_campaign()
+
+
+func _setup_campaign() -> void:
+	ops = OpsRoom.new()
+	ops.name = "OpsRoom"
+	add_child(ops)
+	screen = CampaignScreen.new()
+	screen.name = "CampaignScreen"
+	add_child(screen)
+	screen.pressed.connect(_on_screen)
+	progress.load_save()
+	markers = TargetMarkers.new()
+	diorama.add_child(markers)
+	phys.resistance.ship_hit.connect(_on_ship_hit)
+	phys.resistance.intercepted.connect(_on_intercepted)
+	phys.resistance.ciws_kill.connect(func(_p: Vector3) -> void: rig.pulse("left", 0.2, 0.03))
+	flow = "menu"
 
 
 ## Starts OpenXR. False (and nothing is changed) without a headset runtime.
@@ -116,8 +155,12 @@ func start() -> bool:
 	rig.camera.current = true
 	surfaces.attach(rig)
 	rig.button.connect(_on_button)
-	rig.session_started.connect(func(): set_mode("mr"))
 	rig.recentered.connect(_on_recentered)
+	if campaign_vr:
+		rig.session_started.connect(func(): set_mode("vr"))
+		set_mode("vr")
+		return true
+	rig.session_started.connect(func(): set_mode("mr"))
 	set_mode("mr")
 	state = "placing"
 	return true
@@ -130,9 +173,13 @@ func _on_recentered() -> void:
 
 
 func set_mode(m: String) -> String:
+	if campaign_vr:
+		m = "vr"
 	m = rig.set_mode(m)
 	mode = m
 	room.set_mr(m == "mr")
+	if campaign_vr:
+		room.set_ops()
 	contact.visible = m == "mr" and (state == "pinned" or surface_label != "")
 	return m
 
@@ -259,6 +306,8 @@ func _set_text(l: Label3D, t: String) -> void:
 # ------------------------------------------------------------------------------------
 
 func _on_button(hand: String, name: String, pressed: bool) -> void:
+	if campaign_vr and not _campaign_button(hand, name, pressed):
+		return
 	if hand == "right" and name == "trigger" and pressed:
 		if state == "placing":
 			pin()
@@ -291,7 +340,206 @@ func _on_button(hand: String, name: String, pressed: bool) -> void:
 			_grab = {}
 
 
+## Campaign input: the screen takes the trigger while it is shown; the menu button (or B)
+## pauses / resumes. Returns true if the play controls below should also see the press.
+func _campaign_button(hand: String, name: String, pressed: bool) -> bool:
+	if not pressed:
+		return flow == "playing"
+	if hand == "right" and name == "trigger" and screen.visible:
+		if not _screen_hit.is_empty() and String(_screen_hit.id) != "":
+			screen.press(_screen_hit.id)
+			rig.pulse("right", 0.25, 0.02)
+		return false
+	if (hand == "left" and name == "menu") or (hand == "right" and name == "by"):
+		if flow == "playing":
+			pause()
+		elif flow == "paused":
+			resume()
+		return false
+	if hand == "left" and name == "stick":
+		fps_label.visible = not fps_label.visible
+		return false
+	return flow == "playing"
+
+
+func _on_screen(id: String) -> void:
+	match id:
+		"start":
+			open_briefing(screen.selected)
+		"brief_start":
+			start_stage(screen.selected)
+		"brief_back", "campaign":
+			back_to_campaign()
+		"resume":
+			resume()
+		"restart", "retry":
+			start_stage(stage_id)
+		"next":
+			var nx := String(run.stage.get("next_id", ""))
+			open_briefing(_next_stage_id(stage_id) if nx == "" else nx)
+		"buy":
+			rig.pulse("right", 0.1, 0.05)   # the store build opens the purchase here
+
+
+## The stage after `id` in its chapter (or the first of the next chapter), "" if none.
+func _next_stage_id(id: String) -> String:
+	var s := Campaign.get_stage(id)
+	if s.is_empty():
+		return ""
+	var list := Campaign.stages_of(int(s.chapter))
+	for k in list.size():
+		if list[k].id == id:
+			if k + 1 < list.size():
+				return list[k + 1].id
+			var nxt := Campaign.stages_of(int(s.chapter) + 1)
+			return nxt[0].id if not nxt.is_empty() and int(s.chapter) > 0 else ""
+	return ""
+
+
+func open_briefing(id: String) -> void:
+	if not progress.is_open(id):
+		back_to_campaign()
+		return
+	var s := Campaign.get_stage(id)
+	if (s.get("brief", []) as Array).is_empty():
+		start_stage(id)
+		return
+	flow = "briefing"
+	stage_id = id
+	screen.visible = true
+	screen.show_briefing(id)
+
+
+## Start (or restart) a stage on a freshly reset island.
+func start_stage(id: String) -> void:
+	var s := Campaign.get_stage(id)
+	if s.is_empty() or not progress.is_open(id):
+		back_to_campaign()
+		return
+	stage_id = id
+	phys.manual = false
+	reset_island()
+	run.start(s, island.props, island.life.alive_count() if island.life else 0)
+	phys.resistance.configure(s)
+	markers.setup_run(run, island.props)
+	if island.ship:
+		island.ship.set_jets_aboard(int(ammo.get("jet", 0)))
+	flow = "playing"
+	screen.visible = false
+	panel.visible = true
+	board_shown = true
+	_update_board(true)
+	rig.pulse("right", 0.5, 0.06)
+
+
+func pause() -> void:
+	if flow != "playing":
+		return
+	flow = "paused"
+	phys.manual = true
+	phys.hide_preview()
+	screen.visible = true
+	screen.show_pause()
+	panel.visible = false
+
+
+func resume() -> void:
+	if flow != "paused":
+		return
+	flow = "playing"
+	phys.manual = false
+	screen.visible = false
+	panel.visible = true
+	_aim_key = Vector4(INF, INF, INF, INF)
+
+
+func back_to_campaign() -> void:
+	run.abort()
+	phys.manual = false
+	phys.resistance.clear()
+	reset_island()
+	flow = "menu"
+	markers.clear_all()
+	panel.visible = false
+	board.visible = false
+	screen.visible = true
+	var s := Campaign.get_stage(stage_id)
+	screen.show_campaign(progress, int(s.get("chapter", 1)) if not s.is_empty() else 1, stage_id if stage_id != "" else progress.next_stage())
+
+
+func _end_stage() -> void:
+	var won := run.result == "won"
+	if won:
+		progress.record(stage_id, run.stars)
+	phys.resistance.clear()
+	phys.hide_preview()
+	markers.clear_all()
+	var nx := _next_stage_id(stage_id)
+	flow = "debrief"
+	panel.visible = false
+	board.visible = false
+	screen.visible = true
+	screen.show_debrief({"id": stage_id, "result": run.result, "reason": run.fail_reason, "stars": run.stars,
+		"civ": run.civilians(island.props), "time_left": run.time_left, "shots": run.shots,
+		"intercepted": run.intercepted, "hull": run.hull, "next": nx if won and nx != "" and progress.is_open(nx) else ""})
+	rig.pulse("right", 0.9 if won else 0.4, 0.25)
+	rig.pulse("left", 0.9 if won else 0.4, 0.25)
+
+
+func _on_ship_hit(_p: Vector3) -> void:
+	run.ship_hit()
+	rig.pulse("left", 1.0, 0.3)
+	rig.pulse("right", 1.0, 0.3)
+	_update_board(true)
+
+
+func _on_intercepted(_p: Vector3, _wid: String) -> void:
+	run.intercepted += 1
+	rig.pulse("right", 0.3, 0.06)
+
+
+## Put the hologram table in front of the head, the island on it, the big screen beyond,
+## and open the campaign. Once per session (a recenter keeps everything).
+func place_campaign(head: Transform3D) -> void:
+	var fwd := -head.basis.z
+	fwd.y = 0.0
+	if fwd.length_squared() < 1e-6:
+		fwd = Vector3(0, 0, -1)
+	fwd = fwd.normalized()
+	var foot := Vector3(head.origin.x, 0.0, head.origin.z)
+	table_centre = foot + fwd * TABLE_AHEAD
+	ops.build(table_centre)
+	cur_p = table_centre + Vector3(0, OpsRoom.TABLE_H, 0)
+	cur_yaw = Placement.facing_yaw(cur_p, head.origin)
+	place_scale = 1.0
+	diorama.transform = Placement.pinned_transform(cur_p, cur_yaw, place_scale)
+	state = "pinned"
+	contact.visible = false
+	ghost.visible = false
+	var sp := table_centre + fwd * SCREEN_BEYOND + Vector3(0, SCREEN_Y, 0)
+	var eye := Vector3(foot.x, 1.6, foot.z)
+	screen.global_transform = Transform3D(Basis.looking_at((eye - sp).normalized(), Vector3.UP, true), sp)
+	back_to_campaign()
+	screen.show_campaign(progress, Campaign.get_stage(progress.next_stage()).get("chapter", 1), progress.next_stage())
+
+
 func _on_panel(id: String) -> void:
+	if campaign_vr:
+		match id:
+			"slow":
+				toggle_slow()
+			"reset":
+				start_stage(stage_id)
+			"m_prev", "m_next":
+				pause()
+			"rot_l":
+				rotate_island(ROT_STEP)
+			"rot_r":
+				rotate_island(-ROT_STEP)
+			_:
+				if id.begins_with("w_"):
+					select_weapon(id.substr(2))
+		return
 	match id:
 		"slow":
 			toggle_slow()
@@ -326,6 +574,13 @@ func select_mission(id: String) -> void:
 ## unless hidden with left X.
 func _update_board(force := false) -> void:
 	if board == null:
+		return
+	if campaign_vr:
+		board.show_run(run, island.props)
+		board.visible = board_shown and flow == "playing"
+		board.face_toward(diorama.global_transform.affine_inverse() * rig.head_transform().origin)
+		if force:
+			_board_acc = 0.0
 		return
 	board.show_state(missions, island.props)
 	board.visible = board_shown
@@ -429,6 +684,7 @@ func fire() -> bool:
 	var w := WeaponTable.get_weapon(weapon)
 	phys.fire(tgt, launch_point_local(), weapon)
 	missions.on_shot()
+	run.on_shot()
 	if weapon == "jet" and island.ship:
 		island.ship.set_jets_aboard(int(ammo[weapon]) - 1)
 	ammo[weapon] = int(ammo[weapon]) - 1
@@ -468,6 +724,10 @@ func _process(delta: float) -> void:
 	if not rig.xr_active and not rig.sim:
 		return
 	var dt := minf(delta, 0.05)
+	if campaign_vr:
+		_step_campaign(dt)
+		_step_fps(delta)
+		return
 	if state == "placing":
 		_step_placing(dt)
 	else:
@@ -475,6 +735,26 @@ func _process(delta: float) -> void:
 	if mode == "vr":
 		room.set_root.transform = Transform3D(Basis(Vector3.UP, cur_yaw), cur_p)
 	_step_fps(delta)
+
+
+func _step_campaign(dt: float) -> void:
+	if table_centre == Vector3.INF:
+		place_campaign(rig.head_transform())
+	if flow == "playing":
+		_step_pinned(dt)
+		return
+	# menus: the right ray points at the screen; the left stick still turns / zooms
+	var ls := rig.stick("left")
+	if absf(ls.x) > Placement.DEADZONE:
+		rotate_island(-ls.x * ROT_RATE * dt)
+	_screen_hit = {}
+	var hitp: Variant = null
+	if rig.tracked("right"):
+		var r := rig.ray("right")
+		_screen_hit = screen.hit(r[0], r[1])
+		if not _screen_hit.is_empty():
+			hitp = _screen_hit.point
+	rig.set_pointer("right", hitp, true)
 
 
 func aim_surface(origin: Vector3, dir: Vector3) -> Dictionary:
@@ -548,7 +828,14 @@ func _step_pinned(dt: float) -> void:
 			var yaw := float(_grab.yaw0) + wrapf(a - float(_grab.a0), -PI, PI)
 			rotate_island(wrapf(yaw - cur_yaw, -PI, PI))
 	_place_panel(dt)
-	if missions.step(dt, island.props):
+	if campaign_vr:
+		markers.refresh(dt)
+		if island.life:
+			run.set_life_alive(island.life.alive_count())
+		if run.step(dt, island.props):
+			_end_stage()
+			return
+	elif missions.step(dt, island.props):
 		rig.pulse("right", 0.9 if missions.result == "won" else 0.4, 0.25)
 		rig.pulse("left", 0.9 if missions.result == "won" else 0.4, 0.25)
 		_destruction_dirty = true
@@ -596,6 +883,8 @@ func _update_panel() -> void:
 		var dist_m := (diorama.global_transform * (tgt as Vector3)).distance_to(launch_point_world())
 		var T: float = phys.last_aim_T if phys.last_aim_T > 0.0 else 0.0
 		txt = "%s  RNG %.2f m  ·  T+%.1f s   ·   %s" % ["LOCKED" if locked != null else "TGT", dist_m, T, "مقفل" if locked != null else "الهدف"]
+		if phys.last_marker_civilians > 0:
+			txt += "   ·   مدنيون %d" % phys.last_marker_civilians
 	panel.update_state(ammo, cool, txt, phys.slow_motion)
 	if _destruction_dirty:
 		_destruction_dirty = false

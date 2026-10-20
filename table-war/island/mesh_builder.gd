@@ -173,10 +173,11 @@ static func vc_material(rough := 0.85, cull := true) -> StandardMaterial3D:
 	m.vertex_color_use_as_albedo = true
 	m.vertex_color_is_srgb = true
 	m.roughness = rough
-	m.metallic_specular = 0.35
-	# build 3 cartoon look: banded light everywhere (terrain, vegetation, props)
-	m.diffuse_mode = BaseMaterial3D.DIFFUSE_TOON
-	m.specular_mode = BaseMaterial3D.SPECULAR_TOON
+	m.metallic_specular = 0.2
+	# build 14: procedural stylized low-poly. Flat faces (MeshBuilder emits per-face
+	# normals) under plain Lambert light: each facet one clean tone, no toon bands.
+	m.diffuse_mode = BaseMaterial3D.DIFFUSE_LAMBERT
+	m.specular_mode = BaseMaterial3D.SPECULAR_DISABLED
 	if not cull:
 		m.cull_mode = BaseMaterial3D.CULL_DISABLED
 	return m

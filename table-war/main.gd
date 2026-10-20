@@ -91,6 +91,9 @@ func _ready() -> void:
 	if quest:
 		no_shadows(self)
 	if want_xr:
+		# build 14: the campaign in VR (the operations room); --mr keeps the old
+		# mixed-reality placement test flow
+		XRGame.campaign_vr = not ("--mr" in args)
 		xr_game = XRGame.new()
 		xr_game.name = "XRGame"
 		add_child(xr_game)
@@ -114,6 +117,8 @@ func _ready() -> void:
 		_run_stats.call_deferred()
 	elif "--mr-preview" in args:
 		_run_mr_preview.call_deferred()
+	elif "--vr-preview" in args:
+		_run_vr_preview.call_deferred()
 
 
 ## World -> diorama transform and head position for the shaders (island-local
@@ -374,6 +379,82 @@ func _physics_shots() -> void:
 ## seen from standing eye height. MR: fake room hidden, transparent background (the PNG
 ## keeps the alpha), contact shadow. VR: the fake room's table under the base.
 ## Also the left-hand control panel close up (x_panel).
+## Build 14 previews from the player's eye in the operations room: the campaign screen,
+## the briefing, a stage in play and the debrief (shots/v_*.png).
+func _run_vr_preview() -> void:
+	hud.visible = false
+	XRGame.campaign_vr = true
+	var x := XRGame.new()
+	x.name = "XRGamePreview"
+	add_child(x)
+	x.setup(room, diorama, island, phys)
+	x.progress = Progress.new()
+	x.rig.sim = true
+	x.set_mode("vr")
+	var head := Transform3D(Basis(), Vector3(0.0, 1.62, 0.0))
+	x.place_campaign(head)
+	cam.min_dist = 0.01
+	cam.fov = 80.0
+	var eye := Vector3(0.0, 1.62, 0.05)
+	var out := _out_dir()
+	var shots := [
+		["v_campaign", Vector3(0.0, 1.35, -2.0), "menu"],
+		["v_room", Vector3(0.0, 1.0, -2.0), "wide"],
+		["v_briefing", Vector3(0.0, 1.35, -2.0), "brief"],
+		["v_briefing2", Vector3(0.0, 1.35, -2.0), "brief2"],
+		["v_briefing3", Vector3(0.0, 1.35, -2.0), "brief3"],
+		["v_play", Vector3(0.0, 0.8, -1.0), "play"],
+		["v_debrief", Vector3(0.0, 1.35, -2.0), "debrief"],
+	]
+	for sh in shots:
+		match String(sh[2]):
+			"brief":
+				x.screen.press("st_c1s1")
+				x.screen.press("start")
+			"brief2":
+				x.screen.press("brief_next")
+			"brief3":
+				x.screen.show_briefing("c1s5", 2)
+			"play":
+				x.start_stage("c1s1")
+				phys.manual = true
+				var tgt := Vector3(-0.056, 0.0, -0.160)
+				tgt.y = island.surface_at(tgt.x, tgt.z)
+				phys.aim(tgt, Vector3.INF, "cruise")
+				phys.fire(tgt, Vector3.INF, "cruise")
+				for k in 70:
+					phys.advance(1.0 / 60.0)
+				x._update_board(true)
+			"debrief":
+				for st in island.props.structures:
+					if st.kind == "radar_sphere":
+						st.alive = false
+				phys.manual = false
+				x._process(1.0 / 72.0)
+		var c := Camera3D.new()
+		c.fov = 82.0
+		c.near = 0.01
+		c.far = 2000.0
+		add_child(c)
+		c.look_at_from_position(eye if String(sh[2]) != "wide" else Vector3(1.6, 1.7, 1.2), sh[1])
+		c.current = true
+		for k in 8:
+			await get_tree().process_frame
+		await RenderingServer.frame_post_draw
+		var img := get_viewport().get_texture().get_image()
+		img.save_png(out.path_join(String(sh[0]) + ".png"))
+		print("vr-preview: ", sh[0])
+		c.queue_free()
+	get_tree().quit()
+
+
+func _out_dir() -> String:
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--out="):
+			return a.trim_prefix("--out=")
+	return ProjectSettings.globalize_path("res://shots")
+
+
 func _run_mr_preview() -> void:
 	hud.visible = false
 	phys.manual = true

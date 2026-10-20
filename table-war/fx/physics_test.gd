@@ -33,6 +33,9 @@ var island: Island
 var debris: DebrisSystem
 var fx: FxSystem
 var sfx: SfxBank
+## The Viper's air defence and coastal launchers (game/resistance.gd).
+var resistance: Resistance
+var _serial := 0
 
 var slow_motion := false
 var slow_factor := 0.2
@@ -64,6 +67,10 @@ var preview_mm: MultiMesh
 var marker: MeshInstance3D
 var _mat_aim: StandardMaterial3D
 var _mat_lock: StandardMaterial3D
+var _mat_warn: StandardMaterial3D
+## Civilians (people, cars, homes, civilian boats) inside the aimed blast: the ring turns
+## yellow when there are any.
+var last_marker_civilians := 0
 var _pool: Array[Dictionary] = []     # {node, body, glow, glow_mat, wid}
 var _meshes := {}                     # weapon id -> body mesh
 var _marks: Array[MeshInstance3D] = []
@@ -74,6 +81,8 @@ var _mark_mat: StandardMaterial3D
 signal impacted(point: Vector3, kind: String)
 ## A strike jet is back on the deck (its weapon id).
 signal sortie_landed(wid: String)
+## A strike jet was shot down.
+signal jet_lost(wid: String)
 
 
 func setup(isl: Island) -> void:
@@ -89,6 +98,10 @@ func setup(isl: Island) -> void:
 	sfx = SfxBank.new()
 	sfx.name = "Sfx"
 	add_child(sfx)
+	resistance = Resistance.new()
+	resistance.name = "Resistance"
+	add_child(resistance)
+	resistance.setup(self)
 	for k in MAX_FLIGHTS:
 		_pool.append(_make_shell_node(k))
 	shell = _pool[0].node
@@ -193,6 +206,7 @@ func _build_marker() -> void:
 	marker.visible = false
 	_mat_aim = _marker_mat(Color(1.0, 0.62, 0.2, 0.85))
 	_mat_lock = _marker_mat(Color(1.0, 0.12, 0.08, 0.95))
+	_mat_warn = _marker_mat(Color(1.0, 0.86, 0.10, 0.95))
 	marker.material_override = _mat_aim
 	add_child(marker)
 
@@ -282,8 +296,20 @@ func show_marker(tgt: Vector3, locked := false, wid := "") -> void:
 	var r: float = CRATER_R * float(w.blast)
 	var b := Basis(Quaternion(Vector3.UP, n.normalized())) * Basis().scaled(Vector3(r, r, r))
 	marker.transform = Transform3D(b, tgt + n * 0.0006)
-	marker.material_override = _mat_lock if locked else _mat_aim
+	last_marker_civilians = civilians_near(tgt, BLAST_R * float(w.blast) if not bool(w.get("nuke", false)) else float(w.nuke_r))
+	# a locked target stays red (the panel's target line still counts the civilians)
+	marker.material_override = _mat_lock if locked else (_mat_warn if last_marker_civilians > 0 else _mat_aim)
 	marker.visible = true
+
+
+## People and cars alive in the city + civilian buildings / boats still standing within r.
+func civilians_near(p: Vector3, r: float) -> int:
+	var n := island.life.alive_near(p, r) if island.life else 0
+	for st in island.props.structures:
+		if st.alive and (st.kind in StageRun.CIVIL or st.kind in StageRun.CIVIL_BOATS):
+			if Vector2(st.pos.x - p.x, st.pos.z - p.z).length() < r:
+				n += 1
+	return n
 
 
 func hide_preview() -> void:
@@ -324,7 +350,8 @@ func _launch(w: Dictionary, o: Vector3, tgt: Vector3, quiet := false) -> Diction
 	(slot.glow_mat as StandardMaterial3D).albedo_color = Color(1.0, 0.75, 0.35)
 	node.position = o
 	node.visible = true
-	var f := {"plan": pl, "t": 0.0, "w": w, "slot": slot, "trail_acc": 0.0, "tgt": tgt, "split": false}
+	_serial += 1
+	var f := {"plan": pl, "t": 0.0, "w": w, "slot": slot, "trail_acc": 0.0, "tgt": tgt, "split": false, "serial": _serial}
 	flights.append(f)
 	_orient(f)
 	last_plan = pl
@@ -349,6 +376,17 @@ func _free_slot() -> Dictionary:
 		if not used:
 			return s
 	return _pool[0]
+
+
+## A shot shot down in the air (Resistance): gone without an impact. A strike jet does
+## not come back (jet_lost).
+func kill_flight(i: int) -> void:
+	var wid: String = (flights[i].w as Dictionary).id
+	_end_flight(i)
+	if wid == "jet":
+		jet_lost.emit(wid)
+	if flights.is_empty() and _pending.is_empty():
+		hide_preview()
 
 
 func _end_flight(i: int) -> void:
@@ -382,6 +420,7 @@ func advance(dt: float) -> void:
 	var h := dt / steps
 	for _i in steps:
 		_step_flights(h)      # shells need the small step (exact impact points)
+	resistance.step(dt)
 	# debris and smoke step once per frame: half the GDScript cost of the 120 Hz
 	# substeps at 72 fps (long frames still split, so a step never exceeds 1/50 s)
 	var ds := maxi(1, int(ceil(dt / 0.02)))
@@ -637,6 +676,7 @@ func _step_marks(dt: float) -> void:
 
 ## "Reset island": craters, buildings, vegetation, roads back; debris, smoke, shots gone.
 func reset_island() -> void:
+	resistance.clear()
 	_pending.clear()
 	while not flights.is_empty():
 		_end_flight(0)

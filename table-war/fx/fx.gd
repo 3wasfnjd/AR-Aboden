@@ -134,6 +134,29 @@ func ship_fire(p: Vector3, scale := 1.0) -> void:
 		puff(p + Vector3(0, 0.003 + k * 0.0012, 0), d2 * rng.randf_range(0.02, 0.05) * scale, 0.004 * scale, 0.02 * scale, rng.randf_range(2.0, 3.4), Color(0.12, 0.11, 0.11, 0.85), 3, 0.012, 1.5)
 
 
+## A missile shot down in the air: a short flash, a small fireball and a grey smoke
+## puff that hangs (no ground dust).
+func air_burst(p: Vector3, scale := 1.0) -> void:
+	puff(p, Vector3.ZERO, 0.006 * scale, 0.018 * scale, 0.08, Color(1.0, 0.95, 0.8), 1, 0.0, 0.0)
+	for k in 8:
+		var d := Vector3(rng.randf_range(-1, 1), rng.randf_range(-0.6, 1.0), rng.randf_range(-1, 1)).normalized()
+		puff(p + d * 0.001, d * rng.randf_range(0.02, 0.05) * scale, 0.003 * scale, 0.009 * scale, rng.randf_range(0.3, 0.5), Color(1.0, rng.randf_range(0.6, 0.8), 0.3, 1.0), 2, 0.01, 6.0)
+	for k in 6:
+		var d2 := Vector3(rng.randf_range(-1, 1), rng.randf_range(-0.3, 1.0), rng.randf_range(-1, 1)).normalized()
+		puff(p + d2 * 0.002, d2 * 0.01, 0.004 * scale, 0.014 * scale, rng.randf_range(2.0, 3.0), Color(0.42, 0.40, 0.38, 0.8), 0, 0.004, 1.5)
+	# falling sparks / fragments
+	for k in 10:
+		var d3 := Vector3(rng.randf_range(-1, 1), rng.randf_range(-0.2, 0.8), rng.randf_range(-1, 1)).normalized()
+		puff(p, d3 * rng.randf_range(0.03, 0.08), 0.0008, 0.0012, rng.randf_range(0.5, 0.9), Color(1.0, 0.8, 0.45), 1, -0.15, 1.0)
+
+
+## The battleship's gun burst: bright tracer dots from the gun toward `to`.
+func tracer(from: Vector3, to: Vector3) -> void:
+	for k in 7:
+		var f := float(k) / 7.0
+		puff(from.lerp(to, f * 0.9), (to - from).normalized() * 0.05, 0.0009, 0.0009, 0.12 + f * 0.1, Color(1.0, 0.85, 0.4), 1, 0.0, 0.0)
+
+
 func splash(p: Vector3, scale := 1.0) -> void:
 	for k in int(10 * scale) + 3:
 		var d := Vector3(rng.randf_range(-0.5, 0.5), 1.0, rng.randf_range(-0.5, 0.5))

@@ -416,6 +416,7 @@ func _initialize() -> void:
 	check("debris and smoke stay inside the glass dome", out == 0, "%d samples outside" % out)
 	phys.debris.clear()
 	phys.fx.clear()
+	_campaign_tests(island, phys)
 	await _xr_tests(island, phys)
 
 	print("RESULT ", "OK" if failures == 0 else "FAILED (%d)" % failures)
@@ -425,6 +426,137 @@ func _initialize() -> void:
 # ======================================================================================
 # XR / Quest build
 # ======================================================================================
+
+# ======================================================================================
+# campaign: chapters, stages, progress, the purchase gate, civilians, stars, resistance
+# ======================================================================================
+
+func _campaign_tests(island: Island, phys: PhysicsTest) -> void:
+	# every built stage has a reachable objective on this island and a briefing
+	var bad: Array = []
+	for c in Campaign.CHAPTERS:
+		var list := Campaign.stages_of(int(c.n))
+		if list.size() != (9 if int(c.n) == 0 else 5):
+			bad.append("chapter %d has %d stages" % [c.n, list.size()])
+		for s in list:
+			if not Campaign.is_built(s):
+				continue
+			var run := StageRun.new()
+			run.start(s, island.props)
+			var pr := run.progress(island.props)
+			if int(pr[1]) <= 0:
+				bad.append("%s: no target on the island" % s.id)
+			if int(c.n) > 0 and (not s.has("brief") or (s.brief as Array).is_empty() or not s.has("won") or not s.has("failed")):
+				bad.append("%s: no briefing / debrief" % s.id)
+			for line in s.get("brief", []):
+				if not Campaign.TEAM.has(line[0]):
+					bad.append("%s: unknown speaker %s" % [s.id, line[0]])
+	check("campaign: 5 chapters, 5 stages each (9 drills), every built stage has targets and a briefing", bad.is_empty() and Campaign.CHAPTERS.size() == 5, str(bad))
+	check("campaign: chapters 0-1 built and free, 2-4 sold", Campaign.chapter(1).free and Campaign.chapter(1).built and not Campaign.chapter(2).free and not Campaign.chapter(4).free)
+
+	# progress: order, the purchase gate, unlock_all
+	var pg := Progress.new()
+	var c1 := Campaign.stages_of(1)
+	var ok_order := pg.stage_state(c1[0]) == "open" and pg.stage_state(c1[1]) == "locked" and pg.next_stage() == "c1s1"
+	pg.best["c1s1"] = 2
+	ok_order = ok_order and pg.stage_state(c1[1]) == "open" and pg.next_stage() == "c1s2"
+	var c2 := Campaign.stages_of(2)
+	var gate := pg.stage_state(c2[0]) == "soon" and not pg.owns(2) and pg.owns(1) and pg.owns(0)
+	Progress.unlock_all = true
+	gate = gate and pg.owns(3) and pg.stage_state(c1[4]) == "open"
+	Progress.unlock_all = false
+	check("progress: stages open in order, chapter 1 free, 2-4 need a purchase, unlock_all for tests", ok_order and gate)
+
+	# stars from civilian casualties; failing on civilians, time and the ship's hull
+	var st_ok := StageRun.stars_for(0) == 3 and StageRun.stars_for(1) == 2 and StageRun.stars_for(2) == 2 and StageRun.stars_for(3) == 1
+	var run2 := StageRun.new()
+	var s1 := Campaign.get_stage("c1s1")
+	run2.start(s1, island.props, 100)
+	run2.set_life_alive(97)
+	var civ3 := run2.civilians(island.props) == 3
+	run2.set_life_alive(94)
+	run2.step(0.1, island.props)
+	var civ_fail := run2.result == "failed" and run2.fail_reason == "civilians"
+	var run3 := StageRun.new()
+	run3.start(s1, island.props)
+	for k in 4:
+		run3.ship_hit()
+	run3.step(0.1, island.props)
+	var ship_fail := run3.result == "failed" and run3.fail_reason == "ship" and run3.hull == 0.0
+	var run4 := StageRun.new()
+	run4.start(s1, island.props)
+	run4.step(9999.0, island.props)
+	var time_fail := run4.fail_reason == "time"
+	# winning: destroy the radar dome -> 3 stars with no casualties
+	var run5 := StageRun.new()
+	run5.start(s1, island.props)
+	for stc in island.props.structures:
+		if stc.kind == "radar_sphere":
+			stc.alive = false
+	run5.step(0.1, island.props)
+	var won := run5.result == "won" and run5.stars == 3
+	for stc in island.props.structures:
+		if stc.kind == "radar_sphere":
+			stc.alive = true
+	check("stage rules: 0 civilians 3 stars, 1-2 two, 3+ one; fail on 6 civilians, the ship's hull or the clock",
+		st_ok and civ3 and civ_fail and ship_fail and time_fail and won, "civ3 %s civ_fail %s ship %s time %s won %s" % [civ3, civ_fail, ship_fail, time_fail, won])
+
+	# resistance: SAMs shoot down slow drones flying over them, coastal launchers hit the ship
+	phys.reset_island()
+	var res := phys.resistance
+	res.configure({"sam": true, "coastal": 0.0})
+	res.rng.seed = 1
+	var sam_c := Vector3(-0.030, 0.0, -0.154)
+	var tgt := Vector3(sam_c.x + 0.01, 0.0, sam_c.z + 0.02)
+	tgt.y = island.surface_at(tgt.x, tgt.z)
+	var downs := 0
+	var lost := [0]
+	var on_int := func(_p: Vector3, _w: String) -> void: lost[0] += 1
+	res.intercepted.connect(on_int)
+	for k in 6:
+		phys.fire(tgt, Vector3.INF, "drone")
+		for f in 72 * 10:
+			phys.advance(1.0 / 72.0)
+			if phys.flights.is_empty():
+				break
+	downs = res.shots_down
+	res.intercepted.disconnect(on_int)
+	var ok_sam: bool = downs >= 2 and downs == int(lost[0])
+	res.configure({"sam": true, "coastal": 0.0})
+	var art := 0
+	var imp0 := phys.impact_count
+	for k in 4:
+		phys.fire(tgt, Vector3.INF, "artillery")
+		for f in 72 * 5:
+			phys.advance(1.0 / 72.0)
+			if phys.flights.is_empty():
+				break
+	art = phys.impact_count - imp0
+	check("air defence: SAMs shoot down drones over them (%d of 6), never artillery shells" % downs, ok_sam and art == 4 and res.shots_down == 0, "art impacts %d" % art)
+	res.configure({"sam": false, "coastal": 5.0})
+	var hits := [0]
+	var kills := [0]
+	var on_hit := func(_p: Vector3) -> void: hits[0] += 1
+	var on_kill := func(_p: Vector3) -> void: kills[0] += 1
+	res.ship_hit.connect(on_hit)
+	res.ciws_kill.connect(on_kill)
+	for f in 72 * 60:
+		phys.advance(1.0 / 72.0)
+	res.ship_hit.disconnect(on_hit)
+	res.ciws_kill.disconnect(on_kill)
+	check("coastal launchers fire at the battleship: some get through, the gun stops some", hits[0] >= 1 and kills[0] >= 1 and hits[0] + kills[0] >= 8, "hits %d gun kills %d" % [hits[0], kills[0]])
+	# with every launcher destroyed nothing more comes
+	for stc in island.props.structures:
+		if stc.kind in Resistance.ENEMY_KINDS:
+			stc.alive = false
+	var none := not res.fire_coastal()
+	for stc in island.props.structures:
+		if stc.kind in Resistance.ENEMY_KINDS:
+			stc.alive = true
+	res.clear()
+	phys.reset_island()
+	check("no launchers left: no more enemy missiles", none)
+
 
 func pulses_of(x: XRGame) -> int:
 	return x.rig.pulses
@@ -884,6 +1016,66 @@ func _xr_tests(island: Island, phys: PhysicsTest) -> void:
 	xg2.set_mode("vr")
 	xg2.queue_free()
 	room2.queue_free()
+
+	# --- build 14: the campaign in VR (operations room, big screen, stages) -----------
+	XRGame.campaign_vr = true
+	var room3 := Room.new()
+	root.add_child(room3)
+	var xg3 := XRGame.new()
+	root.add_child(xg3)
+	xg3.setup(room3, qd, qi, qp)
+	xg3.progress = Progress.new()       # a fresh player
+	xg3.rig.sim = true
+	xg3.set_mode("vr")
+	xg3._process(1.0 / 72.0)
+	await process_frame
+	var base3 := qd.global_transform * Vector3.ZERO
+	check("VR campaign: ops room built, the island on the hologram table ahead, the campaign on the big screen",
+		xg3.table_centre != Vector3.INF and xg3.flow == "menu" and xg3.screen.visible and xg3.screen.page == "campaign"
+		and xg3.ops.get_child_count() >= 4 and absf(base3.y - OpsRoom.TABLE_H) < 1e-4 and not room3.set_root.visible
+		and base3.distance_to(Vector3(0, OpsRoom.TABLE_H, -XRGame.TABLE_AHEAD)) < 1e-3, "base %s" % base3)
+	var eye3 := xg3.rig.head_transform().origin
+	var bc3 := xg3.screen.button_center("st_c1s1")
+	var sh3 := xg3.screen.hit(eye3, (bc3 - eye3).normalized())
+	xg3.screen.press("st_c1s2")
+	var locked2 := xg3.screen.has_button("none") and not xg3.screen.has_button("start")
+	xg3.screen.press("st_c1s1")
+	xg3.screen.press("start")
+	var briefed := xg3.flow == "briefing" and xg3.screen.page == "briefing"
+	var nb := xg3.screen.brief_lines().size()
+	for k in nb:
+		xg3.screen.press("brief_next")
+	check("campaign screen: the ray picks a stage card, stage 2 is locked, START opens the team's briefing, its last NEXT starts the stage",
+		sh3.get("id", "") == "st_c1s1" and locked2 and briefed and nb == 3 and xg3.flow == "playing" and xg3.run.running and not xg3.screen.visible and xg3.panel.visible,
+		"hit %s flow %s" % [sh3.get("id", ""), xg3.flow])
+	xg3._on_button("left", "menu", true)
+	var paused := xg3.flow == "paused" and qp.manual and xg3.screen.page == "pause"
+	xg3._on_button("left", "menu", true)
+	check("menu button pauses (simulation stops, pause page) and resumes", paused and xg3.flow == "playing" and not qp.manual)
+	for stc in qi.props.structures:
+		if stc.kind == "radar_sphere":
+			stc.alive = false
+	xg3._process(1.0 / 72.0)
+	check("stage won: debrief with 3 stars, saved, stage 2 opens and NEXT is offered",
+		xg3.flow == "debrief" and xg3.screen.page == "debrief" and xg3.progress.stars("c1s1") == 3 and xg3.progress.is_open("c1s2") and xg3.screen.has_button("next"))
+	xg3._on_screen("next")
+	var to2 := xg3.flow == "briefing" and xg3.screen.selected == "c1s2"
+	xg3._on_screen("campaign")
+	check("NEXT briefs stage 2; CAMPAIGN goes back to the map", to2 and xg3.flow == "menu" and xg3.screen.page == "campaign")
+	# civilians in the aimed blast turn the ring yellow
+	var town := Vector3(qi.layout.town_center.x, 0.0, qi.layout.town_center.y)
+	town.y = qi.surface_at(town.x, town.z)
+	qp.show_marker(town, false, "ballistic")
+	var warn := qp.last_marker_civilians > 0 and qp.marker.material_override == qp._mat_warn
+	var far := Vector3(-0.056, 0.0, -0.160)
+	far.y = qi.surface_at(far.x, far.z)
+	qp.show_marker(far, false, "artillery")
+	check("aiming ring turns yellow with civilians inside the blast (town %d), stays orange over the radar" % qp.last_marker_civilians, warn and qp.marker.material_override != qp._mat_warn)
+	qp.hide_preview()
+	xg3.rig.sim = false
+	xg3.queue_free()
+	room3.queue_free()
+	XRGame.campaign_vr = false
 
 	IslandProps.merged_veg = false
 	IslandProps.tufts = true

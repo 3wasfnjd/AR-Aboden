@@ -308,7 +308,7 @@ func _make_mm(nm: String, mesh: Mesh, count: int) -> MultiMesh:
 	var sh := Shader.new()
 	sh.code = """
 shader_type spatial;
-render_mode cull_back, diffuse_toon, specular_disabled;
+render_mode cull_back, diffuse_lambert, specular_disabled;
 // COLOR = vertex colour x instance colour (body / shirt tint). Instance custom data
 // is not used: with vertex colours it reads garbage in GL Compatibility. Parts that
 // keep their own colour are marked by the vertex alpha: 0.6 skin, 0.45 glass, 0.25 dark.

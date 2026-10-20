@@ -148,6 +148,40 @@ func show_state(m: Missions, props: IslandProps) -> void:
 		viewport.render_target_update_mode = SubViewport.UPDATE_ONCE
 
 
+## Campaign (build 14): the running stage. Title, objective + progress, civilian
+## casualties (each one costs a star), clock, the battleship's hull when it is under
+## fire, and the stars it would get now.
+func show_run(r: StageRun, props: IslandProps) -> void:
+	var d := r.stage
+	_put(title, "%s · %s" % [d.get("ar", ""), String(d.get("en", "")).to_upper()])
+	var pr := r.progress(props)
+	var unit := "%" if d.has("pct") else ""
+	var prog := "%d%s/%d%s" % [int(pr[0]), unit, int(pr[1]), unit]
+	_put(goal, "%s  (%s)" % [d.get("goal_ar", ""), prog])
+	_put(goal_en, "%s  (%s)" % [d.get("goal_en", ""), prog])
+	var civ := r.civilians(props)
+	var txt := "خسائر مدنية: %d     %s" % [civ, Missions.clock(r.time_left)]
+	if bool(d.get("sam", false)) or float(d.get("coastal", 0.0)) > 0.0:
+		txt += "     البارجة %d%%" % int(r.hull)
+	_put(info, txt)
+	_tint(info, ALERT if (r.running and r.time_left < 10.0) or civ > 0 or r.hull < 50.0 else TEXT_DIM)
+	if r.running:
+		_put(result, "جارية · IN PROGRESS")
+		_tint(result, AMBER)
+	else:
+		_put(result, "")
+	var lit := StageRun.stars_for(civ) if r.running else r.stars
+	for k in 3:
+		var c := GOLD if k < lit else STAR_OFF
+		if stars[k].color != c:
+			stars[k].color = c
+			_dirty = true
+	_put(best_label, "النجوم الآن · STARS NOW" if r.running else "")
+	if _dirty:
+		_dirty = false
+		viewport.render_target_update_mode = SubViewport.UPDATE_ONCE
+
+
 ## Free play: the island's destruction and what is left.
 func _free_play(props: IslandProps) -> void:
 	var d := props.destruction()

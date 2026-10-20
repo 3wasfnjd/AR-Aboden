@@ -58,6 +58,22 @@ func set_mr(on: bool) -> void:
 		get_viewport().transparent_bg = on
 
 
+## VR campaign (build 14): the battleship's operations room replaces the fake living room.
+## No sky shader pass (OpsRoom draws its own low-poly sky dome); a cool, even ambient for
+## the flat-shaded room and a high sun for the island.
+func set_ops() -> void:
+	set_root.visible = false
+	env.background_mode = Environment.BG_COLOR
+	env.background_color = Color(0.32, 0.52, 0.80)
+	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	env.ambient_light_color = Color(0.70, 0.76, 0.86)
+	env.ambient_light_energy = 0.55
+	env.tonemap_exposure = 1.0
+	sun.light_energy = 1.05
+	if is_inside_tree():
+		get_viewport().transparent_bg = false
+
+
 func apply_quest() -> void:
 	quest = true
 	env.glow_enabled = false

@@ -1,5 +1,5 @@
 shader_type spatial;
-render_mode cull_back, diffuse_toon, specular_toon;
+render_mode cull_back, diffuse_lambert, specular_disabled;
 // Merged buildings, cartoon look (build 3). Vertex colour = sRGB albedo,
 // COLOR.a < 1 => emissive (flames, beacons, lit crowns).
 // Walls carry UV = (distance along wall, height above ground) and
