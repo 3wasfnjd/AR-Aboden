@@ -407,11 +407,14 @@ func _run_mr_preview() -> void:
 			st.alive = false
 			kp += 1
 	x.missions.step(23.0, island.props)
-	x.rig.camera.global_position = spot + Vector3(0, 0.45, 0.75)
+	cam.set_view(spot + Vector3(0, 0.12, -0.05), 0.0, 22.0, 0.95, 70.0)
+	await _frames(1)
+	x.rig.camera.global_transform = cam.global_transform   # the screen rides on the eyes
 	x._update_board(true)
-	cam.set_view(spot + Vector3(0, 0.12, -0.05), 0.0, 22.0, 0.95, 55.0)
 	await _capture("x_board")
-	# the tablet in the left hand, from the eye
+	# the tablet in the left hand, from the eye (the screen in the view off for this one)
+	x.board_shown = false
+	x._update_board(true)
 	var eye := spot + Vector3(-0.05, 0.62, 0.70)
 	var ppos := eye + Vector3(-0.12, -0.2, -0.22)
 	x.panel.visible = true

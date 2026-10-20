@@ -72,6 +72,8 @@ var _mark_next := 0
 var _mark_mat: StandardMaterial3D
 
 signal impacted(point: Vector3, kind: String)
+## A strike jet is back on the deck (its weapon id).
+signal sortie_landed(wid: String)
 
 
 func setup(isl: Island) -> void:
@@ -156,8 +158,12 @@ func _shell_mesh(w: Dictionary) -> Mesh:
 	mb.cylinder(Vector3.ZERO, r, r, L * 0.7, 8, w.col)
 	mb.cylinder(Vector3(0, L * 0.7, 0), r, 0.0, L * 0.3, 8, (w.col as Color).lightened(0.2))
 	if bool(w.get("wings", false)):
-		var span := 1.5 if id == "drone" else 0.9
+		var span := 1.5 if id == "drone" else (0.75 if id == "jet" else 0.9)
 		mb.box(Vector3(0, L * 0.45, 0), Vector3(L * span, L * 0.12, r * 0.4), w.col)   # wings
+	if id == "jet":
+		mb.box(Vector3(0, L * 0.08, r * 1.3), Vector3(L * 0.05, L * 0.18, r * 1.8), (w.col as Color).darkened(0.15))   # tail fin
+		mb.box(Vector3(0, L * 0.06, 0), Vector3(L * 0.36, L * 0.08, r * 0.3), w.col)   # tailplane
+		mb.box(Vector3(0, L * 0.72, r * 0.8), Vector3(r * 0.9, L * 0.12, r * 0.6), Color(0.25, 0.35, 0.45))   # canopy
 	_meshes[id] = mb.commit(null, MeshBuilder.vc_material(0.5))
 	return _meshes[id]
 
@@ -396,6 +402,23 @@ func _step_flights(dt: float) -> void:
 		var t: float = t_prev + dt
 		f.t = t
 		var p := WeaponFlight.position_at(pl, t)
+		if pl.get("sortie", false):
+			# strike jet: bombs away over the target, then home to the deck
+			if not f.split and t >= float(pl.release_t):
+				f.split = true
+				var spread_j: float = f.w.spread
+				for _b in int(f.w.bombs):
+					_launch(WeaponTable.get_weapon("jetbomb"), p, _scatter(f.tgt, spread_j), true)
+			if t >= float(pl.T):
+				var jid: String = (f.w as Dictionary).id
+				_end_flight(i)
+				sortie_landed.emit(jid)
+				continue
+			(f.slot.node as Node3D).position = p
+			_orient(f)
+			_trail(f, p, dt)
+			i += 1
+			continue
 		var s := surface(p.x, p.z)
 		if t > 0.05 and s > -INF and p.y <= s + 1e-6:
 			var lo := t_prev

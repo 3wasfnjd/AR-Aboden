@@ -1,21 +1,19 @@
 class_name MissionBoard
 extends Node3D
-## Mission screen ON the glass dome: a transparent, holographic control display that
-## follows the curve of the glass on the far side of the island (xr_game.gd turns it
-## to face the player as they walk round). A child of the diorama at the dome's
-## centre, so it scales with the model.
+## Mission screen in the player's view (build 13): a transparent, holographic display
+## curved round the eyes, in the upper part of the view (a child of the XR camera).
+## Left X shows / hides it. In free play it shows the island's destruction.
 ##
 ## The content (mission name, objective + progress, clock, civilian losses, three
 ## stars, result) is laid out in 2D inside a SubViewport with a transparent
-## background, and that texture is mapped onto a patch of the dome surface (same
-## lathe as island/dome.gd, just inside the glass). The viewport re-renders only
-## when the text changes (about once a second while the clock runs).
+## background and mapped onto a cylindrical strip round the eyes. The viewport
+## re-renders only when the text changes (about once a second while the clock runs).
 
 const TEX := Vector2i(1280, 520)
-const AZ_HALF := 0.85              # half the patch width, radians round the dome
-const H0 := 0.13                   # patch bottom / top above the sea (m, model units)
-const H1 := 0.37
-const INSET := 0.0025              # just inside the glass
+const DIST := 0.75                 # m from the eyes
+const AZ_HALF := 0.30              # half the strip width, radians round the eyes
+const Y0 := 0.11                   # strip bottom / top (m above eye level at DIST)
+const Y1 := 0.29
 const FRAME := Color(0.45, 1.0, 0.55)
 const TEXT := Color(0.86, 1.0, 0.88)
 const TEXT_DIM := Color(0.60, 0.85, 0.64)
@@ -53,12 +51,11 @@ func _ready() -> void:
 	m.cull_mode = BaseMaterial3D.CULL_DISABLED
 	m.albedo_texture = viewport.get_texture()
 	m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
-	m.render_priority = 4          # over the dome glass, under the panel
-	m.no_depth_test = false
+	m.render_priority = 20         # over the scene: a head-up display
+	m.no_depth_test = true
 	screen.material_override = m
 	screen.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(screen)
-	position = Vector3(0, IslandTerrain.SEA, 0)
 
 
 ## The 2D layout: a faint green tint, a frame with corner brackets, scan lines, text.
@@ -104,8 +101,8 @@ func _build_ui() -> void:
 ## Board contents from the mission state; `m` = Missions, `props` for progress.
 func show_state(m: Missions, props: IslandProps) -> void:
 	var d := Missions.get_def(m.active)
-	visible = not d.is_empty()
-	if not visible:
+	if d.is_empty():
+		_free_play(props)
 		return
 	_put(title, "%s · %s" % [d.ar, String(d.en).to_upper()])
 	var pr := m.progress(props)
@@ -148,13 +145,24 @@ func show_state(m: Missions, props: IslandProps) -> void:
 		viewport.render_target_update_mode = SubViewport.UPDATE_ONCE
 
 
-## Turn the screen to the side of the dome opposite the island-local point `from_l`.
-func face_from(from_l: Vector3) -> void:
-	var dir := Vector2(from_l.x, from_l.z)
-	if dir.length_squared() < 1e-6:
-		dir = Vector2(0, 1)
-	var a := atan2(-dir.y, -dir.x)    # azimuth of the far side
-	rotation = Vector3(0, -a, 0)
+## Free play: the island's destruction and what is left.
+func _free_play(props: IslandProps) -> void:
+	var d := props.destruction()
+	_put(title, "لعب حر · FREE PLAY")
+	_put(goal, "تدمير الجزيرة: %d%%" % int(floor(float(d.pct))))
+	_put(goal_en, "Island destroyed: %d%%" % int(floor(float(d.pct))))
+	_put(info, "أهداف متبقية: %d" % int(d.left))
+	_tint(info, TEXT_DIM)
+	_put(result, "اختر مهمة من اللوحة · PICK A MISSION")
+	_tint(result, TEXT_DIM)
+	_put(best_label, "")
+	for k in 3:
+		if stars[k].color != Color(0, 0, 0, 0):
+			stars[k].color = Color(0, 0, 0, 0)
+			_dirty = true
+	if _dirty:
+		_dirty = false
+		viewport.render_target_update_mode = SubViewport.UPDATE_ONCE
 
 
 func _put(l: Label, t: String) -> void:
@@ -208,28 +216,20 @@ static func _star_points(r: float) -> PackedVector2Array:
 	return pts
 
 
-## A patch of the dome lathe (local azimuth 0 = +x), just inside the glass. u runs so
-## the text reads left to right for someone looking at it from the island's centre
-## side (through the near glass and over the island).
+## A strip of a cylinder round the eyes (camera-local, -z ahead), upper part of the view.
 func _patch_mesh() -> ArrayMesh:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var R := GlassDome.R - INSET
-	var KR := GlassDome.K * GlassDome.R
-	var t0 := asin(clampf(H0 / KR, 0.0, 1.0))
-	var t1 := asin(clampf(H1 / KR, 0.0, 1.0))
-	var na := 40
-	var nt := 12
-	var pt := func(i: int, j: int) -> Vector3:
-		var az := lerpf(-AZ_HALF, AZ_HALF, float(i) / na)
-		var t := lerpf(t0, t1, float(j) / nt)
-		return Vector3(R * cos(t) * cos(az), GlassDome.K * R * sin(t), R * cos(t) * sin(az))
+	var na := 24
 	for i in na:
-		for j in nt:
-			var q := [pt.call(i, j), pt.call(i + 1, j), pt.call(i + 1, j + 1), pt.call(i, j + 1)]
-			var uv := [Vector2(float(i) / na, 1.0 - float(j) / nt), Vector2(float(i + 1) / na, 1.0 - float(j) / nt),
-				Vector2(float(i + 1) / na, 1.0 - float(j + 1) / nt), Vector2(float(i) / na, 1.0 - float(j + 1) / nt)]
-			for k in [0, 1, 2, 0, 2, 3]:
-				st.set_uv(uv[k])
-				st.add_vertex(q[k])
+		var a0 := lerpf(-AZ_HALF, AZ_HALF, float(i) / na)
+		var a1 := lerpf(-AZ_HALF, AZ_HALF, float(i + 1) / na)
+		var u0 := float(i) / na
+		var u1 := float(i + 1) / na
+		var q := [Vector3(sin(a0) * DIST, Y0, -cos(a0) * DIST), Vector3(sin(a1) * DIST, Y0, -cos(a1) * DIST),
+			Vector3(sin(a1) * DIST, Y1, -cos(a1) * DIST), Vector3(sin(a0) * DIST, Y1, -cos(a0) * DIST)]
+		var uv := [Vector2(u0, 1.0), Vector2(u1, 1.0), Vector2(u1, 0.0), Vector2(u0, 0.0)]
+		for k in [0, 1, 2, 0, 2, 3]:
+			st.set_uv(uv[k])
+			st.add_vertex(q[k])
 	return st.commit()

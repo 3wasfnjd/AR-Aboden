@@ -21,9 +21,12 @@ extends RefCounted
 ##   split       submunitions released at 62 % of the flight, falling within `spread`
 ##   crater_k    crater depth factor (bunker buster digs deep)
 ##   wings       draw wings on the body (cruise, drone, anti-ship)
+##   sortie      strike jet: takes off from the ship, flies to the target at `cruise_alt`,
+##               drops `bombs` within `spread`, flies home and lands (ammo = jets on
+##               deck; a jet is back only when it has landed: reload 0)
 ##   nuke        nuclear test: everything within `nuke_r` is destroyed, mushroom cloud
 
-const IDS := ["ballistic", "cruise", "artillery", "mlrs", "cluster", "hypersonic", "bunker", "drone", "antiship", "nuke"]
+const IDS := ["ballistic", "cruise", "artillery", "mlrs", "cluster", "hypersonic", "bunker", "drone", "antiship", "jet", "nuke"]
 
 const WEAPONS := {
 	"ballistic": {
@@ -89,6 +92,21 @@ const WEAPONS := {
 		"cooldown": 5.0, "ammo": 4, "reload": 10.0, "glow": false, "wings": true,
 		"trail": 0.02, "trail_col": Color(0.92, 0.92, 0.90, 0.45),
 		"length": 0.003, "radius": 0.0005, "col": Color(0.60, 0.62, 0.66),
+	},
+	"jet": {
+		"id": "jet", "name_ar": "طائرة هجومية", "name_en": "Strike jet",
+		"arc": "sortie", "speed": 0.14, "cruise_alt": 0.10, "bombs": 4, "spread": 0.012, "blast": 0.8, "ejecta": 20,
+		"cooldown": 2.0, "ammo": 2, "reload": 0.0, "glow": false, "wings": true, "jet": true,
+		"trail": 0.07, "trail_col": Color(0.95, 0.95, 0.95, 0.25),
+		"length": 0.008, "radius": 0.0008, "col": Color(0.62, 0.68, 0.74),
+	},
+	# what a strike jet drops: it does not count as a weapon of its own
+	"jetbomb": {
+		"id": "jetbomb", "name_ar": "قنبلة", "name_en": "Bomb",
+		"arc": "lofted", "flight": [0.55, 0.7], "blast": 0.8, "ejecta": 18,
+		"cooldown": 0.0, "ammo": 0, "reload": 0.0, "glow": false,
+		"trail": 0.08, "trail_col": Color(0.8, 0.8, 0.8, 0.2),
+		"length": 0.0014, "radius": 0.00045, "col": Color(0.35, 0.38, 0.32),
 	},
 	"nuke": {
 		"id": "nuke", "name_ar": "قنبلة نووية", "name_en": "Nuclear missile",

@@ -360,6 +360,28 @@ func _initialize() -> void:
 		phys.advance(1.0 / 60.0)
 		await process_frame
 	check("nuclear test: the destroyed tiles re-upload over the next frames", island.props._pending_tiles.is_empty())
+	# strike jet: takes off from the deck, drops 4 bombs on the target, flies home, lands
+	phys.reset_island()
+	var tj := Vector3(0.10, 0, 0.02)
+	tj.y = island.height_at(tj.x, tj.z)
+	var landed := []
+	var on_land := func(wid: String): landed.append(wid)
+	phys.sortie_landed.connect(on_land)
+	var n_j := phys.impact_count
+	var plj := phys.fire(tj, Vector3.INF, "jet")
+	var low_j := 0
+	for k in 200:
+		var pj := WeaponFlight.position_at(plj, float(plj.T) * k / 200.0)
+		var gj := phys.surface(pj.x, pj.z)
+		if k > 8 and k < 192 and gj > -INF and pj.y < gj + 0.015:
+			low_j += 1
+	var sj := 0
+	while phys.flying and sj < 6000:
+		phys.advance(1.0 / 60.0)
+		sj += 1
+	phys.sortie_landed.disconnect(on_land)
+	var end_j := WeaponFlight.position_at(plj, float(plj.T))
+	check("strike jet: 4 bombs on the target, back on the deck, a long trip", phys.impact_count - n_j == 4 and landed == ["jet"] and end_j.distance_to(phys.default_origin("jet")) < 0.003 and float(plj.T) > 6.0 and low_j == 0 and Vector2(phys.last_impact.x - tj.x, phys.last_impact.z - tj.z).length() < 0.04, "%d bombs, landed %s, T %.1f s, low %d" % [phys.impact_count - n_j, landed, plj.T, low_j])
 	# every weapon from the ship stays under the glass dome, to targets all over the island
 	var through := []
 	for wid in WeaponTable.IDS:
@@ -851,8 +873,12 @@ func _xr_tests(island: Island, phys: PhysicsTest) -> void:
 	xg2.panel.press("reset")
 	await process_frame
 	check("panel: mission picked, START runs it, board shown", picked == "precision" and xg2.missions.running and xg2.board.visible and xg2.board.title.text.contains("ضربة جراحية") and (xg2.panel._btn_labels["reset"][1] as Label3D).text == "START", "%s running %s" % [picked, xg2.missions.running])
+	xg2._on_button("left", "ax", true)
+	var hidden := not xg2.board.visible
+	xg2._on_button("left", "ax", true)
+	check("left X hides / shows the mission screen (in the view)", hidden and xg2.board.visible and xg2.board.get_parent() == xg2.rig.camera)
 	xg2.select_mission("")
-	check("free play hides the board", not xg2.board.visible and (xg2.panel._btn_labels["reset"][1] as Label3D).text == "RESET")
+	check("free play: the screen shows the island's destruction, RESET is back", xg2.board.title.text.contains("لعب حر") and (xg2.panel._btn_labels["reset"][1] as Label3D).text == "RESET")
 	check("B un-pins (place again)", xg2.state == "placing" and not xg2.panel.visible)
 	xg2.rig.sim = false
 	xg2.set_mode("vr")

@@ -63,6 +63,7 @@ var _panel_hit := {}
 var _destruction_dirty := true
 var missions := Missions.new()
 var board: MissionBoard
+var board_shown := true          # left X toggles the mission screen
 var _board_acc := 0.0
 
 var ghost: MeshInstance3D
@@ -97,8 +98,7 @@ func setup(r: Room, d: Node3D, isl: Island, p: PhysicsTest) -> void:
 	missions.load_best()
 	board = MissionBoard.new()
 	board.name = "MissionBoard"
-	board.visible = false
-	diorama.add_child(board)
+	rig.camera.add_child(board)
 	for id in WeaponTable.IDS:
 		var w := WeaponTable.get_weapon(id)
 		ammo[id] = int(w.ammo)
@@ -106,6 +106,7 @@ func setup(r: Room, d: Node3D, isl: Island, p: PhysicsTest) -> void:
 		_reload[id] = 0.0
 	phys.weapon = weapon
 	phys.impacted.connect(_on_impact)
+	phys.sortie_landed.connect(_on_sortie_landed)
 
 
 ## Starts OpenXR. False (and nothing is changed) without a headset runtime.
@@ -272,6 +273,10 @@ func _on_button(hand: String, name: String, pressed: bool) -> void:
 	elif pressed and ((hand == "right" and name == "by") or (hand == "left" and name == "menu")):
 		if state == "pinned":
 			unpin()
+	elif hand == "left" and name == "ax" and pressed:
+		board_shown = not board_shown
+		_update_board(true)
+		rig.pulse("left", 0.15, 0.02)
 	elif hand == "right" and name == "ax" and pressed:
 		toggle_slow()
 	elif hand == "left" and name == "stick" and pressed:
@@ -317,15 +322,12 @@ func select_mission(id: String) -> void:
 	rig.pulse("left", 0.2, 0.02)
 
 
-## The mission screen on the dome glass turns round the dome to face the player.
+## The mission screen in the view: its content, shown unless hidden with left X.
 func _update_board(force := false) -> void:
 	if board == null:
 		return
 	board.show_state(missions, island.props)
-	if not board.visible:
-		return
-	# the screen sits on the dome's glass, on the far side from the player
-	board.face_from(diorama.global_transform.affine_inverse() * rig.head_transform().origin)
+	board.visible = board_shown
 	if force:
 		_board_acc = 0.0
 
@@ -425,10 +427,20 @@ func fire() -> bool:
 	var w := WeaponTable.get_weapon(weapon)
 	phys.fire(tgt, launch_point_local(), weapon)
 	missions.on_shot()
+	if weapon == "jet" and island.ship:
+		island.ship.set_jets_aboard(int(ammo[weapon]) - 1)
 	ammo[weapon] = int(ammo[weapon]) - 1
 	cooldown[weapon] = float(w.cooldown)
 	rig.pulse("right", 0.8, 0.07)
 	return true
+
+
+## A strike jet is back aboard: it can fly again.
+func _on_sortie_landed(wid: String) -> void:
+	ammo[wid] = mini(int(ammo[wid]) + 1, int(WeaponTable.get_weapon(wid).ammo))
+	if island.ship and wid == "jet":
+		island.ship.set_jets_aboard(int(ammo[wid]))
+	rig.pulse("right", 0.3, 0.05)
 
 
 func _on_impact(_point: Vector3, _kind: String) -> void:
@@ -509,7 +521,7 @@ func _step_pinned(dt: float) -> void:
 	for id in WeaponTable.IDS:
 		var w := WeaponTable.get_weapon(id)
 		cooldown[id] = maxf(float(cooldown[id]) - dt, 0.0)
-		if int(ammo[id]) < int(w.ammo):
+		if int(ammo[id]) < int(w.ammo) and float(w.reload) > 0.0:
 			_reload[id] = float(_reload[id]) + dt
 			if float(_reload[id]) >= float(w.reload):
 				_reload[id] = 0.0

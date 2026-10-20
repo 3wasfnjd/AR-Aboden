@@ -10,6 +10,7 @@ extends MeshInstance3D
 ##   pod     MLRS rocket pod (aft)
 ##   ramp    kamikaze drone (stern ramp)
 ##   silo    the nuclear missile (red hatch amidships)
+##   deck    strike jets (flight deck aft; the parked jets show how many are aboard)
 
 const POS := Vector2(0.17, -0.365)
 const YAW := 0.0
@@ -25,10 +26,11 @@ const LAUNCHERS := {
 	"pod": Vector3(-0.040, FB + 0.0065, 0.0),
 	"ramp": Vector3(-0.080, FB + 0.0025, 0.0),
 	"silo": Vector3(0.016, FB + 0.0012, 0.0),
+	"deck": Vector3(-0.062, FB + 0.0028, 0.0),
 }
 const WEAPON_LAUNCHER := {
 	"ballistic": "vls", "hypersonic": "vls", "cluster": "vls", "bunker": "vls",
-	"cruise": "box", "antiship": "box", "artillery": "gun", "mlrs": "pod", "drone": "ramp", "nuke": "silo",
+	"cruise": "box", "antiship": "box", "artillery": "gun", "mlrs": "pod", "drone": "ramp", "nuke": "silo", "jet": "deck",
 }
 
 const HULL := Color(0.52, 0.57, 0.63)
@@ -79,13 +81,43 @@ func build() -> void:
 	# stern drone ramp + two parked drones
 	mb.box(Vector3(-0.074, FB + 0.0012, 0), Vector3(0.018, 0.0016, B * 0.55), DECK.lightened(0.1))
 	for side in [-1.0, 1.0]:
-		mb.box(Vector3(-0.078, FB + 0.0024, side * 0.004), Vector3(0.004, 0.0006, 0.0010), Color(0.86, 0.86, 0.82))
-		mb.box(Vector3(-0.078, FB + 0.0026, side * 0.004), Vector3(0.0012, 0.0004, 0.006), Color(0.86, 0.86, 0.82))
+		mb.box(Vector3(-0.082, FB + 0.0024, side * 0.006), Vector3(0.004, 0.0006, 0.0010), Color(0.86, 0.86, 0.82))
+		mb.box(Vector3(-0.082, FB + 0.0026, side * 0.006), Vector3(0.0012, 0.0004, 0.006), Color(0.86, 0.86, 0.82))
+	# flight deck markings for the strike jets
+	mb.box(Vector3(-0.062, FB + 0.0025, 0), Vector3(0.028, 0.0002, B * 0.62), Color(0.30, 0.33, 0.36))
+	mb.box(Vector3(-0.062, FB + 0.0027, 0), Vector3(0.026, 0.0001, 0.0006), Color(0.95, 0.85, 0.30))
 	# flag on the mast and a hull number band
 	mb.box(Vector3(0.05, FB - 0.0018, B * 0.5 + 0.0002), Vector3(0.012, 0.0022, 0.0002), Color(0.95, 0.95, 0.93))
 	mesh = mb.commit(null, MeshBuilder.vc_material(0.6))
 	cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	transform = Transform3D(Basis(Vector3.UP, YAW), Vector3(POS.x, IslandTerrain.SEA, POS.y))
+	# the two strike jets parked on the flight deck
+	var w := WeaponTable.get_weapon("jet")
+	var jm := MeshBuilder.new()
+	var Lj: float = w.length
+	var rj: float = w.radius
+	jm.box(Vector3.ZERO, Vector3(Lj, rj * 1.6, rj * 1.6), w.col)
+	jm.box(Vector3(-Lj * 0.05, 0, 0), Vector3(Lj * 0.12, rj * 0.4, Lj * 0.75), w.col)
+	jm.box(Vector3(-Lj * 0.42, rj * 1.2, 0), Vector3(Lj * 0.15, rj * 1.8, rj * 0.4), (w.col as Color).darkened(0.15))
+	jm.box(Vector3(Lj * 0.25, rj * 0.9, 0), Vector3(Lj * 0.15, rj * 0.6, rj * 0.9), Color(0.25, 0.35, 0.45))
+	var jmesh := jm.commit(null, MeshBuilder.vc_material(0.5))
+	for k in 2:
+		var j := MeshInstance3D.new()
+		j.name = "ParkedJet%d" % k
+		j.mesh = jmesh
+		j.position = Vector3(-0.066 + k * 0.009, FB + 0.0035, (k - 0.5) * 0.011)
+		j.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(j)
+		parked.append(j)
+
+
+var parked: Array[MeshInstance3D] = []
+
+
+## Show as many parked jets as are aboard.
+func set_jets_aboard(n: int) -> void:
+	for k in parked.size():
+		parked[k].visible = k < n
 
 
 ## Island-local launch point of a weapon (its launcher on board).

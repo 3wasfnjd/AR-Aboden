@@ -15,7 +15,7 @@ extends Node3D
 
 signal pressed(id: String)
 
-const W := 0.21
+const W := 0.25
 const H := 0.21
 const CARD_H := 0.026
 const BG := Color(0.035, 0.05, 0.04)
@@ -47,12 +47,13 @@ const DESC := {
 	"bunker": "سقوط شبه عمودي · حفرة عميقة للمخابئ",
 	"drone": "بطيئة على ارتفاع · دقيقة · انفجار صغير",
 	"antiship": "يطير ملاصقًا لسطح البحر · قوي على السفن",
+	"jet": "تقلع من البارجة وتضرب الهدف بأربع قنابل ثم تعود (الرحلة تطول)",
 	"nuke": "تجربة نووية · يدمر كل شيء في دائرة واسعة",
 }
 const CODES := {"ballistic": "BM-1  BALLISTIC", "cruise": "CM-2  CRUISE", "artillery": "AR-3  ARTILLERY",
 	"mlrs": "RS-4  MLRS x8", "cluster": "CL-5  CLUSTER", "hypersonic": "HG-6  HYPERSONIC",
 	"bunker": "BB-7  BUNKER BUSTER", "drone": "UV-8  KAMIKAZE DRONE", "antiship": "AS-9  ANTI-SHIP",
-	"nuke": "N-10  NUCLEAR TEST"}
+	"jet": "FJ-11  STRIKE JET", "nuke": "N-10  NUCLEAR TEST"}
 
 var buttons: Array[Dictionary] = []   # {id, rect: Rect2 (panel-local, metres), bg, mat, kind}
 var hover := ""
@@ -114,7 +115,7 @@ func _ready() -> void:
 	_line(Vector2(-W * 0.5 + 0.004, cy - 0.0062), Vector2(W * 0.5 - 0.004, cy - 0.0062), FRAME_DIM)
 	# --- weapon cards: 3 x 3 grid, right to left, top to bottom -----------------------
 	var n: int = WeaponTable.IDS.size()
-	var cols := 3
+	var cols := 4
 	var gap := 0.003
 	var bw2 := (W - 0.012 - gap * (cols - 1)) / cols
 	var ch := CARD_H
@@ -123,7 +124,10 @@ func _ready() -> void:
 		var id: String = WeaponTable.IDS[i]
 		var w := WeaponTable.get_weapon(id)
 		var cx2 := W * 0.5 - 0.006 - bw2 * 0.5 - (i % cols) * (bw2 + gap)
-		var wy := row0 - (i / cols) * (ch + gap)
+		var row := i / cols
+		if id == "nuke":
+			row = int(ceil(float(n - 1) / cols))   # its own row under the grid
+		var wy := row0 - row * (ch + gap)
 		var card_w := bw2
 		if id == "nuke":
 			# the nuclear test: one wide red card under the grid
@@ -310,6 +314,12 @@ func _icon(id: String) -> MeshInstance3D:
 				var u0 := TAU * k / 10.0
 				var u1 := TAU * (k + 1) / 10.0
 				tri.call(Vector2.ZERO, Vector2(cos(u1), sin(u1)) * s * 0.3, Vector2(cos(u0), sin(u0)) * s * 0.3)
+		"jet":
+			# delta fighter seen from above
+			tri.call(Vector2(s * 1.6, 0), Vector2(-s * 0.4, s * 1.1), Vector2(-s * 0.2, 0))
+			tri.call(Vector2(s * 1.6, 0), Vector2(-s * 0.2, 0), Vector2(-s * 0.4, -s * 1.1))
+			tri.call(Vector2(-s * 0.2, s * 0.25), Vector2(-s * 1.2, s * 0.55), Vector2(-s * 1.1, s * 0.0))
+			tri.call(Vector2(-s * 0.2, -s * 0.25), Vector2(-s * 1.1, s * 0.0), Vector2(-s * 1.2, -s * 0.55))
 		"antiship":
 			tri.call(Vector2(s * 1.5, 0), Vector2(s * 0.9, s * 0.2), Vector2(s * 0.9, -s * 0.2))
 			tri.call(Vector2(s * 0.9, s * 0.2), Vector2(-s * 1.2, s * 0.2), Vector2(s * 0.9, -s * 0.2))

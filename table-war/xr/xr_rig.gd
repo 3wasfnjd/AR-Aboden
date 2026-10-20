@@ -111,9 +111,10 @@ static func _unshaded(c: Color, transparent: bool) -> StandardMaterial3D:
 
 
 ## Starts OpenXR; false on desktop / headless (no runtime), where nothing changes.
-## Eye-buffer resolution x the panel default (1.0). The cartoon scene is light on the
-## GPU, so it can afford ~1.56x the pixels for clean edges.
-const SUPERSAMPLE := 1.25
+## Eye-buffer resolution x the panel default (1.0). Build 13: the highest quality
+## setting (2.25x the pixels, with 4x MSAA) for the headset test; lower it if the
+## FPS panel (left stick click) shows frames dropping below 72.
+const SUPERSAMPLE := 1.5
 
 
 func start() -> bool:

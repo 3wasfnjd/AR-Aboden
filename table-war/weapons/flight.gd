@@ -24,6 +24,8 @@ const OFF_SLAB := 0.078      # cruise: off the slab fly as over the sea (the rim
 
 
 static func plan(w: Dictionary, from: Vector3, to: Vector3, surface: Callable, g: float) -> Dictionary:
+	if String(w.get("arc", "lofted")) == "sortie":
+		return _plan_sortie(w, from, to, surface)
 	if String(w.get("arc", "lofted")) == "cruise":
 		return _plan_cruise(w, from, to, surface)
 	var dist := from.distance_to(to)
@@ -42,6 +44,65 @@ static func plan(w: Dictionary, from: Vector3, to: Vector3, surface: Callable, g
 
 
 const DOME_MARGIN := 0.02
+
+
+## Strike-jet sortie: take off from the deck (along +x), climb, fly to the target at
+## cruise_alt, release the bombs `RELEASE_LEAD` before it, fly on, turn and come home
+## from astern to land on the deck. A path like the cruise missile's (pts / cum / T)
+## plus release_t; the jet never touches the terrain and stays under the dome.
+const RELEASE_LEAD := 0.035
+
+
+static func _plan_sortie(w: Dictionary, from: Vector3, to: Vector3, surface: Callable) -> Dictionary:
+	var alt: float = w.get("cruise_alt", 0.1)
+	var fwd := Vector3(1, 0, 0)
+	var d2 := Vector3(to.x - from.x, 0, to.z - from.z)
+	var dir := d2.normalized() if d2.length() > 1e-4 else fwd
+	var side := Vector3(-dir.z, 0, dir.x)
+	var cruise_y := maxf(from.y, to.y) + alt
+	var key: Array[Vector3] = [
+		from,
+		from + fwd * 0.05 + Vector3(0, 0.012, 0),
+		from + fwd * 0.10 + Vector3(0, alt * 0.6, 0),
+		Vector3(to.x, cruise_y, to.z) - dir * (RELEASE_LEAD + 0.06),
+		Vector3(to.x, cruise_y, to.z) - dir * RELEASE_LEAD,
+		Vector3(to.x, cruise_y, to.z) + dir * 0.04,
+		Vector3(to.x, cruise_y, to.z) + dir * 0.07 + side * 0.06,
+		Vector3(to.x, cruise_y, to.z) + side * 0.09,
+		from - fwd * 0.14 + Vector3(0, alt * 0.5, 0),
+		from - fwd * 0.07 + Vector3(0, 0.015, 0),
+		from + Vector3(0, 0.001, 0),
+	]
+	var pts := PackedVector3Array()
+	var release_i := 0
+	for k in key.size() - 1:
+		var p0 := key[maxi(k - 1, 0)]
+		var p1 := key[k]
+		var p2 := key[k + 1]
+		var p3 := key[mini(k + 2, key.size() - 1)]
+		var n := maxi(4, int(ceil(p1.distance_to(p2) / 0.01)))
+		if k == 4:
+			release_i = pts.size()
+		for s in n:
+			var t := float(s) / n
+			var t2 := t * t
+			var t3 := t2 * t
+			var q := 0.5 * ((2.0 * p1) + (-p0 + p2) * t + (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * t2 + (-p0 + 3.0 * p1 - 3.0 * p2 + p3) * t3)
+			# clear of the ground (except at the deck) and under the glass
+			if k > 0 and k < key.size() - 2:
+				var gy := float(surface.call(q.x, q.z))
+				if gy > -INF:
+					q.y = maxf(q.y, gy + 0.025)
+			q.y = minf(q.y, dome_ceiling(q.x, q.z) - 0.01)
+			pts.append(q)
+	pts.append(key[key.size() - 1])
+	var cum := PackedFloat32Array([0.0])
+	for k in range(1, pts.size()):
+		cum.append(cum[k - 1] + pts[k].distance_to(pts[k - 1]))
+	var L := cum[cum.size() - 1]
+	var T := L / float(w.get("speed", 0.14))
+	return {"type": "cruise", "sortie": true, "pts": pts, "cum": cum, "T": T, "crash": false, "to": to,
+		"release_t": T * cum[release_i] / L}
 
 
 ## Highest a shot may fly at (x, z): under the glass dome over the island, with a margin.
