@@ -139,6 +139,7 @@ func _ready() -> void:
 		web_hud.name = "WebHud"
 		add_child(web_hud)
 		web_hud.setup(phys)
+		web_hud.cam = cam
 		web_hud.map_requested.connect(_switch_map)
 		if "--web-shot" in args:
 			_run_web_shot.call_deferred()
@@ -262,6 +263,30 @@ func _run_web_shot() -> void:
 	_apply_preset("base")
 	await _frames(4)
 	await _capture("w_base")
+	# the missile camera: riding a cruise missile, a ballistic one, then the blast
+	_apply_preset("hero")
+	web_hud.toggle_cam()
+	web_hud.toggle_enemy()   # no SAMs: the shots fly to the end
+	var shots := [["cruise", Vector3(0.1, 0, 0.12), 150, "w_cam_cruise"], ["ballistic", Vector3(-0.2, 0, -0.05), 110, "w_cam_ball"]]
+	for sh in shots:
+		var t2: Vector3 = sh[1]
+		t2.y = island.surface_at(t2.x, t2.z)
+		web_hud.select(sh[0])
+		web_hud.cooldown[sh[0]] = 0.0
+		web_hud.try_fire(t2)
+		for f in int(sh[2]):
+			phys.advance(1.0 / 60.0)
+			web_hud._process(1.0 / 60.0)
+		await _frames(4)
+		await _capture(sh[3])
+		while not phys.flights.is_empty():
+			phys.advance(1.0 / 60.0)
+			web_hud._process(1.0 / 60.0)
+	for f in 20:
+		phys.advance(1.0 / 60.0)
+		web_hud._process(1.0 / 60.0)
+	await _frames(4)
+	await _capture("w_cam_blast")
 	get_tree().quit()
 
 

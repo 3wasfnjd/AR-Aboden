@@ -11,6 +11,10 @@ var min_dist := 0.04
 var max_dist := 2.2
 var _drag := 0
 var _drag_px := 0.0
+## Missile camera (web, build 21): 0 = the orbit view, 1 = riding over a shot. The orbit
+## keeps taking input meanwhile and is blended back in when the chase ends.
+var chase_blend := 0.0
+var chase_xf := Transform3D()
 
 signal clicked(screen_pos: Vector2)
 
@@ -38,6 +42,9 @@ func apply() -> void:
 	var pos := target + dir * distance
 	var up := Vector3.UP if pitch < deg_to_rad(89.0) else Vector3(-sin(yaw), 0, -cos(yaw))
 	look_at_from_position(pos, target, up)
+	if chase_blend > 0.0:
+		var orbit := global_transform
+		global_transform = orbit.interpolate_with(chase_xf, smoothstep(0.0, 1.0, chase_blend))
 
 
 var _touches := {}

@@ -45,6 +45,20 @@ var _msg_t := 0.0
 var _btn_enemy: Button
 var _btn_slow: Button
 var map_id := 1
+## Missile camera: a button switches the view between the free orbit and a camera riding
+## just behind and above the newest shot; after the impact it holds on the blast a moment,
+## then glides back to the orbit until the next launch.
+var cam: OrbitCamera
+var missile_cam := false
+var _btn_cam: Button
+var _chase_serial := -1
+var _chase_dir := Vector3.FORWARD
+var _chase_pos := Vector3.ZERO
+var _chase_last := Vector3.ZERO     # the shot's last position (the blast is looked at)
+var _chase_hold := 0.0
+const CHASE_BACK := 7.0            # behind the shot, in shot lengths (a missile is ~3 mm)
+const CHASE_UP := 0.6              # above it, part of the distance behind
+const CHASE_HOLD := 2.2            # seconds on the blast after the impact
 
 
 func setup(p: PhysicsTest) -> void:
@@ -166,6 +180,7 @@ func _build() -> void:
 	_btn_enemy = _button(side, "القوات المعادية: تعمل", toggle_enemy)
 	_button(side, "إعادة الجزيرة", reset)
 	_btn_slow = _button(side, "حركة بطيئة", toggle_slow)
+	_btn_cam = _button(side, "الكاميرا: حرة", toggle_cam)
 	# message line
 	_msg = _label(root, "", 24, AMBER)
 	_msg.set_anchors_preset(Control.PRESET_CENTER_TOP)
@@ -276,6 +291,69 @@ func toggle_slow() -> void:
 	_btn_slow.text = "سرعة عادية" if phys.slow_motion else "حركة بطيئة"
 
 
+func toggle_cam() -> void:
+	missile_cam = not missile_cam
+	_btn_cam.text = "الكاميرا: فوق الصاروخ" if missile_cam else "الكاميرا: حرة"
+	_chase_serial = -1
+	_chase_hold = 0.0
+
+
+## The flight the missile camera rides: the one it is on while it flies, else the newest.
+func _chase_flight() -> Dictionary:
+	var best := {}
+	for f in phys.flights:
+		if int(f.serial) == _chase_serial:
+			return f
+		if best.is_empty() or int(f.serial) > int(best.serial):
+			best = f
+	return best
+
+
+func _step_cam(dt: float) -> void:
+	if cam == null:
+		return
+	var want := 0.0
+	if missile_cam:
+		var f := _chase_flight()
+		var k := phys.global_basis.get_scale().x
+		if not f.is_empty():
+			var node: Node3D = f.slot.node
+			var p := node.global_position
+			var v := phys.global_basis * WeaponFlight.velocity_at(f.plan, f.t)
+			if v.length() > 1e-5:
+				var d := v.normalized()
+				if int(f.serial) != _chase_serial:
+					_chase_dir = d   # a new shot: no swing from the old one's heading
+				else:
+					_chase_dir = _chase_dir.slerp(d, clampf(dt * 5.0, 0.0, 1.0)).normalized()
+			# look between the heading and the target: the shot in front, where it goes beyond
+			var to_t: Vector3 = (phys.to_global(f.tgt) - p)
+			var aim := (_chase_dir + to_t.normalized() * 0.6).normalized() if to_t.length() > 1e-4 else _chase_dir
+			if absf(aim.y) > 0.97:
+				aim = (aim + Vector3(-cam.global_basis.z.x, 0, -cam.global_basis.z.z) * 0.3).normalized()
+			var back := maxf(float((f.w as Dictionary).length) * CHASE_BACK, 0.024) * k
+			# terrain-following shots skim the roofs: ride higher over them
+			var up_k := CHASE_UP * (2.2 if str((f.plan as Dictionary).get("type", "")) == "cruise" else 1.0)
+			var eye := p - aim * back + Vector3.UP * back * up_k
+			_chase_pos = eye if int(f.serial) != _chase_serial else _chase_pos.lerp(eye, clampf(dt * 10.0, 0.0, 1.0))
+			_chase_serial = int(f.serial)
+			_chase_last = p
+			_chase_hold = CHASE_HOLD
+			var look := p + aim * back * 1.5
+			cam.chase_xf = Transform3D(Basis.looking_at(look - _chase_pos, Vector3.UP), _chase_pos)
+			want = 1.0
+		elif _chase_hold > 0.0:
+			_chase_hold -= dt
+			_chase_serial = -1
+			cam.chase_xf = Transform3D(Basis.looking_at(_chase_last - _chase_pos, Vector3.UP), _chase_pos)
+			want = 1.0
+	# ride in quickly, glide back to the orbit slowly
+	var rate := 4.0 if want > cam.chase_blend else 1.2
+	cam.chase_blend = move_toward(cam.chase_blend, want, dt * rate)
+	cam.near = 0.0015 if cam.chase_blend > 0.3 else 0.01
+	cam.apply()
+
+
 func reset() -> void:
 	phys.reset_island()
 	for id in WeaponTable.IDS:
@@ -300,6 +378,7 @@ func _process(delta: float) -> void:
 	if phys == null:
 		return
 	var dt := minf(delta, 0.05)
+	_step_cam(dt)
 	for id in WeaponTable.IDS:
 		var w := WeaponTable.get_weapon(id)
 		cooldown[id] = maxf(float(cooldown[id]) - dt, 0.0)
