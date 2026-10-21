@@ -24,6 +24,7 @@ const BLAST_R := 0.022
 const MAX_FLIGHTS := 24          # MLRS salvos and cluster bomblets fly together
 const SHALLOW := 0.0015          # water shallower than this: shore splash + wet sand
 const WET_MARKS := 8
+const ROOF_MARGIN := 0.003       # a low-flying shot keeps this far off a building's walls
 ## Desktop "player hand": in front of the table at the hero camera's side, ~0.4 m up.
 const DESKTOP_HAND := Vector3(-0.28, 0.42, 0.66)
 ## Quest profile: fewer soil chunks per blast (debris is GDScript physics on the CPU).
@@ -291,10 +292,17 @@ func surface(x: float, z: float) -> float:
 	return island.surface_at(x, z)
 
 
+## What a low-flying shot (cruise missile, drone, anti-ship) must clear besides the
+## ground: the roofs of the standing buildings, so it climbs over a block to reach a
+## target behind it as it climbs over a hill.
+func roofs(x: float, z: float) -> float:
+	return island.props.roof_at(x, z, ROOF_MARGIN)
+
+
 func plan(tgt: Vector3, origin := Vector3.INF, wid := "") -> Dictionary:
 	var w := WeaponTable.get_weapon(wid if wid != "" else weapon)
 	var o := origin if origin != Vector3.INF else default_origin(w.id)
-	return WeaponFlight.plan(w, o, tgt, surface, G)
+	return WeaponFlight.plan(w, o, tgt, surface, G, roofs)
 
 
 ## Trajectory preview (dots from the launch point to the target) + target marker.
@@ -373,7 +381,7 @@ func _scatter(tgt: Vector3, r: float) -> Vector3:
 
 
 func _launch(w: Dictionary, o: Vector3, tgt: Vector3, quiet := false) -> Dictionary:
-	var pl := WeaponFlight.plan(w, o, tgt, surface, G)
+	var pl := WeaponFlight.plan(w, o, tgt, surface, G, roofs)
 	if flights.size() >= MAX_FLIGHTS:
 		_end_flight(0)
 	var slot := _free_slot()

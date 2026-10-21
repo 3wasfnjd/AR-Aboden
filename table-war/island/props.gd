@@ -624,7 +624,8 @@ func _rebuild_colliders() -> void:
 		var top: float = sz.y
 		if st.kind in SHIP_KINDS:
 			top = 0.003
-		var box := {"inv": xf.affine_inverse(), "basis": xf.basis, "hx": sz.x * 0.5, "hz": sz.z * 0.5, "top": top, "bottom": -float(st.sink) - 0.002, "st": st}
+		var box := {"inv": xf.affine_inverse(), "basis": xf.basis, "hx": sz.x * 0.5, "hz": sz.z * 0.5, "top": top, "bottom": -float(st.sink) - 0.002, "st": st,
+			"y0": xf.origin.y}
 		var idx := col_boxes.size()
 		col_boxes.append(box)
 		var r := Vector2(sz.x, sz.z).length() * 0.5
@@ -635,6 +636,24 @@ func _rebuild_colliders() -> void:
 				if not col_hash.has(key):
 					col_hash[key] = []
 				(col_hash[key] as Array).append(idx)
+
+
+## Top of the standing buildings over (x, z), within `margin` of their walls; -INF
+## where there is none (missiles plan their path over them).
+func roof_at(x: float, z: float, margin := 0.0) -> float:
+	var key := Vector2i(int(floor(x / COL_CELL)), int(floor(z / COL_CELL)))
+	if not col_hash.has(key):
+		return -INF
+	var best := -INF
+	var p := Vector3(x, 0.0, z)
+	for i in (col_hash[key] as Array):
+		var b: Dictionary = col_boxes[i]
+		if not (b.st as Dictionary).alive:
+			continue
+		var lp: Vector3 = (b.inv as Transform3D) * Vector3(x, float(b.y0), z)
+		if absf(lp.x) <= float(b.hx) + margin and absf(lp.z) <= float(b.hz) + margin:
+			best = maxf(best, float(b.y0) + float(b.top))
+	return best
 
 
 ## Push a point (radius r) out of any standing building. Returns the world

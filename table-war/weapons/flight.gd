@@ -23,11 +23,14 @@ const DIVE_LEN := 0.022      # cruise: terminal dive length before the target
 const OFF_SLAB := 0.078      # cruise: off the slab fly as over the sea (the rim and table are lower)
 
 
-static func plan(w: Dictionary, from: Vector3, to: Vector3, surface: Callable, g: float) -> Dictionary:
+## `roofs` (optional) is a Callable(x, z) -> float: the top of the buildings there
+## (-INF where none). A cruise path climbs over them in time (a tower block is far
+## steeper than any hill it must clear).
+static func plan(w: Dictionary, from: Vector3, to: Vector3, surface: Callable, g: float, roofs := Callable()) -> Dictionary:
 	if String(w.get("arc", "lofted")) == "sortie":
 		return _plan_sortie(w, from, to, surface)
 	if String(w.get("arc", "lofted")) == "cruise":
-		return _plan_cruise(w, from, to, surface)
+		return _plan_cruise(w, from, to, surface, roofs)
 	var dist := from.distance_to(to)
 	var fl: Array = w.get("flight", [2.0, 3.0])
 	var T := lerpf(float(fl[0]), float(fl[1]), clampf(dist / 1.6, 0.0, 1.0))
@@ -151,7 +154,7 @@ static func velocity_at(pl: Dictionary, t: float) -> Vector3:
 	return (position_at(pl, t + dt) - position_at(pl, maxf(t - dt, 0.0))) / (dt + minf(t, dt))
 
 
-static func _plan_cruise(w: Dictionary, from: Vector3, to: Vector3, surface: Callable) -> Dictionary:
+static func _plan_cruise(w: Dictionary, from: Vector3, to: Vector3, surface: Callable, roofs := Callable()) -> Dictionary:
 	var alt: float = w.get("cruise_alt", 0.006)
 	var d2 := Vector2(to.x - from.x, to.z - from.z)
 	var D := d2.length()
@@ -161,11 +164,17 @@ static func _plan_cruise(w: Dictionary, from: Vector3, to: Vector3, surface: Cal
 	# ground under each sample and the required cruise height (with look-ahead)
 	var ground := PackedFloat32Array()
 	ground.resize(n + 1)
+	var roof := PackedFloat32Array()
+	roof.resize(n + 1)
+	roof.fill(-INF)
 	for k in n + 1:
 		var q := Vector2(from.x, from.z) + dir * step * k
 		var g := float(surface.call(q.x, q.y))
 		# outside the slab: fly over the table / the wooden rim, never below it
 		ground[k] = g if g > -INF else OFF_SLAB
+		if roofs.is_valid():
+			roof[k] = float(roofs.call(q.x, q.y))
+			ground[k] = maxf(ground[k], roof[k])
 	var look := int(ceil(LOOKAHEAD / step))
 	var req := PackedFloat32Array()
 	req.resize(n + 1)
@@ -180,6 +189,14 @@ static func _plan_cruise(w: Dictionary, from: Vector3, to: Vector3, surface: Cal
 			head += 1
 		req[k] = ground[dq[head]] + alt
 	var dive_k := maxi(n - int(ceil(DIVE_LEN / step)), 1)
+	# start climbing early enough for a building (a tower block is far steeper than
+	# any hill): before each roof, the height wanted rises no faster than CLIMB
+	if roofs.is_valid():
+		var need := -INF
+		for k in range(n, -1, -1):
+			need = maxf(need - CLIMB * step, roof[k] + alt if roof[k] > -INF else -INF)
+			if k < dive_k:
+				req[k] = maxf(req[k], need)
 	var pts := PackedVector3Array([from])
 	var y := from.y
 	var launched := true    # still sinking from the launch height
@@ -192,6 +209,9 @@ static func _plan_cruise(w: Dictionary, from: Vector3, to: Vector3, surface: Cal
 				y_dive0 = y
 			var f := float(k - dive_k) / float(maxi(n - dive_k, 1))
 			want = lerpf(y_dive0, to.y, f * f * (3.0 - 2.0 * f) * 0.6 + f * 0.4)
+			# over a roof on the way down: keep clear of it (then a steeper plunge)
+			if k < n:
+				want = maxf(want, ground[k] + alt * 0.25)
 			y = want
 		else:
 			want = req[k]

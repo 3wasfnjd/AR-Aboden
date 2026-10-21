@@ -663,6 +663,8 @@ func _campaign_tests(island: Island, phys: PhysicsTest) -> void:
 	for f in 60 * 12:
 		phys.fx.step(1.0 / 60.0)
 		for q in phys.fx.puffs:
+			if int(q.kind) == 1:
+				continue   # the flash and the fire glow: the cloud is the smoke
 			var qp: Vector3 = q.p
 			var t01: float = q.age / q.life
 			var rad: float = lerpf(q.s0, q.s1, 1.0 - pow(1.0 - t01, 2.0)) * 0.7
@@ -977,6 +979,29 @@ func _xr_tests(island: Island, phys: PhysicsTest) -> void:
 			cross_x = pp2.x
 			break
 	check("cruise missile into a hill too steep to climb hits the hill", hp.crash and cross_x > 0.199 and cross_x < 0.23, "crash %s at x %.3f" % [hp.crash, cross_x])
+	# a cruise missile at a target behind a tower block (synthetic, 6 cm tall, 2 cm
+	# wide): it climbs over the roof in time and dives onto the target beyond it
+	var tower := func(x: float, z: float) -> float: return 0.06 if absf(x - 0.1) < 0.01 and absf(z) < 0.03 else -INF
+	var flat := func(_x: float, _z: float) -> float: return 0.0
+	var tw_p := WeaponFlight.plan(cw, Vector3(-0.4, 0.02, 0.0), Vector3(0.14, 0.0, 0.0), flat, PhysicsTest.G, tower)
+	var through := 0
+	for kk in 2000:
+		var pp3 := WeaponFlight.position_at(tw_p, float(tw_p.T) * kk / 2000.0)
+		if pp3.y < float(tower.call(pp3.x, pp3.z)):
+			through += 1
+	var end3 := WeaponFlight.position_at(tw_p, float(tw_p.T))
+	check("cruise missile climbs over a tower block to a target behind it", through == 0 and not tw_p.crash and end3.distance_to(Vector3(0.14, 0.0, 0.0)) < 1e-4, "%d samples inside the block" % through)
+	# on the island: a cruise shot across the city never passes through a standing building
+	var cc := Vector3(island.layout.town_center.x, 0, island.layout.town_center.y)
+	var far_t := cc + (cc - phys.default_origin("cruise")).normalized() * 0.06
+	far_t.y = island.height_at(far_t.x, far_t.z)
+	var cp := phys.plan(far_t, Vector3.INF, "cruise")
+	var in_bld := 0
+	for kk in 1500:
+		var q4 := WeaponFlight.position_at(cp, float(cp.T) * kk / 1500.0)
+		if Vector2(q4.x - far_t.x, q4.z - far_t.z).length() > WeaponFlight.DIVE_LEN and q4.y < island.props.roof_at(q4.x, q4.z):
+			in_bld += 1
+	check("cruise missile over the city stays above the roofs (but the final dive)", in_bld == 0, "%d samples inside buildings" % in_bld)
 
 	# --- land vs sea vs shallow impacts ------------------------------------------------
 	var deep := Vector3(0.05, IslandTerrain.SEA, 0.40)
