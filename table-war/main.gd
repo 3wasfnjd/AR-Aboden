@@ -20,6 +20,9 @@ var phys: PhysicsTest
 var cam: OrbitCamera
 var xr_game: XRGame
 var quest := false
+## Build 19: the web version (free play: island, weapons, enemy forces; no campaign).
+var web := false
+var web_hud: WebHud
 var tilt_layer: CanvasLayer
 var tilt_rect: ColorRect
 var hud: Label
@@ -69,7 +72,10 @@ func _ready() -> void:
 	var args := OS.get_cmdline_user_args()
 	var want_xr := OS.has_feature("android") or "--xr" in args
 	quest = OS.has_feature("android") or "--quest" in args
-	if quest:
+	web = OS.has_feature("web") or "--web" in args
+	if web:
+		want_xr = false
+	if quest or web:
 		apply_quest_profile()
 	Room.shadows = "--shadows" in args and not quest
 	process_priority = 100   # shader globals after XRGame / the camera moved this frame
@@ -117,6 +123,17 @@ func _ready() -> void:
 	cam.clicked.connect(_on_click)
 	_apply_preset("hero")
 	_build_overlay()
+	if web:
+		hud.visible = false
+		cam.max_dist = 1.8
+		web_hud = WebHud.new()
+		web_hud.name = "WebHud"
+		add_child(web_hud)
+		web_hud.setup(phys)
+		web_hud.map_requested.connect(_switch_map)
+		if "--web-shot" in args:
+			_run_web_shot.call_deferred()
+		return
 	if "--shots" in args:
 		_run_shots.call_deferred()
 	elif "--stats" in args:
@@ -168,6 +185,8 @@ func _apply_preset(name: String) -> void:
 
 
 func _unhandled_key_input(event: InputEvent) -> void:
+	if web:
+		return   # the web HUD owns the keys (weapons 1-9, 0, -, =)
 	var k := event as InputEventKey
 	if k == null or not k.pressed or k.echo:
 		return
@@ -197,8 +216,58 @@ func _on_click(pos: Vector2) -> void:
 	var from := cam.project_ray_origin(pos)
 	var dir := cam.project_ray_normal(pos)
 	var hit: Variant = island.terrain.raycast(from, dir)
+	if web_hud:
+		if hit != null or web_hud.weapon == "aa":
+			web_hud.try_fire(hit if hit != null else Vector3.ZERO)
+		return
 	if hit != null:
 		phys.fire(hit)
+
+
+## Web preview: a few shots at the island, the enemy fighting back (shots/w_*.png).
+func _run_web_shot() -> void:
+	phys.manual = true
+	_apply_preset("hero")
+	var tgts := [Vector3(-0.22, 0, -0.09), Vector3(0.05, 0, -0.15), Vector3(0.33, 0, 0.03)]
+	var ws := ["cruise", "mlrs", "ballistic"]
+	for k in 3:
+		var t: Vector3 = tgts[k]
+		t.y = island.surface_at(t.x, t.z)
+		web_hud.select(ws[k])
+		web_hud.try_fire(t)
+		for f in 40:
+			phys.advance(1.0 / 60.0)
+	for f in 60 * 14:
+		phys.advance(1.0 / 60.0)
+		web_hud._process(1.0 / 60.0)
+	await _frames(4)
+	await _capture("w_play")
+	_apply_preset("base")
+	await _frames(4)
+	await _capture("w_base")
+	get_tree().quit()
+
+
+## Web: build the island of another map on the table (a few seconds).
+func _switch_map(id: int) -> void:
+	if island.map_id == id:
+		return
+	web_hud.flash("جاري تجهيز %s ..." % Campaign.map_name(id))
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var idx := island.get_index()
+	diorama.remove_child(island)
+	island.queue_free()
+	island = Island.new()
+	island.name = "Island"
+	island.map_id = id
+	diorama.add_child(island)
+	diorama.move_child(island, idx)
+	phys.set_island(island)
+	room.set_map_light(id)
+	no_shadows(island)
+	web_hud.map_id = id
+	web_hud.reset()
 
 
 func _random_target() -> Vector3:

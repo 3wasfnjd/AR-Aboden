@@ -40,7 +40,39 @@ func apply() -> void:
 	look_at_from_position(pos, target, up)
 
 
+var _touches := {}
+var _pinch := 0.0
+
+
 func _unhandled_input(event: InputEvent) -> void:
+	# touch screens: two fingers pinch to zoom (one finger arrives as an emulated mouse)
+	if event is InputEventScreenTouch:
+		var t := event as InputEventScreenTouch
+		if t.pressed:
+			_touches[t.index] = t.position
+		else:
+			_touches.erase(t.index)
+		_pinch = 0.0
+		if _touches.size() >= 2:
+			_drag = 0
+		return
+	if event is InputEventScreenDrag:
+		var d := event as InputEventScreenDrag
+		_touches[d.index] = d.position
+		if _touches.size() >= 2:
+			var ks := _touches.keys()
+			var gap := (_touches[ks[0]] as Vector2).distance_to(_touches[ks[1]])
+			if _pinch > 0.0 and gap > 1.0:
+				distance *= _pinch / gap
+				apply()
+			_pinch = gap
+			_drag = 0
+			_drag_px = 99.0
+		return
+	if event is InputEventMagnifyGesture:
+		distance /= maxf((event as InputEventMagnifyGesture).factor, 0.01)
+		apply()
+		return
 	if event is InputEventMouseButton:
 		var mb := event as InputEventMouseButton
 		if mb.button_index == MOUSE_BUTTON_WHEEL_UP and mb.pressed:

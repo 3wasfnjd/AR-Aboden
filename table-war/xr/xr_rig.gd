@@ -17,7 +17,8 @@ signal session_started
 signal focus_changed(focused: bool)
 signal recentered
 
-var xr_interface: OpenXRInterface
+## OpenXRInterface (untyped: the web build has no OpenXR module and must still compile).
+var xr_interface
 var xr_active := false
 var focused := true
 var passthrough_supported := false
@@ -118,7 +119,7 @@ const SUPERSAMPLE := 1.25
 
 
 func start() -> bool:
-	xr_interface = XRServer.find_interface("OpenXR") as OpenXRInterface
+	xr_interface = XRServer.find_interface("OpenXR")
 	if xr_interface == null:
 		return false
 	# render above the panel's native resolution (supersampling: smoother edges and
