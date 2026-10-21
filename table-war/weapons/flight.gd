@@ -107,6 +107,8 @@ static func _plan_sortie(w: Dictionary, from: Vector3, to: Vector3, surface: Cal
 
 ## Highest a shot may fly at (x, z): under the glass dome over the island, with a margin.
 static func dome_ceiling(x: float, z: float) -> float:
+	if not GlassDome.enabled:
+		return 100.0
 	var r2 := x * x + z * z
 	var R := GlassDome.R
 	if r2 >= R * R:

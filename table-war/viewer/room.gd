@@ -90,6 +90,23 @@ func set_map_light(map_id: int) -> void:
 		env.ambient_light_energy = 0.55
 
 
+## Web open ocean (build 20): no room, no table: a clear sky to a sea horizon.
+func set_ocean() -> void:
+	set_root.visible = false
+	var sm := env.sky.sky_material as ProceduralSkyMaterial
+	sm.sky_top_color = Color(0.30, 0.52, 0.85)
+	sm.sky_horizon_color = Color(0.74, 0.84, 0.94)
+	sm.ground_horizon_color = Color(0.20, 0.36, 0.55)
+	sm.ground_bottom_color = Color(0.06, 0.16, 0.30)
+	env.background_mode = Environment.BG_SKY
+	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
+	env.ambient_light_energy = 0.6
+	env.fog_enabled = true
+	env.fog_light_color = Color(0.74, 0.84, 0.94)
+	env.fog_density = 0.04
+	env.fog_sky_affect = 0.0
+
+
 func apply_quest() -> void:
 	quest = true
 	env.glow_enabled = false

@@ -6,6 +6,9 @@ extends MeshInstance3D
 ## physics pass through it.
 
 const K := 0.86            # a little lower than a half sphere
+## The web's open ocean (build 20): no glass dome, nothing is held in (smoke, debris,
+## arcs and jets fly free).
+static var enabled := true
 const R := IslandTerrain.RADIUS - 0.004
 
 

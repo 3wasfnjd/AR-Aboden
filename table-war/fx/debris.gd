@@ -333,7 +333,15 @@ func _integrate(b: Dictionary, dt: float) -> void:
 	var ceil := WeaponFlight.dome_ceiling(p.x, p.z) + WeaponFlight.DOME_MARGIN - 0.002
 	var rr := Vector2(p.x, p.z).length()
 	var rmax := GlassDome.R - 0.004
-	if p.y > ceil or rr > rmax:
+	if not GlassDome.enabled:
+		# open ocean: a piece thrown off the island floats on the sea and stops there
+		if rr > IslandTerrain.RADIUS - 0.004 and p.y < IslandTerrain.SEA:
+			p.y = IslandTerrain.SEA - 0.0004
+			v = Vector3.ZERO
+			w = Vector3.ZERO
+			b.sleep = true
+			b.slept = 0.0
+	elif p.y > ceil or rr > rmax:
 		var n := Vector3(p.x, (p.y - IslandTerrain.SEA) / (GlassDome.K * GlassDome.K), p.z).normalized()
 		if rr > rmax:
 			p.x *= rmax / rr

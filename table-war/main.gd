@@ -23,6 +23,7 @@ var quest := false
 ## Build 19: the web version (free play: island, weapons, enemy forces; no campaign).
 var web := false
 var web_hud: WebHud
+var ocean: Ocean
 var tilt_layer: CanvasLayer
 var tilt_rect: ColorRect
 var hud: Label
@@ -77,6 +78,8 @@ func _ready() -> void:
 		want_xr = false
 	if quest or web:
 		apply_quest_profile()
+	if web:
+		GlassDome.enabled = false   # the island in the open ocean: no dome
 	Room.shadows = "--shadows" in args and not quest
 	process_priority = 100   # shader globals after XRGame / the camera moved this frame
 	room = Room.new()
@@ -125,7 +128,13 @@ func _ready() -> void:
 	_build_overlay()
 	if web:
 		hud.visible = false
-		cam.max_dist = 1.8
+		cam.max_dist = 3.0
+		cam.far = 60.0
+		room.set_ocean()
+		ocean = Ocean.new()
+		diorama.add_child(ocean)
+		ocean.build()
+		_open_sea(island)
 		web_hud = WebHud.new()
 		web_hud.name = "WebHud"
 		add_child(web_hud)
@@ -224,6 +233,14 @@ func _on_click(pos: Vector2) -> void:
 		phys.fire(hit)
 
 
+## Web: the island alone in the sea: no glass dome, no wooden base.
+func _open_sea(isl: Island) -> void:
+	if isl.dome:
+		isl.dome.visible = false
+	if isl.base:
+		isl.base.visible = false
+
+
 ## Web preview: a few shots at the island, the enemy fighting back (shots/w_*.png).
 func _run_web_shot() -> void:
 	phys.manual = true
@@ -266,6 +283,7 @@ func _switch_map(id: int) -> void:
 	phys.set_island(island)
 	room.set_map_light(id)
 	no_shadows(island)
+	_open_sea(island)
 	web_hud.map_id = id
 	web_hud.reset()
 

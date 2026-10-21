@@ -335,7 +335,7 @@ func step(dt: float) -> void:
 		var t: float = q.age / q.life
 		var rad: float = lerpf(q.s0, q.s1, 1.0 - pow(1.0 - t, 2.0)) * 0.7
 		var rr := Vector2(np.x, np.z).length()
-		var rmax := GlassDome.R - rad - 0.003
+		var rmax := GlassDome.R - rad - 0.003 if GlassDome.enabled else 1e9
 		if rr > rmax and rr > 1e-6:
 			np.x *= maxf(rmax, 0.0) / rr
 			np.z *= maxf(rmax, 0.0) / rr

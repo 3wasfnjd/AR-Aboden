@@ -277,7 +277,7 @@ func default_origin(wid := "") -> Vector3:
 ## The surface a shot can hit at (x, z): terrain or sea; -INF outside the slab.
 func surface(x: float, z: float) -> float:
 	if not island.terrain.is_inside(x, z):
-		return -INF
+		return IslandTerrain.SEA if not GlassDome.enabled else -INF   # open ocean beyond the slab
 	return island.surface_at(x, z)
 
 
@@ -571,6 +571,8 @@ func _impact(p: Vector3, w: Dictionary) -> void:
 	var terr := island.terrain
 	var ground := terr.height_at(p.x, p.z)
 	var depth := IslandTerrain.SEA - ground
+	if not GlassDome.enabled and not terr.is_inside(p.x, p.z):
+		depth = 1.0   # the open ocean beyond the island (web)
 	if depth > SHALLOW:
 		# deep enough: a water splash only. No crater, scorch, fire or debris.
 		last_impact_kind = "water"
