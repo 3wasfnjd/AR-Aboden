@@ -10,7 +10,7 @@ const SPOT_T := 60.0
 const SIZE := 0.008
 ## Structure kinds the drone reports (the enemy's military sites and warships).
 const SITE_KINDS := ["sam", "launcher_truck", "silo", "silo_open", "radar_base", "radar_sphere", "bunker",
-	"tank_vehicle", "has", "jet", "barracks", "ctower", "mast", "frigate"]
+	"tank_vehicle", "has", "jet", "barracks", "ctower", "mast", "frigate", "watchtower", "mil_truck"]
 
 var spotted: Array[Dictionary] = []    # {st | unit, t}
 var _t := 0.0

@@ -58,6 +58,8 @@ func build(t: IslandTerrain, lay: IslandLayout) -> void:
 	_place_ships()
 	_place_city()
 	_place_lighthouse()
+	if garrison:
+		_place_garrison()
 	_rebuild_structures()
 	_build_drapes()
 	_place_vegetation()
@@ -512,6 +514,94 @@ func _place_desal() -> void:
 		add_structure("water_tank", c + Vector2(0.017, -0.006 + k * 0.012), 0.0, Vector3(0.009, 0.007, 0.009), Toon.WATER_BLUE)
 
 
+## Web garrison (build 28): guard posts round the coast and at every vital site, soldiers
+## and parked military vehicles; soldier_spots feeds the Garrison (game/garrison.gd).
+static var garrison := false
+var soldier_spots: Array[Vector3] = []
+
+
+func _land_ok(c: Vector2, r: float) -> bool:
+	if not terrain.is_inside(c.x, c.y, 0.03):
+		return false
+	if _hs(c.x, c.y) < 0.002:
+		return false
+	if terrain.smooth_normal_at(c.x, c.y, 0.004).y < 0.93:
+		return false
+	return _footprint_clear(c, r)
+
+
+## A guard post at `c` facing `out` (unit, towards the threat): sandbags, a watchtower,
+## a hut, a vehicle and a few soldiers. `big` adds a barracks block and an APC.
+func _guard_post(c: Vector2, out: Vector2, big: bool) -> void:
+	var rot := atan2(-out.y, out.x)
+	var side := Vector2(-out.y, out.x)
+	add_structure("guard_post", c, rot, Vector3(0.008, 0.001, 0.008), Color(0.72, 0.64, 0.46))
+	add_structure("watchtower", c - out * 0.007 + side * 0.006, rot, Vector3(0.0034, Toon.storeys(2.2), 0.0034), Color(0.62, 0.58, 0.46))
+	var hut := c - out * 0.010 - side * 0.006
+	if _land_ok(hut, 0.004):
+		add_structure("barracks", hut, rot + PI * 0.5, Vector3(0.007 if not big else 0.012, Toon.storeys(1.0), 0.0045), Color(0.80, 0.76, 0.62))
+	var v := c - out * 0.017 + side * 0.002
+	if _land_ok(v, 0.0035):
+		add_structure("mil_truck", v, rot + PI * 0.5, Vector3(0.0050, 0.0026, 0.0024), Toon.OLIVE)
+	if big:
+		var v2 := c - out * 0.017 - side * 0.008
+		if _land_ok(v2, 0.0035):
+			add_structure("tank_vehicle", v2, rot, Vector3(0.0062, 0.003, 0.0040), Toon.OLIVE)
+	for k in (6 if big else 4):
+		var a := rng.randf() * TAU
+		var d := rng.randf_range(0.0015, 0.0034)
+		soldier_spots.append(Vector3(c.x + cos(a) * d, rot + rng.randf_range(-0.6, 0.6), c.y + sin(a) * d))
+	for k in 2:
+		var q := c - out * rng.randf_range(0.006, 0.014) + side * rng.randf_range(-0.01, 0.01)
+		soldier_spots.append(Vector3(q.x, rng.randf() * TAU, q.y))
+
+
+func _place_garrison() -> void:
+	var L := layout
+	# vital sites: guard posts on their inland side (towards the island's middle)
+	var sites: Array[Vector2] = [L.plant_center, L.refinery_center, L.desal_center, L.city_c, L.apron_center]
+	for k in ["sts_crane", "ctower", "lighthouse"]:
+		for st in structures:
+			if st.kind == k:
+				sites.append(Vector2(st.pos.x, st.pos.z))
+				break
+	var mid := Vector2(-0.02, 0.02)
+	for sc in sites:
+		var inward := (mid - sc).normalized()
+		var base_a := atan2(inward.y, inward.x)
+		var done := 0
+		for tr in 14:
+			if done >= 2:
+				break
+			var a := base_a + (tr % 2 * 2 - 1) * (0.35 + 0.25 * (tr / 2))
+			var dist := 0.055 + 0.006 * (tr / 2)
+			var p := sc + Vector2(cos(a), sin(a)) * dist
+			if _land_ok(p, 0.012):
+				_guard_post(p, -Vector2(cos(a), sin(a)), done == 0)
+				done += 1
+	# the coast: a post every ~0.09 along the shore, set a little inland
+	var n := 28
+	var last := Vector2(INF, INF)
+	for i in n:
+		var a := TAU * i / n
+		var dir := Vector2(cos(a), sin(a))
+		var shore := Vector2.ZERO
+		for s in range(0, 120):
+			var q := mid + dir * (s * 0.005)
+			if not terrain.is_inside(q.x, q.y, 0.0):
+				break
+			if _hs(q.x, q.y) > 0.0015:
+				shore = q
+		if shore == Vector2.ZERO:
+			continue
+		var p := shore - dir * 0.016
+		if p.distance_to(last) < 0.085:
+			continue
+		if _land_ok(p, 0.012):
+			_guard_post(p, dir, false)
+			last = p
+
+
 ## Army camp on the north plain: SAM batteries, bunkers, tanks, barracks.
 func _place_army() -> void:
 	var c := layout.army_center
@@ -572,6 +662,7 @@ const TARGETS := {
 	"has": ["military", 4], "jet": ["military", 3], "ctower": ["military", 4], "barracks": ["military", 2], "tank": ["military", 3],
 	"silo": ["military", 4], "silo_open": ["military", 4], "launcher_truck": ["military", 3], "radar_base": ["military", 2], "mast": ["military", 2],
 	"sam": ["military", 4], "bunker": ["military", 3], "tank_vehicle": ["military", 2], "radar_sphere": ["military", 4], "house_mil": ["military", 1],
+	"watchtower": ["military", 1], "mil_truck": ["military", 1], "guard_post": ["military", 1],
 	"cargo": ["navy", 5], "tanker": ["navy", 6], "frigate": ["navy", 7], "boat": ["navy", 1],
 }
 const CATEGORIES := ["city", "oil", "power", "water", "port", "military", "navy"]
@@ -890,6 +981,22 @@ func _gen_structure(mb: MeshBuilder, s: Dictionary) -> void:
 			var jk := sz.z / Scale.m(15.0)
 			mb.xform = mb.xform * Transform3D(Basis.from_scale(Vector3(1.21, 1.0, 0.69) * jk), Vector3.ZERO)
 			_jet(mb, col)
+		"watchtower":
+			# four legs, a cabin with a roof, sandbags at its foot
+			for lx in [-1.0, 1.0]:
+				for lz in [-1.0, 1.0]:
+					mb.box(Vector3(lx * sz.x * 0.32, (sz.y * 0.7 - sink) * 0.5, lz * sz.z * 0.32), Vector3(0.0005, sz.y * 0.7 + sink, 0.0005), col.darkened(0.3))
+			mb.box(Vector3(0, sz.y * 0.78, 0), Vector3(sz.x * 0.85, sz.y * 0.18, sz.z * 0.85), col)
+			mb.box(Vector3(0, sz.y * 0.93, 0), Vector3(sz.x * 1.05, sz.y * 0.07, sz.z * 1.05), Toon.OLIVE)
+		"mil_truck":
+			mb.box(Vector3(0, (0.0012 - sink) * 0.5 + 0.0004, 0), Vector3(sz.x, 0.0012 + sink, sz.z), Color(0.16, 0.16, 0.14))
+			mb.box(Vector3(sz.x * 0.33, 0.0019, 0), Vector3(sz.x * 0.3, 0.0012, sz.z * 0.95), col)
+			mb.box(Vector3(-sz.x * 0.16, 0.0021, 0), Vector3(sz.x * 0.66, 0.0016, sz.z), col.darkened(0.1))
+		"guard_post":
+			# a ring of sandbags round the post
+			for k in 8:
+				var a := TAU * k / 8.0
+				mb.box(Vector3(cos(a) * sz.x * 0.42, 0.0004 - sink * 0.5, sin(a) * sz.z * 0.42), Vector3(0.0022, 0.0009 + sink, 0.0012), Color(0.72, 0.64, 0.46))
 		"mast":
 			mb.cylinder(Vector3(0, -sink, 0), 0.0011, 0.0006, sz.y + sink, 6, col)
 		"launcher_truck":

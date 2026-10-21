@@ -43,7 +43,7 @@ const CARD_W := 138.0
 const CARD_H := 50.0
 const HULL_W := 110.0
 const REPAIR := 1.0               # % hull per second: the crew repairs the battleship in free play
-const FORCES := {"tank": 2, "apc": 2, "spaa": 2, "mlauncher": 2, "fighter": 3, "air": 25.0}
+const FORCES := {"patrol": true, "tank": 3, "apc": 4, "spaa": 2, "mlauncher": 2, "fighter": 3, "air": 25.0}
 
 var phys: PhysicsTest
 var weapon := "ballistic"

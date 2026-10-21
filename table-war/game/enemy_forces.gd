@@ -170,6 +170,11 @@ func configure(stage: Dictionary) -> void:
 		return
 	var lay: IslandLayout = phys.island.layout
 	var paths := lay.military_paths()
+	if bool(f.get("patrol", false)):
+		# web: armour also patrols the roads between the island's sites
+		for r in lay.roads:
+			if r.size() >= 2 and r[0].distance_to(lay.town_center) > lay.town_radius * 0.8 and r[r.size() - 1].distance_to(lay.town_center) > lay.town_radius * 0.8:
+				paths.append(r)
 	var k := 0
 	for kind in ARMOR:
 		for n in int(f.get(kind, 0)):

@@ -39,6 +39,8 @@ var resistance: Resistance
 ## The Viper's tanks, APCs, mobile AA, mobile launchers and fighters (game/enemy_forces.gd).
 var forces: EnemyForces
 var _serial := 0
+## The web garrison's soldiers on this island (null elsewhere).
+var garrison: Garrison
 ## Open sea (web): the nuke's shock wave runs on past the fireball's radius, out to
 ## NUKE_WAVE_K times it in NUKE_WAVE_T seconds, and flattens everything in its path:
 ## every building, ship and boat is blown apart (the pieces thrown outward), trees burnt
@@ -495,6 +497,8 @@ func advance(dt: float) -> void:
 		fx.step(dt / ds)
 	if island.life:
 		island.life.step(dt)
+	if garrison:
+		garrison.step(dt)
 	_step_marks(dt)
 
 
@@ -658,6 +662,8 @@ func _impact(p: Vector3, w: Dictionary) -> void:
 	var frags := island.props.blast(p, BLAST_R * b)
 	if island.life:
 		island.life.on_blast(p, BLAST_R * b)
+	if garrison:
+		garrison.on_blast(p, BLAST_R * b)
 	forces.on_blast(p, BLAST_R * b * (2.6 if bool(w.get("anti_armor", false)) else 1.0))
 	for f in frags:
 		debris.spawn(f.pos, f.basis, f.half, f.vel, f.ang, f.col, 1)
@@ -712,6 +718,8 @@ func _nuke(p: Vector3, w: Dictionary) -> void:
 	island.props.on_crater(p, r * 0.8)
 	if island.life:
 		island.life.on_blast(ps, r)
+	if garrison:
+		garrison.on_blast(ps, r)
 	forces.on_blast(ps, r)
 	debris.wake_near(ps, r)
 	impacted.emit(ps, last_impact_kind)
@@ -741,6 +749,8 @@ func _step_shocks(dt: float) -> void:
 				fx.fire_at(st.pos, 25.0, clampf(float((st.size as Vector3).x) / 0.012, 0.6, 1.6))
 		if island.life:
 			island.life.on_blast(p, cur * 0.85)
+		if garrison:
+			garrison.on_blast(p, cur * 0.9)
 		forces.on_blast(p, cur * 0.8)
 		# the dust front: a ring of low puffs at the wave
 		w.dust = float(w.dust) + dt
@@ -826,5 +836,7 @@ func reset_island() -> void:
 	for m in _marks:
 		m.visible = false
 	island.reset_damage()
+	if garrison:
+		garrison.reset()
 	debris.terrain = island.terrain
 	debris.props = island.props

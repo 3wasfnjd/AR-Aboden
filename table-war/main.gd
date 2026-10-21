@@ -82,6 +82,7 @@ func _ready() -> void:
 		GlassDome.enabled = false   # the island in the open ocean: no dome
 		WeaponTable.web_mode = true   # the web's weapon set (more weapons, flown as in reality)
 		PlayerShip.web_grand = true   # the big battleship
+		IslandProps.garrison = true   # guard posts, soldiers and parked military vehicles
 		FxSystem.nuke_scale = 1.9     # the mushroom cloud rises far above the island
 		FxSystem.cap = 520
 		PhysicsTest.nuke_wave = true
@@ -140,6 +141,7 @@ func _ready() -> void:
 		diorama.add_child(ocean)
 		ocean.build()
 		_open_sea(island)
+		_add_garrison()
 		web_hud = WebHud.new()
 		web_hud.name = "WebHud"
 		add_child(web_hud)
@@ -239,6 +241,14 @@ func _on_click(pos: Vector2) -> void:
 		return
 	if hit != null:
 		phys.fire(hit)
+
+
+## Web: the soldiers at the island's guard posts.
+func _add_garrison() -> void:
+	var g := Garrison.new()
+	island.add_child(g)
+	g.setup(island)
+	phys.garrison = g
 
 
 ## Web: the island alone in the sea: no glass dome, no wooden base.
@@ -351,6 +361,16 @@ func _run_web_shot() -> void:
 	cam.set_view(tr, -25.0, 50.0, 0.42)
 	await _frames(4)
 	await _capture("w_recon")
+	print("GARRISON soldiers ", phys.garrison.spots.size(), " posts ", island.props.structures.filter(func(st): return st.kind == "guard_post").size())
+	web_hud.reset()
+	var gp: Dictionary = island.props.structures.filter(func(st): return st.kind == "guard_post")[3]
+	cam.set_view(gp.pos, -25.0, 38.0, 0.09)
+	await _frames(4)
+	await _capture("w_garrison")
+	var rp := Vector3(island.layout.refinery_center.x, 0, island.layout.refinery_center.y)
+	cam.set_view(rp, 160.0, 45.0, 0.25)
+	await _frames(4)
+	await _capture("w_garrison2")
 	print("RECON spotted ", web_hud.recon.count())
 	# night: the reset island under the moon, then a strike in the dark
 	web_hud.reset()
@@ -404,6 +424,7 @@ func _switch_map(id: int) -> void:
 	room.set_map_light(id)
 	no_shadows(island)
 	_open_sea(island)
+	_add_garrison()
 	web_hud.map_id = id
 	web_hud.reset()
 
