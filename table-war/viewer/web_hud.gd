@@ -25,7 +25,8 @@ const SHORT := {"ballistic": "باليستي", "cruise": "كروز", "artillery"
 	"hypersonic": "فرط صوتي", "bunker": "خارق", "drone": "مسيّرة", "antiship": "مضاد سفن", "jet": "طائرة", "swarm": "سرب",
 	"aa": "دفاع جوي", "nuke": "نووي"}
 const LIST_W := 250.0             # the weapon list's width
-const ROW_H := 40.0
+const ROW_H := 38.0
+const BTN_H := 58.0
 const REPAIR := 1.0               # % hull per second: the crew repairs the battleship in free play
 const FORCES := {"tank": 2, "apc": 2, "spaa": 2, "mlauncher": 2, "fighter": 3, "air": 25.0}
 
@@ -53,6 +54,10 @@ var map_id := 1
 var cam: OrbitCamera
 var missile_cam := false
 var _btn_cam: Button
+var _btn_menu: Button
+var _btn_weapons: Button
+var _menu: Control
+var _weapons: Control
 var _chase_serial := -1
 var _chase_dir := Vector3.FORWARD
 var _chase_pos := Vector3.ZERO
@@ -170,17 +175,41 @@ func _build() -> void:
 	_hull_bar.size = Vector2(190, 8)
 	_hull_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	bar_bg.add_child(_hull_bar)
-	# side buttons (left edge)
+	# two buttons at the bottom: the menu (left) and the weapons (right); each opens its list
+	_btn_menu = _button(root, "القائمة", toggle_menu)
+	_btn_menu.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+	_btn_menu.offset_left = 10
+	_btn_menu.offset_right = 10 + LIST_W
+	_btn_menu.offset_top = -10 - BTN_H
+	_btn_menu.offset_bottom = -10
+	_btn_weapons = _button(root, "", toggle_weapons)
+	_btn_weapons.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	_btn_weapons.offset_left = -10 - LIST_W
+	_btn_weapons.offset_right = -10
+	_btn_weapons.offset_top = -10 - BTN_H
+	_btn_weapons.offset_bottom = -10
+	# the menu list, above its button
 	var side := VBoxContainer.new()
 	side.add_theme_constant_override("separation", 8)
-	side.set_anchors_preset(Control.PRESET_CENTER_LEFT)
+	side.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+	side.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	side.offset_left = 10
-	side.offset_top = -190
+	side.offset_right = 10 + LIST_W
+	side.offset_bottom = -20 - BTN_H
+	side.offset_top = -20 - BTN_H
+	side.visible = false
 	root.add_child(side)
-	_button(side, "جزيرة السبخة", func() -> void: map_requested.emit(1))
-	_button(side, "جزيرة الهلال", func() -> void: map_requested.emit(2))
+	_menu = side
+	_button(side, "جزيرة السبخة", func() -> void:
+		side.visible = false
+		map_requested.emit(1))
+	_button(side, "جزيرة الهلال", func() -> void:
+		side.visible = false
+		map_requested.emit(2))
 	_btn_enemy = _button(side, "القوات المعادية: تعمل", toggle_enemy)
-	_button(side, "إعادة الجزيرة", reset)
+	_button(side, "إعادة الجزيرة", func() -> void:
+		side.visible = false
+		reset())
 	_btn_slow = _button(side, "حركة بطيئة", toggle_slow)
 	_btn_cam = _button(side, "الكاميرا: حرة", toggle_cam)
 	# message line
@@ -197,8 +226,10 @@ func _build() -> void:
 	panel.offset_left = -LIST_W - 10
 	panel.offset_right = -10
 	panel.offset_top = 74
-	panel.offset_bottom = -36
+	panel.offset_bottom = -20 - BTN_H
+	panel.visible = false
 	root.add_child(panel)
+	_weapons = panel
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 6)
 	panel.add_child(col)
@@ -208,7 +239,7 @@ func _build() -> void:
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	col.add_child(scroll)
 	var list := VBoxContainer.new()
-	list.add_theme_constant_override("separation", 3)
+	list.add_theme_constant_override("separation", 2)
 	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.add_child(list)
 	for i in WeaponTable.IDS.size():
@@ -218,7 +249,9 @@ func _build() -> void:
 		card.focus_mode = Control.FOCUS_NONE
 		card.custom_minimum_size = Vector2(0, ROW_H)
 		card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		card.pressed.connect(select.bind(id))
+		card.pressed.connect(func() -> void:
+			select(id)
+			_weapons.visible = false)
 		list.add_child(card)
 		var nm := _label(card, String(SHORT.get(id, w.name_ar)), 22, TEXT, HORIZONTAL_ALIGNMENT_RIGHT)
 		nm.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -244,9 +277,10 @@ func _build() -> void:
 		_cards[id] = {"panel": card, "ammo": am, "bar": cb}
 	var help := _label(root, "اضغط على الجزيرة للإطلاق · اسحب للتدوير · إصبعين للتقريب", 18, DIM)
 	help.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
+	help.offset_left = LIST_W + 20
 	help.offset_right = -LIST_W - 20
-	help.offset_top = -38
-	help.offset_bottom = -8
+	help.offset_top = -10 - BTN_H
+	help.offset_bottom = -10
 
 
 func select(id: String) -> void:
@@ -306,6 +340,16 @@ func toggle_enemy() -> void:
 func toggle_slow() -> void:
 	phys.set_slow_motion(not phys.slow_motion)
 	_btn_slow.text = "سرعة عادية" if phys.slow_motion else "حركة بطيئة"
+
+
+func toggle_menu() -> void:
+	_menu.visible = not _menu.visible
+	_weapons.visible = false
+
+
+func toggle_weapons() -> void:
+	_weapons.visible = not _weapons.visible
+	_menu.visible = false
 
 
 func toggle_cam() -> void:
@@ -409,6 +453,7 @@ func _process(delta: float) -> void:
 		(c.ammo as Label).add_theme_color_override("font_color", AMBER if int(ammo[id]) > 0 else RED)
 		var f := 1.0 - float(cooldown[id]) / maxf(float(w.cooldown), 0.01)
 		(c.bar as ColorRect).scale.x = clampf(f, 0.0, 1.0)
+	_btn_weapons.text = "الأسلحة: %s  ·  %d" % [String(SHORT.get(weapon, weapon)), int(ammo[weapon])]
 	var d := phys.island.props.destruction()
 	var left := phys.forces.alive(EnemyForces.KINDS)
 	_top.text = "تدمير الجزيرة %d%%   ·   قوات معادية %d   ·   %s" % [int(d.pct), left, Campaign.map_name(map_id)]
