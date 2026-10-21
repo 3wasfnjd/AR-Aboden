@@ -355,6 +355,14 @@ func _run_web_shot() -> void:
 	cam.set_view(tnight, -25.0, 35.0, 0.45)
 	await _frames(4)
 	await _capture("w_night2")
+	# day and night in turn: sunset and sunrise
+	web_hud.set_time_mode(2)
+	_apply_preset("hero")
+	for hh in [[17.5, "w_dusk"], [6.4, "w_dawn"], [13.0, "w_noon"]]:
+		web_hud.hour = float(hh[0])
+		web_hud._apply_hour()
+		await _frames(4)
+		await _capture(hh[1])
 	get_tree().quit()
 
 

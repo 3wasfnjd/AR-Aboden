@@ -62,6 +62,7 @@ var _msg: Label
 var _msg_t := 0.0
 var _root: Control
 var _btn_icon: TextureRect
+var _help: Label
 var _icons := {}
 var _grid: GridContainer
 var _opt_map: Array
@@ -79,6 +80,10 @@ var cam: OrbitCamera
 var room: Room
 var ocean: Ocean
 var night := false
+## 0 day, 1 night, 2 day and night in turn (a whole day in CYCLE_S seconds)
+var time_mode := 0
+var hour := 9.0
+const CYCLE_S := 240.0
 var missile_cam := false
 var _btn_menu: Button
 var _btn_weapons: Button
@@ -200,18 +205,19 @@ func _paint(b: Button, on: bool, edge := Color(0, 0, 0, 0)) -> void:
 
 
 ## A row of the settings: its name, then two options side by side.
-func _choice(parent: Control, title: String, a: String, b: String, cb: Callable) -> Array:
+func _choice(parent: Control, title: String, a: String, b: String, cb: Callable, c := "") -> Array:
 	var row := HBoxContainer.new()
 	row.layout_direction = Control.LAYOUT_DIRECTION_RTL
 	row.add_theme_constant_override("separation", 6)
 	parent.add_child(row)
 	var l := _label(row, title, FONT, DIM, HORIZONTAL_ALIGNMENT_RIGHT)
 	l.custom_minimum_size = Vector2(104, 0)
-	var ba := _button(row, a, cb.bind(0))
-	var bb := _button(row, b, cb.bind(1))
-	ba.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	bb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	return [ba, bb]
+	var out: Array = []
+	for i in (3 if c != "" else 2):
+		var bt := _button(row, [a, b, c][i], cb.bind(i))
+		bt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		out.append(bt)
+	return out
 
 
 ## A full-screen dimmed layer with a centred panel; a tap outside the panel closes it.
@@ -322,9 +328,7 @@ func _build() -> void:
 	_opt_cam = _choice(mc, "الكاميرا", "حرة", "فوق الصاروخ", func(i: int) -> void:
 		if (i == 1) != missile_cam:
 			toggle_cam())
-	_opt_night = _choice(mc, "الوقت", "نهار", "ليل", func(i: int) -> void:
-		if (i == 1) != night:
-			toggle_night())
+	_opt_night = _choice(mc, "الوقت", "نهار", "ليل", set_time_mode, "دورة")
 	_opt_slow = _choice(mc, "السرعة", "عادية", "بطيئة", func(i: int) -> void:
 		if (i == 1) != phys.slow_motion:
 			toggle_slow())
@@ -332,7 +336,7 @@ func _build() -> void:
 		_menu.visible = false
 		reset())
 	_paint(rs, false, Color(RED, 0.7))
-	_label(mc, "اضغط على الجزيرة للإطلاق · اسحب للتدوير · إصبعين للتقريب", FONT - 3, DIM)
+	_help = _label(mc, "اضغط على الجزيرة للإطلاق · اسحب للتدوير · إصبعين للتقريب", FONT - 3, DIM)
 	# the weapons, centred: a grid of cards (name, ammo, a reload bar)
 	var wm := _modal(root, "الأسلحة")
 	_weapons = wm[0]
@@ -424,6 +428,7 @@ func _layout() -> void:
 	if cam:
 		cam.keep_aspect = Camera3D.KEEP_WIDTH if portrait else Camera3D.KEEP_HEIGHT
 	_grid.columns = 2 if portrait else 4
+	_help.visible = portrait   # a phone held sideways has no room for it under the settings
 	for id in _cards:
 		(_cards[id].panel as Control).custom_minimum_size = Vector2(162.0 if portrait else CARD_W, CARD_H)
 	var vw := _root.get_viewport_rect().size.x if is_inside_tree() else 640.0
@@ -454,8 +459,8 @@ func _refresh_menu() -> void:
 	_paint(_opt_enemy[1], not enemies_on)
 	_paint(_opt_cam[0], not missile_cam)
 	_paint(_opt_cam[1], missile_cam)
-	_paint(_opt_night[0], not night)
-	_paint(_opt_night[1], night)
+	for i in 3:
+		_paint(_opt_night[i], time_mode == i)
 	_paint(_opt_slow[0], not phys.slow_motion)
 	_paint(_opt_slow[1], phys.slow_motion)
 
@@ -530,14 +535,33 @@ func toggle_weapons() -> void:
 
 
 func toggle_night() -> void:
-	night = not night
+	set_time_mode(0 if time_mode == 1 else 1)
+
+
+func set_time_mode(m: int) -> void:
+	var was := time_mode
+	time_mode = m
+	night = m == 1
 	if room:
-		room.set_night(night)
+		if m == 2:
+			hour = 9.0 if was == 0 else 21.0
+			_apply_hour()
+		else:
+			room.set_night(night)
+			_tint_ocean(1.0 if night else 0.0)
+	_refresh_menu()
+
+
+func _tint_ocean(n: float) -> void:
 	if ocean and ocean.mesh:
 		var om := ocean.mesh.surface_get_material(0) as StandardMaterial3D
 		if om:
-			om.albedo_color = Color(0.42, 0.46, 0.58) if night else Color.WHITE   # the open sea under the moon
-	_refresh_menu()
+			om.albedo_color = Color.WHITE.lerp(Color(0.42, 0.46, 0.58), n)   # the open sea under the moon
+
+
+func _apply_hour() -> void:
+	var n := room.set_hour(hour)
+	_tint_ocean(n)
 
 
 func toggle_cam() -> void:
@@ -628,6 +652,9 @@ func _process(delta: float) -> void:
 		return
 	var dt := minf(delta, 0.05)
 	_step_cam(dt)
+	if time_mode == 2 and room:
+		hour = fmod(hour + dt * 24.0 / CYCLE_S, 24.0)
+		_apply_hour()
 	for id in WeaponTable.ids():
 		var w := WeaponTable.get_weapon(id)
 		cooldown[id] = maxf(float(cooldown[id]) - dt, 0.0)

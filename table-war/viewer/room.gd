@@ -157,6 +157,53 @@ var _fill_e := -1.0
 var _map := 1
 
 
+## Day and night in turn (web, build 25): the hour `h` (0-24) sets the sun's height and
+## heading, its colour (white at noon, orange at sunset / sunrise), the sky (blue, a
+## red-gold horizon at dusk, dark with stars at night), the ambient light and the fog;
+## the moon lights the night. Returns the night factor (0 day .. 1 night) for the city
+## windows, the sea and the smoke (global tw_night).
+func set_hour(h: float) -> float:
+	var sm := env.sky.sky_material as ProceduralSkyMaterial
+	var el := sin((h - 6.0) / 12.0 * PI) * deg_to_rad(68.0)      # sun elevation
+	var n := smoothstep(deg_to_rad(3.0), deg_to_rad(-9.0), el)      # night
+	var dusk := (1.0 - smoothstep(0.0, deg_to_rad(22.0), absf(el))) * (1.0 - n * 0.7)
+	var day_top := Color(0.30, 0.52, 0.85)
+	var day_hz := Color(0.74, 0.84, 0.94)
+	var dusk_hz := Color(1.0, 0.56, 0.32)
+	var night_top := Color(0.010, 0.018, 0.05)
+	var night_hz := Color(0.05, 0.08, 0.16)
+	sm.sky_top_color = day_top.lerp(Color(0.22, 0.24, 0.45), dusk * 0.6).lerp(night_top, n)
+	sm.sky_horizon_color = day_hz.lerp(dusk_hz, dusk).lerp(night_hz, n)
+	sm.ground_horizon_color = Color(0.20, 0.36, 0.55).lerp(Color(0.03, 0.05, 0.10), n)
+	sm.ground_bottom_color = Color(0.06, 0.16, 0.30).lerp(Color(0.01, 0.02, 0.04), n)
+	sm.sun_angle_max = 30.0 * (1.0 - n)
+	var sun_e := 1.1 * smoothstep(deg_to_rad(-4.0), deg_to_rad(10.0), el)
+	var moon_e := 0.32 * n
+	if sun_e >= moon_e:
+		# the sun crosses from the east (morning) to the west (evening)
+		var az := lerpf(deg_to_rad(80.0), deg_to_rad(-100.0), clampf((h - 6.0) / 12.0, 0.0, 1.0))
+		sun.rotation = Vector3(-maxf(el, deg_to_rad(4.0)), az, 0)
+		sun.light_color = Color(1.0, 0.94, 0.84).lerp(Color(1.0, 0.58, 0.30), dusk)
+		sun.light_energy = sun_e
+	else:
+		sun.rotation = Vector3(deg_to_rad(-55.0), deg_to_rad(140.0), 0)
+		sun.light_color = Color(0.62, 0.72, 1.0)
+		sun.light_energy = moon_e
+	if _fill_e < 0.0:
+		_fill_e = fill.light_energy
+	fill.light_energy = _fill_e * (1.0 - n)
+	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	env.ambient_light_color = Color(0.62, 0.70, 0.82).lerp(Color(0.85, 0.62, 0.52), dusk * 0.5).lerp(Color(0.16, 0.20, 0.32), n)
+	env.ambient_light_energy = lerpf(0.75, 0.9, n)
+	env.fog_light_color = day_hz.lerp(dusk_hz, dusk * 0.6).lerp(Color(0.04, 0.06, 0.12), n)
+	RenderingServer.global_shader_parameter_set("tw_night", n)
+	if _sky_night == null:
+		_sky_night = _make_night_sky()
+		add_child(_sky_night)
+	_sky_night.visible = n > 0.25
+	return n
+
+
 ## Stars (tiny unshaded dots on a far dome) and the moon.
 func _make_night_sky() -> Node3D:
 	var root := Node3D.new()
