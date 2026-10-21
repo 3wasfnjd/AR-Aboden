@@ -80,6 +80,9 @@ func _ready() -> void:
 		apply_quest_profile()
 	if web:
 		GlassDome.enabled = false   # the island in the open ocean: no dome
+		FxSystem.nuke_scale = 1.9     # the mushroom cloud rises far above the island
+		FxSystem.cap = 520
+		PhysicsTest.nuke_wave = true
 	Room.shadows = "--shadows" in args and not quest
 	process_priority = 100   # shader globals after XRGame / the camera moved this frame
 	room = Room.new()
@@ -313,6 +316,14 @@ func _run_web_shot() -> void:
 		web_hud._process(1.0 / 60.0)
 	await _frames(4)
 	await _capture("w_nuke")
+	for f in 60 * 9:
+		phys.advance(1.0 / 60.0)
+		web_hud._process(1.0 / 60.0)
+	await _frames(4)
+	await _capture("w_nuke2")
+	cam.set_view(cam.target, -25.0, 30.0, 1.6)
+	await _frames(4)
+	await _capture("w_nuke3")
 	get_tree().quit()
 
 

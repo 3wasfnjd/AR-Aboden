@@ -1089,6 +1089,36 @@ func blast(center: Vector3, radius: float, max_fractured := 1000) -> Array[Dicti
 	return frags
 
 
+## A nuclear shock wave passing from `d0` to `d1` (footprint distance from `center`):
+## the fragile structures in that band fall with a chance that drops from `p_near` at
+## `r0` to `p_far` at `r1` (the wave's whole run). Returns the destroyed ones
+## [{st, frags}] (frags only for the first `max_fractured`).
+func blast_ring(center: Vector3, d0: float, d1: float, r0: float, r1: float, r: RandomNumberGenerator, p_near := 0.95, p_far := 0.3, max_fractured := 3) -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	var hit_tiles := []
+	for s in structures:
+		if not s.alive or not s.fragile:
+			continue
+		var d := _footprint_dist(s, center)
+		if d <= d0 or d > d1:
+			continue
+		var k := clampf((d - r0) / maxf(r1 - r0, 1e-4), 0.0, 1.0)
+		if r.randf() > lerpf(p_near, p_far, k):
+			continue
+		s.alive = false
+		if not _struct_tile(s) in hit_tiles:
+			hit_tiles.append(_struct_tile(s))
+		var frags: Array[Dictionary] = []
+		if max_fractured > 0:
+			max_fractured -= 1
+			frags = _fracture(s, center)
+		out.append({"st": s, "frags": frags})
+	for t in hit_tiles:
+		if not t in _pending_tiles:
+			_pending_tiles.append(t)
+	return out
+
+
 ## Pre-fractured pieces per destroyed building (the Quest profile lowers it).
 static var max_chunks := 64
 

@@ -38,6 +38,13 @@ var resistance: Resistance
 ## The Viper's tanks, APCs, mobile AA, mobile launchers and fighters (game/enemy_forces.gd).
 var forces: EnemyForces
 var _serial := 0
+## Open sea (web): the nuke's shock wave runs on past the fireball's radius, out to
+## NUKE_WAVE_K times it in NUKE_WAVE_T seconds, knocking down most buildings near and
+## fewer far out, killing people and vehicles, setting fires in the ruins.
+static var nuke_wave := false
+const NUKE_WAVE_K := 2.2
+const NUKE_WAVE_T := 2.6
+var shocks: Array[Dictionary] = []    # {p, r0, r1, t, cur}
 
 var slow_motion := false
 var slow_factor := 0.2
@@ -157,6 +164,7 @@ func reset_island_state() -> void:
 	hide_preview()
 	debris.clear()
 	fx.clear()
+	shocks.clear()
 
 
 func _make_shell_node(k: int) -> Dictionary:
@@ -447,6 +455,7 @@ func advance(dt: float) -> void:
 	for _i in steps:
 		_step_flights(h)      # shells need the small step (exact impact points)
 	resistance.step(dt)
+	_step_shocks(dt)
 	forces.step(dt)
 	# debris and smoke step once per frame: half the GDScript cost of the 120 Hz
 	# substeps at 72 fps (long frames still split, so a step never exceeds 1/50 s)
@@ -658,7 +667,9 @@ func _nuke(p: Vector3, w: Dictionary) -> void:
 	sfx.play("thump", ps, 1.5)
 	if island.terrain.height_at(p.x, p.z) > IslandTerrain.SEA:
 		island.terrain.crater(p, 0.034, 0.012)
-	island.terrain.scorch_area(p, r * 0.85)
+	island.terrain.scorch_area(p, r * (1.5 if nuke_wave else 0.85))
+	if nuke_wave:
+		shocks.append({"p": ps, "r0": r, "r1": r * NUKE_WAVE_K, "t": 0.0, "cur": r, "dust": 0.0})
 	var frags := island.props.blast(ps, r, 10)
 	for f in frags:
 		debris.spawn(f.pos, f.basis, f.half, f.vel * 2.0, f.ang, f.col, 1)
@@ -668,6 +679,45 @@ func _nuke(p: Vector3, w: Dictionary) -> void:
 	forces.on_blast(ps, r)
 	debris.wake_near(ps, r)
 	impacted.emit(ps, last_impact_kind)
+
+
+func _step_shocks(dt: float) -> void:
+	var i := 0
+	while i < shocks.size():
+		var w: Dictionary = shocks[i]
+		w.t += dt
+		var r0: float = w.r0
+		var r1: float = w.r1
+		var k := clampf(float(w.t) / NUKE_WAVE_T, 0.0, 1.0)
+		# fast at first, slowing as it spreads
+		var cur := r0 + (r1 - r0) * (1.0 - pow(1.0 - k, 1.6))
+		var p: Vector3 = w.p
+		var down := island.props.blast_ring(p, float(w.cur), cur, r0, r1, _rng)
+		for e in down:
+			var st: Dictionary = e.st
+			for f in e.frags:
+				debris.spawn(f.pos, f.basis, f.half, f.vel, f.ang, f.col, 1)
+			if _rng.randf() < 0.4:
+				fx.fire_at(st.pos, 25.0, clampf(float((st.size as Vector3).x) / 0.012, 0.6, 1.6))
+		if island.life:
+			island.life.on_blast(p, cur * 0.85)
+		forces.on_blast(p, cur * 0.8)
+		# the dust front: a ring of low puffs at the wave
+		w.dust = float(w.dust) + dt
+		if float(w.dust) > 0.12:
+			w.dust = 0.0
+			for q in 14:
+				var a := _rng.randf() * TAU
+				var d := Vector3(cos(a), 0.0, sin(a))
+				var at := p + d * cur
+				var su := surface(at.x, at.z)
+				at.y = maxf(su if su > -INF else IslandTerrain.SEA, IslandTerrain.SEA) + 0.004
+				fx.puff(at, d * 0.03 + Vector3(0, 0.004, 0), 0.01, 0.03, _rng.randf_range(2.0, 3.0), Color(0.78, 0.70, 0.60, 0.6), 0, 0.002, 1.5)
+		w.cur = cur
+		if k >= 1.0:
+			shocks.remove_at(i)
+			continue
+		i += 1
 
 
 ## Darker, glossier wet sand where a shell hit the shallows (pooled, fades in ~40 s).

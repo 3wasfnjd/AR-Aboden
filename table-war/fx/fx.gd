@@ -110,6 +110,12 @@ const NUKE_TOP := 0.33          # fireball height above the blast point at the e
 const NUKE_RISE_T := 2.6        # s: e-folding time of the rise
 const NUKE_EMIT := 9.0          # s of feeding the stem and the cap
 var nukes: Array[Dictionary] = []   # {p, r, t, acc}
+## Open sea (web, no dome): the cloud may rise far higher and spread wider; 1 = under
+## the dome. Lifetimes and the emission grow with it.
+static var nuke_scale := 1.0
+## Fires left burning after the nuke: {p, t, life, acc, s}
+var fires: Array[Dictionary] = []
+const MAX_FIRES := 16
 
 
 func nuke(p: Vector3, r: float) -> void:
@@ -130,7 +136,36 @@ func nuke(p: Vector3, r: float) -> void:
 
 ## Fireball centre height above the blast point at time t.
 static func nuke_height(t: float) -> float:
-	return NUKE_TOP * (1.0 - exp(-t / NUKE_RISE_T))
+	return NUKE_TOP * nuke_scale * (1.0 - exp(-t / (NUKE_RISE_T * sqrt(nuke_scale))))
+
+
+## A fire burning on a ruin: flames and a dark smoke column for `life` seconds.
+func fire_at(p: Vector3, life := 25.0, size := 1.0) -> void:
+	if fires.size() >= MAX_FIRES:
+		return
+	fires.append({"p": p, "t": 0.0, "life": life * rng.randf_range(0.8, 1.2), "acc": rng.randf() * 0.3, "s": size})
+
+
+func _step_fires(dt: float) -> void:
+	var i := 0
+	while i < fires.size():
+		var f: Dictionary = fires[i]
+		f.t += dt
+		if float(f.t) > float(f.life):
+			fires.remove_at(i)
+			continue
+		var fade := clampf((float(f.life) - float(f.t)) / 6.0, 0.15, 1.0)
+		var sz: float = f.s
+		f.acc += dt
+		while float(f.acc) >= 0.3:
+			f.acc = float(f.acc) - 0.3
+			var p: Vector3 = f.p
+			var o := Vector3(rng.randf_range(-0.003, 0.003), 0.0, rng.randf_range(-0.003, 0.003)) * sz
+			puff(p + o + Vector3(0, 0.002, 0), Vector3(0, 0.01, 0), 0.003 * sz * fade, 0.007 * sz * fade, rng.randf_range(0.5, 0.8),
+				Color(1.0, rng.randf_range(0.45, 0.65), 0.15), 1, 0.006, 1.0)
+			puff(p + o + Vector3(0, 0.006, 0), Vector3(rng.randf_range(-0.002, 0.002), 0.012, 0), 0.005 * sz, 0.02 * sz, rng.randf_range(3.0, 4.5),
+				Color(0.16, 0.14, 0.13, 0.75 * fade), 0, 0.004, 0.4)
+		i += 1
 
 
 func _step_nukes(dt: float) -> void:
@@ -139,13 +174,15 @@ func _step_nukes(dt: float) -> void:
 		var n: Dictionary = nukes[i]
 		n.t += dt
 		var t: float = n.t
-		if t > NUKE_EMIT:
+		if t > NUKE_EMIT * (1.0 + 0.35 * (nuke_scale - 1.0)):
 			nukes.remove_at(i)
 			continue
 		var p: Vector3 = n.p
 		var h := nuke_height(t)
 		var c := p + Vector3(0, h, 0)
-		var vy := NUKE_TOP / NUKE_RISE_T * exp(-t / NUKE_RISE_T)
+		var ks := nuke_scale
+		var rise_t := NUKE_RISE_T * sqrt(ks)
+		var vy := NUKE_TOP * ks / rise_t * exp(-t / rise_t)
 		var hot := clampf(1.0 - t / 4.0, 0.0, 1.0)      # 1 = fire-lit, 0 = cold grey
 		n.acc += dt
 		# ~14 puffs a second (fewer as it cools)
@@ -156,25 +193,25 @@ func _step_nukes(dt: float) -> void:
 			# smoke lit orange from inside while it is hot, white-grey when it cools
 			var a := rng.randf() * TAU
 			var out := Vector3(cos(a), 0.0, sin(a))
-			var grow := clampf(t / 6.0, 0.0, 1.0)
-			var cap_r := 0.015 + 0.11 * grow
+			var grow := clampf(t / (6.0 * sqrt(ks)), 0.0, 1.0)
+			var cap_r := (0.015 + 0.11 * grow) * ks
 			var ring := rng.randf_range(0.55, 1.0) if rng.randf() < 0.7 else rng.randf_range(0.0, 0.5)
-			var size1 := lerpf(0.05, 0.13, grow)
+			var size1 := lerpf(0.05, 0.13, grow) * ks
 			var cool := Color(0.66, 0.60, 0.55, 0.95).lerp(Color(0.82, 0.80, 0.78, 0.9), rng.randf())
-			var pos := c + out * cap_r * ring + Vector3(0, rng.randf_range(-0.012, 0.02) - 0.02 * ring * ring, 0)
+			var pos := c + out * cap_r * ring + Vector3(0, rng.randf_range(-0.012, 0.02) - 0.02 * ring * ring, 0) * ks
 			# rolling: the rim curls outward and down, the core keeps rising
-			var vel := out * rng.randf_range(0.01, 0.03) * (0.5 + ring) + Vector3(0, vy * (1.0 - 0.6 * ring) - 0.004 * ring, 0)
+			var vel := out * rng.randf_range(0.01, 0.03) * (0.5 + ring) * ks + Vector3(0, vy * (1.0 - 0.6 * ring) - 0.004 * ring, 0)
 			# fire-lit (kind 3) only while it is hot: later puffs are plain grey smoke
-			puff(pos, vel, size1 * 0.5, size1, rng.randf_range(13.0, 19.0), cool, 3 if rng.randf() < hot * 0.8 else 0, 0.0, 0.25)
+			puff(pos, vel, size1 * 0.5, size1, rng.randf_range(13.0, 19.0) * (1.0 + 0.5 * (ks - 1.0)), cool, 3 if rng.randf() < hot * 0.8 else 0, 0.0, 0.25)
 			if rng.randf() < hot:
 				# fire glow inside the cap (additive)
 				puff(c + out * cap_r * 0.4 * rng.randf(), Vector3(0, vy, 0), size1 * 0.4, size1 * 0.8, rng.randf_range(1.0, 1.8),
 					Color(1.0, rng.randf_range(0.5, 0.7), 0.2), 1, 0.0, 0.5)
 			# the stem: dust and smoke drawn up from the ground behind the fireball
-			if t < 7.0:
-				var hs := rng.randf_range(0.0, maxf(h - 0.03, 0.0))
-				var off := Vector3(rng.randf_range(-0.016, 0.016), 0.0, rng.randf_range(-0.016, 0.016))
-				puff(p + off + Vector3(0, 0.005 + hs, 0), Vector3(0, vy * 0.7 + 0.004, 0), 0.016, 0.045 + 0.025 * hs / NUKE_TOP, rng.randf_range(10.0, 14.0),
+			if t < 7.0 * sqrt(ks):
+				var hs := rng.randf_range(0.0, maxf(h - 0.03 * ks, 0.0))
+				var off := Vector3(rng.randf_range(-0.016, 0.016), 0.0, rng.randf_range(-0.016, 0.016)) * sqrt(ks)
+				puff(p + off + Vector3(0, 0.005 + hs, 0), Vector3(0, vy * 0.7 + 0.004, 0), 0.016 * sqrt(ks), (0.045 + 0.025 * hs / (NUKE_TOP * ks)) * sqrt(ks), rng.randf_range(10.0, 14.0) * (1.0 + 0.5 * (ks - 1.0)),
 					Color(0.50, 0.46, 0.42, 0.9), 3 if rng.randf() < hot else 0, 0.0, 0.6)
 		# condensation ring: a white collar round the stem, briefly, at ~1.5 s
 		if not n.ring and t > 1.4:
@@ -182,7 +219,7 @@ func _step_nukes(dt: float) -> void:
 			for k in 28:
 				var a2 := TAU * k / 28.0
 				var d2 := Vector3(cos(a2), 0.0, sin(a2))
-				puff(p + Vector3(0, h * 0.65, 0) + d2 * 0.05, d2 * 0.05, 0.012, 0.035, 1.6, Color(0.97, 0.98, 1.0, 0.7), 0, 0.0, 1.2)
+				puff(p + Vector3(0, h * 0.65, 0) + d2 * 0.05 * ks, d2 * 0.05 * ks, 0.012 * ks, 0.035 * ks, 1.6, Color(0.97, 0.98, 1.0, 0.7), 0, 0.0, 1.2)
 		i += 1
 
 
@@ -310,6 +347,7 @@ func _build_ripples() -> void:
 func clear() -> void:
 	puffs.clear()
 	nukes.clear()
+	fires.clear()
 	ripples.clear()
 	flash_e = 0.0
 	flash_light.visible = false
@@ -318,6 +356,7 @@ func clear() -> void:
 
 func step(dt: float) -> void:
 	_step_nukes(dt)
+	_step_fires(dt)
 	var k := 0
 	while k < puffs.size():
 		var q: Dictionary = puffs[k]
