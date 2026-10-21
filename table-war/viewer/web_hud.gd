@@ -23,14 +23,24 @@ const KEYS := [KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_6, KEY_7, KEY_8, KEY_9, KE
 ## The free-play enemy: every kind, fighters taking off every 25 s.
 const SHORT := {"ballistic": "باليستي", "cruise": "كروز", "artillery": "مدفعية", "mlrs": "راجمة", "cluster": "عنقودي",
 	"hypersonic": "فرط صوتي", "bunker": "خارق", "drone": "مسيّرة", "antiship": "مضاد سفن", "jet": "طائرة", "swarm": "سرب",
-	"aa": "دفاع جوي", "nuke": "نووي"}
+	"aa": "دفاع جوي", "nuke": "نووي", "atgm": "مضاد دروع", "glide": "انزلاقية", "torpedo": "طوربيد", "heli": "مروحية"}
+## A real weapon of each kind (shown under its name).
+const REAL := {"ballistic": "مثل Iskander", "cruise": "مثل Tomahawk", "hypersonic": "مثل Kinzhal",
+	"artillery": "مثل M777 155mm", "mlrs": "مثل HIMARS", "cluster": "مثل ATACMS", "bunker": "مثل GBU-57",
+	"glide": "مثل GBU-39", "jet": "مثل F-15E", "heli": "مثل AH-64 Apache", "drone": "مثل Shahed-136",
+	"swarm": "مثل أسراب Lancet", "atgm": "مثل Javelin", "antiship": "مثل Harpoon", "torpedo": "مثل Mk 48",
+	"aa": "مثل Patriot", "nuke": "مثل B61"}
+const GOLD := Color(0.886, 0.714, 0.361)
+const PANEL := Color(0.035, 0.06, 0.09, 0.96)
+const LINE := Color(0.30, 0.85, 1.0, 0.22)
 ## Sizes in the HUD's virtual screen (see _layout): a phone's finger and eye.
 const FONT := 17
 const ROW_H := 40.0
 const BTN_H := 46.0
 const BTN_W := 210.0
 const MENU_W := 340.0
-const CARD_W := 142.0
+const CARD_W := 138.0
+const CARD_H := 50.0
 const HULL_W := 110.0
 const REPAIR := 1.0               # % hull per second: the crew repairs the battleship in free play
 const FORCES := {"tank": 2, "apc": 2, "spaa": 2, "mlauncher": 2, "fighter": 3, "air": 25.0}
@@ -51,6 +61,8 @@ var _hull_lbl: Label
 var _msg: Label
 var _msg_t := 0.0
 var _root: Control
+var _btn_icon: TextureRect
+var _icons := {}
 var _grid: GridContainer
 var _opt_map: Array
 var _opt_enemy: Array
@@ -81,7 +93,7 @@ const CHASE_HOLD := 2.2            # seconds on the blast after the impact
 func setup(p: PhysicsTest) -> void:
 	phys = p
 	_font = _screen_font()
-	for id in WeaponTable.IDS:
+	for id in WeaponTable.ids():
 		ammo[id] = int(WeaponTable.get_weapon(id).ammo)
 		cooldown[id] = 0.0
 		_reload[id] = 0.0
@@ -91,6 +103,11 @@ func setup(p: PhysicsTest) -> void:
 	phys.resistance.intercepted.connect(func(_q: Vector3, _w: String) -> void: flash("أُسقط صاروخك · Shot down", AMBER))
 	phys.forces.fighter_down.connect(func(_q: Vector3) -> void: flash("أسقطت طائرة معادية · Jet down", GREEN))
 	phys.sortie_landed.connect(func(wid: String) -> void: ammo[wid] = mini(int(ammo[wid]) + 1, int(WeaponTable.get_weapon(wid).ammo)))
+	# an aircraft shot down: a replacement lands on the deck a while later
+	phys.jet_lost.connect(func(wid: String) -> void:
+		flash("أُسقطت طائرتك · بديلة خلال 25 ثانية", RED)
+		get_tree().create_timer(25.0).timeout.connect(func() -> void:
+			ammo[wid] = mini(int(ammo[wid]) + 1, int(WeaponTable.get_weapon(wid).ammo))))
 	start_enemy()
 	select(weapon)
 
@@ -209,8 +226,11 @@ func _modal(root: Control, title: String) -> Array:
 	cc.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	dim.add_child(cc)
 	var panel := PanelContainer.new()
-	var sb := _style(Color(0.04, 0.08, 0.12, 0.96), Color(FRAME, 0.6), 2)
-	sb.set_content_margin_all(10)
+	var sb := _style(PANEL, Color(FRAME, 0.45), 1)
+	sb.set_corner_radius_all(14)
+	sb.set_content_margin_all(12)
+	sb.shadow_color = Color(0, 0, 0, 0.5)
+	sb.shadow_size = 10
 	panel.add_theme_stylebox_override("panel", sb)
 	panel.mouse_filter = Control.MOUSE_FILTER_STOP
 	cc.add_child(panel)
@@ -220,10 +240,20 @@ func _modal(root: Control, title: String) -> Array:
 	var head := HBoxContainer.new()
 	head.layout_direction = Control.LAYOUT_DIRECTION_RTL
 	col.add_child(head)
-	var t := _label(head, title, FONT + 3, FRAME, HORIZONTAL_ALIGNMENT_RIGHT)
+	var bar := ColorRect.new()
+	bar.color = GOLD
+	bar.custom_minimum_size = Vector2(4, 22)
+	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	head.add_child(bar)
+	var t := _label(head, title, FONT + 3, TEXT, HORIZONTAL_ALIGNMENT_LEFT)   # RTL row: "left" is its start
 	t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	var x := _button(head, "إغلاق", func() -> void: dim.visible = false, FONT - 1)
-	x.custom_minimum_size = Vector2(72, ROW_H - 6)
+	var x := _button(head, "إغلاق", func() -> void: dim.visible = false, FONT - 2)
+	x.custom_minimum_size = Vector2(70, ROW_H - 8)
+	var sep := ColorRect.new()
+	sep.color = LINE
+	sep.custom_minimum_size = Vector2(0, 1)
+	sep.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	col.add_child(sep)
 	return [dim, col, panel]
 
 
@@ -305,34 +335,69 @@ func _build() -> void:
 	_grid.add_theme_constant_override("h_separation", 6)
 	_grid.add_theme_constant_override("v_separation", 6)
 	wc.add_child(_grid)
-	for i in WeaponTable.IDS.size():
-		var id: String = WeaponTable.IDS[i]
+	for id in WeaponTable.ids():
 		var w := WeaponTable.get_weapon(id)
 		var card := Button.new()
 		card.focus_mode = Control.FOCUS_NONE
-		card.custom_minimum_size = Vector2(CARD_W, ROW_H + 4)
+		card.custom_minimum_size = Vector2(CARD_W, CARD_H)
 		card.pressed.connect(func() -> void:
 			select(id)
 			_weapons.visible = false)
 		_grid.add_child(card)
-		var nm := _label(card, String(SHORT.get(id, w.name_ar)), FONT, TEXT, HORIZONTAL_ALIGNMENT_RIGHT)
+		# icon at the right (Arabic reading), the name and a real example beside it,
+		# the ammo at the left, a thin reload bar along the bottom
+		var ic := TextureRect.new()
+		ic.texture = _icon(id)
+		ic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		ic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		ic.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		ic.set_anchors_preset(Control.PRESET_RIGHT_WIDE)
+		ic.offset_left = -38
+		ic.offset_right = -6
+		ic.offset_top = 7
+		ic.offset_bottom = -9
+		card.add_child(ic)
+		var nm := _label(card, String(SHORT.get(id, w.name_ar)), FONT - 1, TEXT, HORIZONTAL_ALIGNMENT_RIGHT)
 		nm.set_anchors_preset(Control.PRESET_FULL_RECT)
-		nm.offset_right = -10
-		nm.offset_bottom = -4
-		var am := _label(card, "", FONT, AMBER, HORIZONTAL_ALIGNMENT_LEFT)
+		nm.offset_right = -42
+		nm.offset_top = 2
+		nm.offset_bottom = -CARD_H * 0.42
+		nm.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+		var rl := _label(card, String(REAL.get(id, "")), FONT - 5, DIM, HORIZONTAL_ALIGNMENT_RIGHT)
+		rl.set_anchors_preset(Control.PRESET_FULL_RECT)
+		rl.offset_right = -42
+		rl.offset_top = CARD_H * 0.55
+		rl.offset_bottom = -6
+		rl.vertical_alignment = VERTICAL_ALIGNMENT_TOP
+		var am := _label(card, "", FONT, GOLD, HORIZONTAL_ALIGNMENT_LEFT)
 		am.set_anchors_preset(Control.PRESET_FULL_RECT)
 		am.offset_left = 10
 		am.offset_bottom = -4
 		var cb := ColorRect.new()
-		cb.color = Color(FRAME, 0.7)
+		cb.color = Color(FRAME, 0.55)
 		cb.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		cb.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
-		cb.offset_left = 8
-		cb.offset_right = -8
-		cb.offset_top = -6
+		cb.offset_left = 10
+		cb.offset_right = -10
+		cb.offset_top = -5
 		cb.offset_bottom = -3
 		card.add_child(cb)
 		_cards[id] = {"panel": card, "ammo": am, "bar": cb}
+	# the weapons button shows the chosen weapon's icon
+	_btn_icon = TextureRect.new()
+	_btn_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_btn_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_btn_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_btn_icon.set_anchors_preset(Control.PRESET_RIGHT_WIDE)
+	_btn_icon.offset_left = -44
+	_btn_icon.offset_right = -10
+	_btn_icon.offset_top = 6
+	_btn_icon.offset_bottom = -6
+	_btn_weapons.add_child(_btn_icon)
+	for st in ["normal", "hover", "pressed"]:
+		var sbw := _btn_weapons.get_theme_stylebox(st).duplicate() as StyleBoxFlat
+		sbw.content_margin_right = 50
+		_btn_weapons.add_theme_stylebox_override(st, sbw)
 	get_tree().root.size_changed.connect(_layout)
 	_layout()
 
@@ -351,7 +416,9 @@ func _layout() -> void:
 		win.content_scale_size = Vector2i(360, 640) if portrait else Vector2i(640, 360)
 	if cam:
 		cam.keep_aspect = Camera3D.KEEP_WIDTH if portrait else Camera3D.KEEP_HEIGHT
-	_grid.columns = 2 if portrait else 3
+	_grid.columns = 2 if portrait else 4
+	for id in _cards:
+		(_cards[id].panel as Control).custom_minimum_size = Vector2(162.0 if portrait else CARD_W, CARD_H)
 	var vw := _root.get_viewport_rect().size.x if is_inside_tree() else 640.0
 	var bw := minf(BTN_W, (vw - 18.0) * 0.5)
 	_btn_menu.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
@@ -364,6 +431,13 @@ func _layout() -> void:
 	_btn_weapons.offset_right = -6
 	_btn_weapons.offset_top = -8 - BTN_H
 	_btn_weapons.offset_bottom = -8
+
+
+func _icon(id: String) -> Texture2D:
+	if not _icons.has(id):
+		var path := "res://assets/icons/%s.svg" % id
+		_icons[id] = load(path) if ResourceLoader.exists(path) else null
+	return _icons[id]
 
 
 func _refresh_menu() -> void:
@@ -384,6 +458,8 @@ func select(id: String) -> void:
 		var p: Button = _cards[k].panel
 		var on := String(k) == id
 		_paint(p, on, RED if k == "nuke" and not on else Color(0, 0, 0, 0))
+	if _btn_icon:
+		_btn_icon.texture = _icon(id)
 	if id == "aa":
 		flash("صاروخ الدفاع الجوي يلاحق أقرب طائرة: اضغط في أي مكان", DIM)
 
@@ -509,7 +585,7 @@ func _step_cam(dt: float) -> void:
 
 func reset() -> void:
 	phys.reset_island()
-	for id in WeaponTable.IDS:
+	for id in WeaponTable.ids():
 		ammo[id] = int(WeaponTable.get_weapon(id).ammo)
 		cooldown[id] = 0.0
 	if phys.island.ship:
@@ -522,8 +598,8 @@ func _unhandled_key_input(event: InputEvent) -> void:
 	if k == null or not k.pressed or k.echo:
 		return
 	var i := KEYS.find(k.keycode)
-	if i >= 0 and i < WeaponTable.IDS.size():
-		select(WeaponTable.IDS[i])
+	if i >= 0 and i < WeaponTable.ids().size():
+		select(WeaponTable.ids()[i])
 		get_viewport().set_input_as_handled()
 
 
@@ -532,7 +608,7 @@ func _process(delta: float) -> void:
 		return
 	var dt := minf(delta, 0.05)
 	_step_cam(dt)
-	for id in WeaponTable.IDS:
+	for id in WeaponTable.ids():
 		var w := WeaponTable.get_weapon(id)
 		cooldown[id] = maxf(float(cooldown[id]) - dt, 0.0)
 		if int(ammo[id]) < int(w.ammo) and float(w.reload) > 0.0:
@@ -545,7 +621,7 @@ func _process(delta: float) -> void:
 		(c.ammo as Label).add_theme_color_override("font_color", AMBER if int(ammo[id]) > 0 else RED)
 		var f := 1.0 - float(cooldown[id]) / maxf(float(w.cooldown), 0.01)
 		(c.bar as ColorRect).scale.x = clampf(f, 0.0, 1.0)
-	_btn_weapons.text = "%s  ·  %d" % [String(SHORT.get(weapon, weapon)), int(ammo[weapon])]
+	_btn_weapons.text = "%s  ·  %d      " % [String(SHORT.get(weapon, weapon)), int(ammo[weapon])]
 	var d := phys.island.props.destruction()
 	var left := phys.forces.alive(EnemyForces.KINDS)
 	_top.text = "تدمير %d%%  ·  قوات معادية %d" % [int(d.pct), left]

@@ -15,6 +15,77 @@ func check(name: String, ok: bool, info := "") -> void:
 		failures += 1
 
 
+## The web build's weapon set (WeaponTable.web_mode): every weapon reaches its target,
+## the hypersonic glides low and weaves, the torpedo stays in the water and stops at
+## the shore, the bunker buster and the glide bombs are dropped by a jet that comes
+## back, the helicopter fires its rockets, the anti-tank missile kills a tank.
+func _web_weapon_tests(island: Island, phys: PhysicsTest) -> void:
+	WeaponTable.web_mode = true
+	var rng_state := phys.forces.rng.state   # the later tests place units from this rng
+	phys.forces.clear()
+	phys.resistance.clear()
+	var tg := Vector3(-0.2, 0.0, 0.08)
+	tg.y = island.surface_at(tg.x, tg.z)
+	# hypersonic: lower than the ballistic arc, weaving off the straight line
+	var hp := phys.plan(tg, Vector3.INF, "hypersonic")
+	var bp := phys.plan(tg, Vector3.INF, "ballistic")
+	var o := phys.default_origin("hypersonic")
+	var line := Vector2(tg.x - o.x, tg.z - o.z).normalized()
+	var top_h := 0.0
+	var top_b := 0.0
+	var side := 0.0
+	for k in 100:
+		var ph := WeaponFlight.position_at(hp, float(hp.T) * k / 100.0)
+		var pb := WeaponFlight.position_at(bp, float(bp.T) * k / 100.0)
+		top_h = maxf(top_h, ph.y)
+		top_b = maxf(top_b, pb.y)
+		var rel := Vector2(ph.x - o.x, ph.z - o.z)
+		side = maxf(side, absf(rel.x * line.y - rel.y * line.x))
+	var hend := WeaponFlight.position_at(hp, float(hp.T))
+	check("web hypersonic: a depressed glide (top %.3f under the ballistic %.3f) that weaves %.3f m, onto the target" % [top_h, top_b, side],
+		top_h < top_b - 0.05 and side > 0.008 and hend.distance_to(tg) < 0.002 and hp.type == "glide")
+	# torpedo: under the surface all the way; at a target on land it stops at the shore
+	var tp := phys.plan(tg, Vector3.INF, "torpedo")
+	var dry := 0
+	for k in range(30, 200):
+		var q := WeaponFlight.position_at(tp, float(tp.T) * k / 200.0)
+		if q.y > IslandTerrain.SEA + 1e-4:
+			dry += 1
+	var te: Vector3 = tp.to
+	check("web torpedo: runs under the water and goes off at the shore of a land target", dry == 0 and tp.type == "torpedo" and te.distance_to(tg) > 0.02 and absf(te.y - IslandTerrain.SEA) < 1e-4, "%d samples above the sea, ends %s" % [dry, te])
+	# aircraft: the bunker buster, the glide bombs and the helicopter come back after
+	# dropping / firing; each lands its load near the target
+	for wid in ["bunker", "glide", "heli"]:
+		var landed := []
+		var cb := func(w: String) -> void: landed.append(w)
+		phys.sortie_landed.connect(cb)
+		var n0 := phys.impact_count
+		phys.fire(tg, Vector3.INF, wid)
+		var steps := 0
+		while phys.flying and steps < 6000:
+			phys.advance(1.0 / 60.0)
+			steps += 1
+		phys.sortie_landed.disconnect(cb)
+		var w := WeaponTable.get_weapon(wid)
+		check("web %s: %d hits near the target, back on the deck" % [wid, phys.impact_count - n0],
+			phys.impact_count - n0 == int(w.bombs) and landed == [wid] and Vector2(phys.last_impact.x - tg.x, phys.last_impact.z - tg.z).length() < 0.03)
+	# anti-tank missile: a tank a little off the aim point is still killed (top attack)
+	phys.forces.configure({"forces": {"tank": 1}})
+	var tank: Dictionary = phys.forces.units[0]
+	var at := (tank.p as Vector3) + Vector3(0.004, 0, 0)
+	at.y = island.surface_at(at.x, at.z)
+	phys.fire(at, Vector3.INF, "atgm")
+	var s2 := 0
+	while phys.flying and s2 < 2000:
+		phys.advance(1.0 / 60.0)
+		s2 += 1
+	check("web anti-tank missile: kills the tank it was fired at", not bool(tank.alive))
+	phys.forces.clear()
+	phys.reset_island()
+	phys.forces.rng.state = rng_state
+	WeaponTable.web_mode = false
+
+
 func _initialize() -> void:
 	var island := Island.new()
 	root.add_child(island)   # _ready() builds everything
@@ -416,6 +487,7 @@ func _initialize() -> void:
 	check("debris and smoke stay inside the glass dome", out == 0, "%d samples outside" % out)
 	phys.debris.clear()
 	phys.fx.clear()
+	_web_weapon_tests(island, phys)
 	_campaign_tests(island, phys)
 	await _map2_tests()
 	await _xr_tests(island, phys)

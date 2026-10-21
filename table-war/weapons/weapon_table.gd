@@ -131,6 +131,58 @@ const WEAPONS := {
 		"trail": 0.012, "trail_col": Color(0.95, 0.95, 0.92, 0.6),
 		"length": 0.0042, "radius": 0.0008, "col": Color(0.92, 0.92, 0.90),
 	},
+	# --- the web build's extra weapons (WEB_IDS) and what they release ---------------
+	"atgm": {
+		"id": "atgm", "name_ar": "صاروخ مضاد للدروع", "name_en": "Anti-tank missile",
+		"arc": "lofted", "flight": [1.3, 1.6], "blast": 0.32, "ejecta": 6, "anti_armor": true,
+		"cooldown": 1.5, "ammo": 6, "reload": 6.0, "glow": false,
+		"trail": 0.02, "trail_col": Color(0.85, 0.85, 0.82, 0.45),
+		"length": 0.0016, "radius": 0.0003, "col": Color(0.42, 0.48, 0.34),
+	},
+	"glide": {
+		"id": "glide", "name_ar": "قنابل انزلاقية", "name_en": "Glide bombs",
+		"arc": "sortie", "speed": 0.15, "cruise_alt": 0.13, "bombs": 4, "bomb": "gbomb", "spread": 0.014,
+		"release_lead": 0.16, "blast": 0.7, "ejecta": 16,
+		"cooldown": 2.0, "ammo": 2, "reload": 0.0, "glow": false, "wings": true, "jet": true,
+		"trail": 0.05, "trail_col": Color(0.85, 0.85, 0.85, 0.25),
+		"length": 0.0034, "radius": 0.0005, "col": Color(0.55, 0.60, 0.66),
+	},
+	"gbomb": {
+		"id": "gbomb", "name_ar": "قنبلة انزلاقية", "name_en": "Glide bomb",
+		"arc": "glidebomb", "speed": 0.2, "flight": [0.6, 3.0], "blast": 0.75, "ejecta": 18,
+		"cooldown": 0.0, "ammo": 0, "reload": 0.0, "glow": false, "wings": true,
+		"trail": 0.08, "trail_col": Color(0.85, 0.85, 0.85, 0.2),
+		"length": 0.0012, "radius": 0.0002, "col": Color(0.50, 0.52, 0.48),
+	},
+	"torpedo": {
+		"id": "torpedo", "name_ar": "طوربيد", "name_en": "Torpedo",
+		"arc": "torpedo", "speed": 0.16, "flight": [0.8, 9.0], "blast": 1.35, "ejecta": 0,
+		"cooldown": 4.0, "ammo": 4, "reload": 10.0, "glow": false,
+		"trail": 0.05, "trail_col": Color(0.95, 0.98, 1.0, 0.55),
+		"length": 0.0032, "radius": 0.0004, "col": Color(0.25, 0.28, 0.30),
+	},
+	"heli": {
+		"id": "heli", "name_ar": "مروحية هجومية", "name_en": "Attack helicopter",
+		"arc": "sortie", "speed": 0.09, "cruise_alt": 0.035, "bombs": 6, "bomb": "hrocket", "spread": 0.016,
+		"release_lead": 0.07, "blast": 0.45, "ejecta": 10, "heli": true,
+		"cooldown": 2.0, "ammo": 2, "reload": 0.0, "glow": false, "jet": true,
+		"trail": 0.2, "trail_col": Color(0.8, 0.8, 0.8, 0.0),
+		"length": 0.0034, "radius": 0.0006, "col": Color(0.34, 0.38, 0.30),
+	},
+	"hrocket": {
+		"id": "hrocket", "name_ar": "صاروخ مروحية", "name_en": "Helicopter rocket",
+		"arc": "low", "flight": [0.4, 0.55], "blast": 0.45, "ejecta": 10, "anti_armor": true,
+		"cooldown": 0.0, "ammo": 0, "reload": 0.0, "glow": false,
+		"trail": 0.015, "trail_col": Color(0.85, 0.82, 0.78, 0.5),
+		"length": 0.0009, "radius": 0.00018, "col": Color(0.45, 0.47, 0.40),
+	},
+	"bunkerbomb": {
+		"id": "bunkerbomb", "name_ar": "قنبلة خارقة للتحصينات", "name_en": "Bunker-buster bomb",
+		"arc": "lofted", "flight": [0.8, 0.9], "blast": 1.15, "crater_k": 2.2, "ejecta": 110,
+		"cooldown": 0.0, "ammo": 0, "reload": 0.0, "glow": false,
+		"trail": 0.05, "trail_col": Color(0.80, 0.78, 0.74, 0.3),
+		"length": 0.0036, "radius": 0.0006, "col": Color(0.40, 0.42, 0.38),
+	},
 	# not selectable: the bomblets a cluster missile releases
 	"submunition": {
 		"id": "submunition", "name_ar": "قنيبلة", "name_en": "Submunition",
@@ -142,10 +194,48 @@ const WEAPONS := {
 }
 
 
+## The web build (web_mode): more weapons, and two flown as they are in reality:
+##   hypersonic  a glide vehicle: boosted up, then a long depressed glide that weaves
+##               side to side (hard to intercept), a steep terminal dive
+##   bunker      the bunker buster is a heavy bomb: a strike jet carries it and drops it
+##               over the target (a sortie like the strike jet's)
+## New: anti-tank missile (top attack, kills armour), glide bombs (a jet releases them
+## far out, they glide in), torpedo (runs under water to a ship), attack helicopter
+## (low and slow, a rocket volley from stand-off range).
+const WEB_IDS := ["ballistic", "cruise", "hypersonic", "artillery", "mlrs", "cluster", "bunker", "glide", "jet", "heli",
+	"drone", "swarm", "atgm", "antiship", "torpedo", "aa", "nuke"]
+const WEB_OVERRIDE := {
+	"hypersonic": {
+		"id": "hypersonic", "name_ar": "صاروخ فرط صوتي", "name_en": "Hypersonic glide missile",
+		"arc": "glide", "speed": 1.1, "flight": [1.1, 2.2], "blast": 1.75, "ejecta": 90,
+		"cooldown": 8.0, "ammo": 3, "reload": 14.0, "glow": true,
+		"trail": 0.012, "trail_col": Color(0.95, 0.92, 0.86, 0.55),
+		"length": 0.0030, "radius": 0.0006, "col": Color(0.30, 0.30, 0.32),
+	},
+	"bunker": {
+		"id": "bunker", "name_ar": "خارق التحصينات", "name_en": "Bunker buster (jet-dropped)",
+		"arc": "sortie", "speed": 0.14, "cruise_alt": 0.10, "bombs": 1, "bomb": "bunkerbomb", "spread": 0.0,
+		"blast": 1.15, "crater_k": 2.2, "ejecta": 110,
+		"cooldown": 2.0, "ammo": 2, "reload": 0.0, "glow": false, "wings": true, "jet": true,
+		"trail": 0.05, "trail_col": Color(0.85, 0.85, 0.85, 0.25),
+		"length": 0.0038, "radius": 0.0006, "col": Color(0.50, 0.54, 0.58),
+	},
+}
+static var web_mode := false
+
+
 static func get_weapon(id: String) -> Dictionary:
+	if web_mode and WEB_OVERRIDE.has(id):
+		return WEB_OVERRIDE[id]
 	return WEAPONS.get(id, WEAPONS["ballistic"])
 
 
+## The selectable weapons of this build.
+static func ids() -> Array:
+	return WEB_IDS if web_mode else IDS
+
+
 static func next_id(id: String, step := 1) -> String:
-	var i := IDS.find(id)
-	return IDS[posmod(i + step, IDS.size())]
+	var l := ids()
+	var i := l.find(id)
+	return l[posmod(i + step, l.size())]

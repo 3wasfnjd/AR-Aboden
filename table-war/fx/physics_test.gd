@@ -207,10 +207,27 @@ func _shell_mesh(w: Dictionary) -> Mesh:
 	mb.xform = Transform3D(Basis(Vector3(0, 0, 1), -PI * 0.5), Vector3(-L * 0.5, 0, 0))
 	mb.cylinder(Vector3.ZERO, r, r, L * 0.7, 8, w.col)
 	mb.cylinder(Vector3(0, L * 0.7, 0), r, 0.0, L * 0.3, 8, (w.col as Color).lightened(0.2))
+	if bool(w.get("heli", false)):
+		# attack helicopter: a slim body with the cockpit forward, a tail boom, stub
+		# wings with rocket pods and a two-blade rotor (crossed thin boards) on top
+		mb = MeshBuilder.new()
+		mb.box(Vector3(L * 0.1, 0, 0), Vector3(L * 0.5, r * 1.6, r * 1.3), w.col)
+		mb.box(Vector3(L * 0.33, r * 0.3, 0), Vector3(L * 0.16, r * 1.2, r * 1.0), Color(0.22, 0.30, 0.36))
+		mb.box(Vector3(-L * 0.3, r * 0.2, 0), Vector3(L * 0.45, r * 0.5, r * 0.45), w.col)
+		mb.box(Vector3(-L * 0.52, r * 0.9, 0), Vector3(L * 0.08, r * 1.6, r * 0.2), (w.col as Color).darkened(0.15))
+		mb.box(Vector3(L * 0.08, -r * 0.2, 0), Vector3(L * 0.12, r * 0.25, L * 0.4), (w.col as Color).darkened(0.1))
+		for sd in [-1.0, 1.0]:
+			mb.box(Vector3(L * 0.08, -r * 0.5, sd * L * 0.18), Vector3(L * 0.16, r * 0.5, r * 0.5), Color(0.25, 0.27, 0.24))
+		mb.box(Vector3(L * 0.1, r * 1.3, 0), Vector3(r * 0.5, r * 0.6, r * 0.5), Color(0.2, 0.2, 0.2))
+		mb.box(Vector3(L * 0.1, r * 1.65, 0), Vector3(L * 1.15, r * 0.08, r * 0.35), Color(0.15, 0.15, 0.15))
+		mb.box(Vector3(L * 0.1, r * 1.65, 0), Vector3(r * 0.35, r * 0.08, L * 1.15), Color(0.15, 0.15, 0.15))
+		_meshes[id] = mb.commit(null, MeshBuilder.vc_material(0.5))
+		return _meshes[id]
+	var jetlike := bool(w.get("jet", false))
 	if bool(w.get("wings", false)):
-		var span := 1.5 if id in ["drone", "swarm"] else (0.75 if id == "jet" else 0.9)
+		var span := 1.5 if id in ["drone", "swarm"] else (0.75 if jetlike else 0.9)
 		mb.box(Vector3(0, L * 0.45, 0), Vector3(L * span, L * 0.12, r * 0.4), w.col)   # wings
-	if id == "jet":
+	if jetlike:
 		mb.box(Vector3(0, L * 0.08, r * 1.3), Vector3(L * 0.05, L * 0.18, r * 1.8), (w.col as Color).darkened(0.15))   # tail fin
 		mb.box(Vector3(0, L * 0.06, 0), Vector3(L * 0.36, L * 0.08, r * 0.3), w.col)   # tailplane
 		mb.box(Vector3(0, L * 0.72, r * 0.8), Vector3(r * 0.9, L * 0.12, r * 0.6), Color(0.25, 0.35, 0.45))   # canopy
@@ -426,8 +443,9 @@ func _free_slot() -> Dictionary:
 ## not come back (jet_lost).
 func kill_flight(i: int) -> void:
 	var wid: String = (flights[i].w as Dictionary).id
+	var air := bool((flights[i].w as Dictionary).get("jet", false))
 	_end_flight(i)
-	if wid == "jet":
+	if air:
 		jet_lost.emit(wid)
 	if flights.is_empty() and _pending.is_empty():
 		hide_preview()
@@ -493,7 +511,7 @@ func _step_flights(dt: float) -> void:
 				f.split = true
 				var spread_j: float = f.w.spread
 				for _b in int(f.w.bombs):
-					_launch(WeaponTable.get_weapon("jetbomb"), p, _scatter(f.tgt, spread_j), true)
+					_launch(WeaponTable.get_weapon(String(f.w.get("bomb", "jetbomb"))), p, _scatter(f.tgt, spread_j), true)
 			if t >= float(pl.T):
 				var jid: String = (f.w as Dictionary).id
 				_end_flight(i)
@@ -505,7 +523,7 @@ func _step_flights(dt: float) -> void:
 			i += 1
 			continue
 		var s := surface(p.x, p.z)
-		if pl.type == "cruise" and t >= float(pl.T) and s > -INF:
+		if pl.type in ["cruise", "glide", "torpedo"] and t >= float(pl.T) and s > -INF:
 			# the end of a terrain-following path is its target: an earlier blast may
 			# have dug the ground away under it (a crater), it still goes off there
 			var w0: Dictionary = f.w
@@ -515,7 +533,7 @@ func _step_flights(dt: float) -> void:
 			var pe := _path_end(pl)
 			_impact(Vector3(pe.x, minf(pe.y, s), pe.z), w0)
 			continue
-		if t > 0.05 and s > -INF and p.y <= s + 1e-6:
+		if pl.type != "torpedo" and t > 0.05 and s > -INF and p.y <= s + 1e-6:
 			var lo := t_prev
 			var hi := t
 			for _k in 24:
@@ -575,6 +593,10 @@ func _trail(f: Dictionary, p: Vector3, dt: float) -> void:
 		reentry = k > 0.05
 		(f.slot.glow as Node3D).scale = Vector3.ONE * (1.0 + 1.6 * k)
 		(f.slot.glow_mat as StandardMaterial3D).albedo_color = Color(1.0, 0.75, 0.35).lerp(Color(1.0, 0.95, 0.85), k)
+	if f.trail_acc > float(w.trail) and f.plan.type == "torpedo":
+		f.trail_acc = 0.0
+		fx.trail(Vector3(p.x, IslandTerrain.SEA + 0.0003, p.z), w.trail_col)   # its wake on the surface
+		return
 	if f.trail_acc > float(w.trail):
 		f.trail_acc = 0.0
 		if reentry:
@@ -632,7 +654,7 @@ func _impact(p: Vector3, w: Dictionary) -> void:
 	var frags := island.props.blast(p, BLAST_R * b)
 	if island.life:
 		island.life.on_blast(p, BLAST_R * b)
-	forces.on_blast(p, BLAST_R * b)
+	forces.on_blast(p, BLAST_R * b * (2.6 if bool(w.get("anti_armor", false)) else 1.0))
 	for f in frags:
 		debris.spawn(f.pos, f.basis, f.half, f.vel, f.ang, f.col, 1)
 	var burnt := island.props.on_crater(p, cr)

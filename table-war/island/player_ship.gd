@@ -13,6 +13,12 @@ extends MeshInstance3D
 ##   deck    strike jets (flight deck aft; the parked jets show how many are aboard)
 
 const POS := Vector2(0.17, -0.365)
+## The web build's battleship (web_grand): GRAND times bigger, moored further out in the
+## open sea, with a far richer superstructure (stacked bridge with radar arrays, two
+## funnels, a lattice mast, two triple-gun bow turrets, close-in weapon domes, boats).
+static var web_grand := false
+const GRAND := 1.7
+const GRAND_OUT := 0.13
 ## Where it lies on this map (IslandLayout.ship_pos; POS on the original map).
 var pos := POS
 const YAW := 0.0
@@ -29,10 +35,12 @@ const LAUNCHERS := {
 	"ramp": Vector3(-0.080, FB + 0.0025, 0.0),
 	"silo": Vector3(0.016, FB + 0.0012, 0.0),
 	"deck": Vector3(-0.062, FB + 0.0028, 0.0),
+	"tube": Vector3(0.020, FB - 0.002, B * 0.52),
 }
 const WEAPON_LAUNCHER := {
 	"ballistic": "vls", "hypersonic": "vls", "cluster": "vls", "bunker": "vls",
 	"cruise": "box", "antiship": "box", "artillery": "gun", "mlrs": "pod", "drone": "ramp", "swarm": "ramp", "aa": "vls", "nuke": "silo", "jet": "deck",
+	"atgm": "box", "torpedo": "tube", "glide": "deck", "heli": "deck",
 }
 
 const HULL := Color(0.52, 0.57, 0.63)
@@ -90,9 +98,14 @@ func build() -> void:
 	mb.box(Vector3(-0.062, FB + 0.0027, 0), Vector3(0.026, 0.0001, 0.0006), Color(0.95, 0.85, 0.30))
 	# flag on the mast and a hull number band
 	mb.box(Vector3(0.05, FB - 0.0018, B * 0.5 + 0.0002), Vector3(0.012, 0.0022, 0.0002), Color(0.95, 0.95, 0.93))
+	if web_grand:
+		_grand_details(mb)
 	mesh = mb.commit(null, MeshBuilder.vc_material(0.6))
 	cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	transform = Transform3D(Basis(Vector3.UP, YAW), Vector3(pos.x, IslandTerrain.SEA, pos.y))
+	if web_grand:
+		var out := pos + pos.normalized() * GRAND_OUT
+		transform = Transform3D(Basis(Vector3.UP, YAW).scaled(Vector3.ONE * GRAND), Vector3(out.x, IslandTerrain.SEA, out.y))
 	# the two strike jets parked on the flight deck
 	var w := WeaponTable.get_weapon("jet")
 	var jm := MeshBuilder.new()
@@ -116,6 +129,52 @@ func build() -> void:
 var parked: Array[MeshInstance3D] = []
 
 
+func _grand_details(mb: MeshBuilder) -> void:
+	var steel := SUPER.darkened(0.05)
+	var glass := Color(0.20, 0.34, 0.48)
+	var array := Color(0.24, 0.30, 0.36)
+	# stacked bridge: three decks narrowing upwards, window bands, phased-array radar
+	# panels on its four faces
+	mb.box(Vector3(-0.010, FB + 0.0135, 0), Vector3(0.022, 0.004, B * 0.42), steel)
+	mb.box(Vector3(-0.009, FB + 0.0170, 0), Vector3(0.015, 0.003, B * 0.32), steel.lightened(0.06))
+	mb.box(Vector3(0.0, FB + 0.0152, 0), Vector3(0.0045, 0.0016, B * 0.40), glass)
+	mb.box(Vector3(-0.0015, FB + 0.0182, 0), Vector3(0.0045, 0.0012, B * 0.30), glass)
+	for face in [Vector3(1, 0, 0), Vector3(-1, 0, 0), Vector3(0, 0, 1), Vector3(0, 0, -1)]:
+		var c := Vector3(-0.009, FB + 0.0135, 0) + Vector3(face.x * 0.0112, 0, face.z * B * 0.212)
+		var sz := Vector3(0.0003, 0.0034, 0.0068) if face.x != 0.0 else Vector3(0.0085, 0.0034, 0.0003)
+		mb.box(c, sz, array)
+	# lattice mast with yardarms and a radar dish on top
+	mb.cylinder(Vector3(-0.009, FB + 0.0185, 0), 0.0012, 0.0005, 0.016, 6, DARK)
+	for k in 3:
+		mb.box(Vector3(-0.009, FB + 0.024 + k * 0.004, 0), Vector3(0.0006, 0.0005, 0.011 - k * 0.003), DARK)
+	mb.cylinder(Vector3(-0.009, FB + 0.0345, 0), 0.0028, 0.0028, 0.0006, 12, Color(0.80, 0.82, 0.85))
+	# two funnels with dark caps
+	for fx in [-0.022, -0.030]:
+		mb.cylinder(Vector3(fx, FB + 0.0085, 0), 0.0028, 0.0024, 0.009, 10, steel)
+		mb.cylinder(Vector3(fx, FB + 0.0175, 0), 0.0024, 0.0024, 0.0012, 10, DARK)
+	# two triple-gun bow turrets (the rear one superfiring over the front one)
+	for t in [[0.068, FB + 0.0005, 0.0048], [0.055, FB + 0.0040, 0.0046]]:
+		var x: float = t[0]
+		var y: float = t[1]
+		mb.cylinder(Vector3(x, y, 0), float(t[2]), float(t[2]) * 0.9, 0.0036, 14, SUPER)
+		mb.box(Vector3(x - 0.001, y + 0.0022, 0), Vector3(0.0075, 0.0028, 0.0072), SUPER.lightened(0.05))
+		for b in 3:
+			mb.box(Vector3(x + 0.0085, y + 0.0024, (b - 1) * 0.0019), Vector3(0.012, 0.0007, 0.0007), DARK)
+	mb.cylinder(Vector3(0.055, FB, 0), 0.0036, 0.0036, 0.0040, 12, SUPER.darkened(0.05))    # barbette under the upper turret
+	# close-in weapon domes (white) at the corners of the superstructure
+	for c in [Vector3(0.006, FB + 0.0105, B * 0.30), Vector3(0.006, FB + 0.0105, -B * 0.30),
+			Vector3(-0.036, FB + 0.0085, B * 0.28), Vector3(-0.036, FB + 0.0085, -B * 0.28)]:
+		mb.cylinder(c, 0.0016, 0.0016, 0.0016, 10, Color(0.88, 0.89, 0.90))
+		mb.cylinder(c + Vector3(0, 0.0016, 0), 0.0016, 0.0002, 0.0018, 10, Color(0.92, 0.93, 0.94))
+	# lifeboats hung along both sides of the superstructure
+	for sd in [-1.0, 1.0]:
+		for k in 3:
+			mb.box(Vector3(-0.026 + k * 0.009, FB + 0.0068, sd * B * 0.36), Vector3(0.0065, 0.0016, 0.0022), Color(0.95, 0.55, 0.15))
+	# helicopter pad circle on the flight deck
+	mb.cylinder(Vector3(-0.062, FB + 0.0028, 0), 0.0075, 0.0075, 0.00012, 20, Color(0.95, 0.95, 0.92))
+	mb.cylinder(Vector3(-0.062, FB + 0.0029, 0), 0.0068, 0.0068, 0.00012, 20, Color(0.30, 0.33, 0.36))
+
+
 ## Show as many parked jets as are aboard.
 func set_jets_aboard(n: int) -> void:
 	for k in parked.size():
@@ -125,4 +184,6 @@ func set_jets_aboard(n: int) -> void:
 ## Island-local launch point of a weapon (its launcher on board).
 func launch_point(wid: String) -> Vector3:
 	var key: String = WEAPON_LAUNCHER.get(wid, "vls")
+	if bool(WeaponTable.get_weapon(wid).get("jet", false)):
+		key = "deck"    # every aircraft (the jet-dropped bunker buster too) leaves the deck
 	return transform * (LAUNCHERS[key] as Vector3)

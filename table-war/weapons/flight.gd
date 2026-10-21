@@ -31,6 +31,12 @@ static func plan(w: Dictionary, from: Vector3, to: Vector3, surface: Callable, g
 		return _plan_sortie(w, from, to, surface)
 	if String(w.get("arc", "lofted")) == "cruise":
 		return _plan_cruise(w, from, to, surface, roofs)
+	if String(w.get("arc", "lofted")) == "glide":
+		return _plan_glide(w, from, to, surface, roofs)
+	if String(w.get("arc", "lofted")) == "glidebomb":
+		return _plan_glidebomb(w, from, to)
+	if String(w.get("arc", "lofted")) == "torpedo":
+		return _plan_torpedo(w, from, to, surface)
 	var dist := from.distance_to(to)
 	var fl: Array = w.get("flight", [2.0, 3.0])
 	var T := lerpf(float(fl[0]), float(fl[1]), clampf(dist / 1.6, 0.0, 1.0))
@@ -58,6 +64,7 @@ const RELEASE_LEAD := 0.035
 
 static func _plan_sortie(w: Dictionary, from: Vector3, to: Vector3, surface: Callable) -> Dictionary:
 	var alt: float = w.get("cruise_alt", 0.1)
+	var lead: float = w.get("release_lead", RELEASE_LEAD)
 	var fwd := Vector3(1, 0, 0)
 	var d2 := Vector3(to.x - from.x, 0, to.z - from.z)
 	var dir := d2.normalized() if d2.length() > 1e-4 else fwd
@@ -67,8 +74,8 @@ static func _plan_sortie(w: Dictionary, from: Vector3, to: Vector3, surface: Cal
 		from,
 		from + fwd * 0.05 + Vector3(0, 0.012, 0),
 		from + fwd * 0.10 + Vector3(0, alt * 0.6, 0),
-		Vector3(to.x, cruise_y, to.z) - dir * (RELEASE_LEAD + 0.06),
-		Vector3(to.x, cruise_y, to.z) - dir * RELEASE_LEAD,
+		Vector3(to.x, cruise_y, to.z) - dir * (lead + 0.06),
+		Vector3(to.x, cruise_y, to.z) - dir * lead,
 		Vector3(to.x, cruise_y, to.z) + dir * 0.04,
 		Vector3(to.x, cruise_y, to.z) + dir * 0.07 + side * 0.06,
 		Vector3(to.x, cruise_y, to.z) + side * 0.09,
@@ -152,6 +159,111 @@ static func velocity_at(pl: Dictionary, t: float) -> Vector3:
 		return (pl.v0 as Vector3) + Vector3(0, -float(pl.g), 0) * t
 	var dt := 0.01
 	return (position_at(pl, t + dt) - position_at(pl, maxf(t - dt, 0.0))) / (dt + minf(t, dt))
+
+
+## A path through `pts` flown in `T` (the same form as a cruise path).
+static func _path(pts: PackedVector3Array, T: float, type: String, to: Vector3) -> Dictionary:
+	var cum := PackedFloat32Array([0.0])
+	for k in range(1, pts.size()):
+		cum.append(cum[k - 1] + pts[k].distance_to(pts[k - 1]))
+	return {"type": type, "pts": pts, "cum": cum, "T": T, "crash": false, "to": to}
+
+
+static func _path_len(pts: PackedVector3Array) -> float:
+	var L := 0.0
+	for k in range(1, pts.size()):
+		L += pts[k].distance_to(pts[k - 1])
+	return L
+
+
+## Hypersonic glide vehicle: a short steep boost to the top of the arc (a fifth of the
+## way), then a long, depressed glide that weaves side to side (two S-turns, the
+## manoeuvres that make it hard to intercept) sinking towards the target, kept clear
+## of the ground and the roofs, and a steep terminal dive the last eighth.
+static func _plan_glide(w: Dictionary, from: Vector3, to: Vector3, surface: Callable, roofs: Callable) -> Dictionary:
+	var d2 := Vector2(to.x - from.x, to.z - from.z)
+	var D := maxf(d2.length(), 1e-4)
+	var dir := d2 / D
+	var side := Vector2(-dir.y, dir.x)
+	var top := maxf(from.y, to.y) + clampf(D * 0.32, 0.05, 0.22)
+	var low := maxf(from.y, to.y) + clampf(D * 0.08, 0.025, 0.06)
+	var weave := clampf(D * 0.06, 0.008, 0.04)
+	var n := 90
+	var pts := PackedVector3Array()
+	var y_d0 := -INF
+	for k in n + 1:
+		var u := float(k) / n
+		var h := Vector2(from.x, from.z) + d2 * u
+		var env := smoothstep(0.22, 0.36, u) * (1.0 - smoothstep(0.72, 0.86, u))
+		h += side * weave * env * sin(TAU * 2.0 * (u - 0.22) / 0.64)
+		var y: float
+		if u < 0.2:
+			y = lerpf(from.y, top, sin(u / 0.2 * PI * 0.5))
+		elif u < 0.87:
+			var g := (u - 0.2) / 0.67
+			y = lerpf(top, low, smoothstep(0.0, 1.0, g))
+			var gy := float(surface.call(h.x, h.y))
+			if roofs.is_valid():
+				gy = maxf(gy, float(roofs.call(h.x, h.y)))
+			if gy > -INF:
+				y = maxf(y, gy + 0.02)
+		else:
+			if y_d0 == -INF:
+				y_d0 = pts[pts.size() - 1].y
+			var f := (u - 0.87) / 0.13
+			y = lerpf(y_d0, to.y, f * f * 0.5 + f * 0.5)
+		pts.append(Vector3(h.x, y, h.y))
+	pts[pts.size() - 1] = to
+	var fl: Array = w.get("flight", [1.1, 2.2])
+	var T := clampf(_path_len(pts) / float(w.get("speed", 1.0)), float(fl[0]), float(fl[1]))
+	return _path(pts, T, "glide", to)
+
+
+## Glide bomb: released by a jet far out, it glides in on its wings, flat at first,
+## steeper at the end, onto the target.
+static func _plan_glidebomb(w: Dictionary, from: Vector3, to: Vector3) -> Dictionary:
+	var n := 40
+	var pts := PackedVector3Array()
+	for k in n + 1:
+		var u := float(k) / n
+		var p := from.lerp(to, u)
+		p.y = lerpf(from.y, to.y, u * u)
+		pts.append(p)
+	var fl: Array = w.get("flight", [0.6, 3.0])
+	var T := clampf(_path_len(pts) / float(w.get("speed", 0.2)), float(fl[0]), float(fl[1]))
+	return _path(pts, T, "cruise", to)
+
+
+## Torpedo: dropped over the side, it runs just under the surface straight at the
+## target; a torpedo cannot leave the water, so it goes off where the sea ends (the
+## shore) if the target is on land.
+const TORPEDO_DEPTH := 0.0016
+
+
+static func _plan_torpedo(w: Dictionary, from: Vector3, to: Vector3, surface: Callable) -> Dictionary:
+	var d2 := Vector2(to.x - from.x, to.z - from.z)
+	var D := maxf(d2.length(), 1e-4)
+	var dir := d2 / D
+	var run_y := IslandTerrain.SEA - TORPEDO_DEPTH
+	var pts := PackedVector3Array([from])
+	var n := maxi(int(ceil(D / DS)), 2)
+	var end := to
+	for k in range(1, n + 1):
+		var q := Vector2(from.x, from.z) + d2 * float(k) / n
+		var g := float(surface.call(q.x, q.y))
+		var y := run_y if k > 2 else lerpf(from.y, run_y, float(k) / 2.0)
+		if g > IslandTerrain.SEA + 1e-5 and k > 2:
+			end = Vector3(q.x, IslandTerrain.SEA, q.y)    # the shore: it hits the beach
+			pts.append(end)
+			break
+		pts.append(Vector3(q.x, y, q.y))
+	if pts[pts.size() - 1] != end:
+		end = Vector3(to.x, minf(to.y, IslandTerrain.SEA), to.z)
+		pts[pts.size() - 1] = end
+	var fl: Array = w.get("flight", [0.8, 9.0])
+	var T := clampf(_path_len(pts) / float(w.get("speed", 0.16)), float(fl[0]), float(fl[1]))
+	var pl := _path(pts, T, "torpedo", end)
+	return pl
 
 
 static func _plan_cruise(w: Dictionary, from: Vector3, to: Vector3, surface: Callable, roofs := Callable()) -> Dictionary:

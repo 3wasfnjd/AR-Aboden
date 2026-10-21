@@ -80,6 +80,8 @@ func _ready() -> void:
 		apply_quest_profile()
 	if web:
 		GlassDome.enabled = false   # the island in the open ocean: no dome
+		WeaponTable.web_mode = true   # the web's weapon set (more weapons, flown as in reality)
+		PlayerShip.web_grand = true   # the big battleship
 		FxSystem.nuke_scale = 1.9     # the mushroom cloud rises far above the island
 		FxSystem.cap = 520
 		PhysicsTest.nuke_wave = true
@@ -273,11 +275,17 @@ func _run_web_shot() -> void:
 	_apply_preset("base")
 	await _frames(4)
 	await _capture("w_base")
+	var shp: Node3D = island.ship
+	cam.set_view(shp.position + Vector3(0, 0.01, 0), 150.0, 18.0, 0.42)
+	await _frames(4)
+	await _capture("w_ship")
 	# the missile camera: riding a cruise missile, a ballistic one, then the blast
 	_apply_preset("hero")
 	web_hud.toggle_cam()
 	web_hud.toggle_enemy()   # no SAMs: the shots fly to the end
-	var shots := [["cruise", Vector3(0.1, 0, 0.12), 150, "w_cam_cruise"], ["ballistic", Vector3(-0.2, 0, -0.05), 110, "w_cam_ball"]]
+	var shots := [["cruise", Vector3(0.1, 0, 0.12), 150, "w_cam_cruise"], ["ballistic", Vector3(-0.2, 0, -0.05), 110, "w_cam_ball"],
+		["hypersonic", Vector3(-0.25, 0, 0.1), 60, "w_cam_hyper"], ["heli", Vector3(0.0, 0, -0.1), 420, "w_cam_heli"],
+		["torpedo", Vector3(0.40, 0, 0.05), 150, "w_cam_torp"], ["bunker", Vector3(-0.3, 0, 0.12), 300, "w_cam_bunker"]]
 	for sh in shots:
 		var t2: Vector3 = sh[1]
 		t2.y = island.surface_at(t2.x, t2.z)
