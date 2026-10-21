@@ -1,5 +1,7 @@
 class_name XRGame
 extends Node3D
+## The island was rebuilt for another map (main.gd re-points its reference).
+signal map_changed(island: Island)
 ## Meta Quest 3 mixed-reality mode: place the diorama on the real table, walk around
 ## it, and fire weapons FROM YOUR OWN POSITION: the launch platform is the player's
 ## right hand (weapons/weapon_table.gd, weapons/flight.gd, fx/physics_test.gd).
@@ -151,6 +153,11 @@ func _setup_campaign() -> void:
 	phys.resistance.ship_hit.connect(_on_ship_hit)
 	phys.resistance.intercepted.connect(_on_intercepted)
 	phys.resistance.ciws_kill.connect(func(_p: Vector3) -> void: rig.pulse("left", 0.2, 0.03))
+	phys.forces.ship_damaged.connect(func(_p: Vector3, dmg: float) -> void:
+		run.ship_hit(dmg)
+		rig.pulse("left", 0.7, 0.15)
+		_update_board(true))
+	phys.forces.fighter_down.connect(func(_p: Vector3) -> void: rig.pulse("right", 0.4, 0.08))
 	flow = "menu"
 
 
@@ -418,6 +425,31 @@ func open_briefing(id: String) -> void:
 	screen.show_briefing(id)
 
 
+## Build the island of map `id` if another one stands on the table (a few seconds: the
+## screen says so first). Returns true when the map was changed.
+func ensure_map(id: int) -> bool:
+	if island.map_id == id:
+		return false
+	var parent := island.get_parent()
+	var idx := island.get_index()
+	var old := island
+	parent.remove_child(old)
+	old.queue_free()
+	var isl := Island.new()
+	isl.name = "Island"
+	isl.map_id = id
+	parent.add_child(isl)     # _ready builds it
+	parent.move_child(isl, idx)
+	island = isl
+	phys.set_island(isl)
+	room.set_map_light(id)
+	if OS.has_feature("android") or "--quest" in OS.get_cmdline_user_args():
+		for g in isl.find_children("*", "GeometryInstance3D", true, false):
+			(g as GeometryInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	map_changed.emit(isl)
+	return true
+
+
 ## Start (or restart) a stage on a freshly reset island.
 func start_stage(id: String) -> void:
 	var s := Campaign.get_stage(id)
@@ -425,11 +457,20 @@ func start_stage(id: String) -> void:
 		back_to_campaign()
 		return
 	stage_id = id
+	var map := int(Campaign.chapter(int(s.chapter)).get("map", 1))
+	if island.map_id != map:
+		screen.visible = true
+		screen.show_loading(Campaign.map_name(map))
+		await get_tree().process_frame
+		await get_tree().process_frame
+		ensure_map(map)
 	phys.manual = false
 	reset_island()
 	run.start(s, island.props, island.life.alive_count() if island.life else 0)
 	phys.resistance.configure(s)
-	markers.setup_run(run, island.props)
+	phys.forces.configure(s)
+	run.forces = phys.forces
+	markers.setup_run(run, island.props, phys.forces)
 	if island.ship:
 		island.ship.set_jets_aboard(int(ammo.get("jet", 0)))
 	flow = "playing"
@@ -465,6 +506,7 @@ func back_to_campaign() -> void:
 	run.abort()
 	phys.manual = false
 	phys.resistance.clear()
+	phys.forces.clear()
 	reset_island()
 	flow = "menu"
 	markers.clear_all()
@@ -480,6 +522,7 @@ func _end_stage() -> void:
 	if won:
 		progress.record(stage_id, run.stars)
 	phys.resistance.clear()
+	phys.forces.clear()
 	phys.hide_preview()
 	markers.clear_all()
 	var nx := _next_stage_id(stage_id)
@@ -683,6 +726,8 @@ func launch_point_local() -> Vector3:
 
 
 func fire() -> bool:
+	if weapon == "aa":
+		return _fire_aa()
 	var tgt: Variant = locked if locked != null else aim_target
 	if tgt == null:
 		return false
@@ -697,6 +742,19 @@ func fire() -> bool:
 		island.ship.set_jets_aboard(int(ammo[weapon]) - 1)
 	ammo[weapon] = int(ammo[weapon]) - 1
 	cooldown[weapon] = float(w.cooldown)
+	rig.pulse("right", 0.8, 0.07)
+	return true
+
+
+## The anti-air missile needs no aim: it leaves the cells and homes on the nearest
+## enemy fighter in the air (none airborne: it does not fire).
+func _fire_aa() -> bool:
+	if float(cooldown["aa"]) > 0.0 or int(ammo["aa"]) <= 0 or not phys.forces.fire_aa(launch_point_local()):
+		rig.pulse("right", 0.08, 0.02)
+		return false
+	run.on_shot()
+	ammo["aa"] = int(ammo["aa"]) - 1
+	cooldown["aa"] = float(WeaponTable.get_weapon("aa").cooldown)
 	rig.pulse("right", 0.8, 0.07)
 	return true
 
@@ -920,6 +978,12 @@ func aim_at(origin: Vector3, dir: Vector3) -> Variant:
 				aim_target = _snap(hit)
 				world_hit = diorama.global_transform * (aim_target as Vector3)
 	var tgt: Variant = locked if locked != null else aim_target
+	if weapon == "aa":
+		# no aiming: the missile picks its own target in the air
+		if _aim_key.x != INF:
+			phys.hide_preview()
+			_aim_key = Vector4(INF, INF, INF, INF)
+		return world_hit
 	if tgt == null:
 		if _aim_key.x != INF:
 			phys.hide_preview()

@@ -27,7 +27,7 @@ extends RefCounted
 ##               deck; a jet is back only when it has landed: reload 0)
 ##   nuke        nuclear test: everything within `nuke_r` is destroyed, mushroom cloud
 
-const IDS := ["ballistic", "cruise", "artillery", "mlrs", "cluster", "hypersonic", "bunker", "drone", "antiship", "jet", "swarm", "nuke"]
+const IDS := ["ballistic", "cruise", "artillery", "mlrs", "cluster", "hypersonic", "bunker", "drone", "antiship", "jet", "swarm", "aa", "nuke"]
 
 const WEAPONS := {
 	"ballistic": {
@@ -94,6 +94,13 @@ const WEAPONS := {
 		"salvo": 6, "spread": 0.022, "salvo_gap": 0.22,
 		"trail": 0.3, "trail_col": Color(0.9, 0.9, 0.9, 0.12),
 		"length": 0.0017, "radius": 0.0003, "col": Color(0.74, 0.76, 0.72),
+	},
+	"aa": {
+		"id": "aa", "name_ar": "صاروخ دفاع جوي", "name_en": "Anti-air missile",
+		"arc": "lofted", "flight": [1.0, 1.4], "blast": 0.4, "ejecta": 6, "homing_air": true,
+		"cooldown": 2.0, "ammo": 6, "reload": 10.0, "glow": false,
+		"trail": 0.02, "trail_col": Color(0.92, 0.92, 0.90, 0.5),
+		"length": 0.0024, "radius": 0.00035, "col": Color(0.92, 0.92, 0.88),
 	},
 	"antiship": {
 		"id": "antiship", "name_ar": "صاروخ مضاد للسفن", "name_en": "Anti-ship missile",

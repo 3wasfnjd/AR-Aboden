@@ -74,6 +74,22 @@ func set_ops() -> void:
 		get_viewport().transparent_bg = false
 
 
+## The light of each map: 1 = midday, 2 = late afternoon (low warm sun, warmer ambient).
+func set_map_light(map_id: int) -> void:
+	if map_id == 2:
+		sun.rotation = Vector3(deg_to_rad(-24.0), deg_to_rad(-120.0), 0)
+		sun.light_color = Color(1.0, 0.80, 0.58)
+		sun.light_energy = 1.2
+		env.ambient_light_color = Color(0.92, 0.84, 0.78)
+		env.ambient_light_energy = 0.7
+	else:
+		sun.rotation = Vector3(deg_to_rad(-47.0), deg_to_rad(-38.0), 0)
+		sun.light_color = Color(1.0, 0.94, 0.84)
+		sun.light_energy = 1.05
+		env.ambient_light_color = Color(0.70, 0.76, 0.86)
+		env.ambient_light_energy = 0.55
+
+
 func apply_quest() -> void:
 	quest = true
 	env.glow_enabled = false

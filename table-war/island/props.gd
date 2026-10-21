@@ -337,6 +337,10 @@ func _place_harbour() -> void:
 func breakwater_points() -> PackedVector2Array:
 	var L := layout
 	var pts := PackedVector2Array([Vector2(L.harbour_x1 + 0.004, L.quay_z - 0.004), Vector2(L.harbour_x1 + 0.012, L.quay_z + 0.025), Vector2(L.harbour_x1 + 0.0, L.basin_z + 0.01), Vector2(L.harbour_x1 - 0.022, L.basin_z + 0.016)])
+	if L.mirror:
+		# the breakwater guards the harbour's west end on a mirrored map
+		for k in pts.size():
+			pts[k].x = L.harbour_x0 + L.harbour_x1 - pts[k].x
 	return IslandLayout.catmull(pts, 0.0035)
 
 
@@ -480,17 +484,19 @@ func _place_refinery() -> void:
 	add_structure("pipe_rack", c + Vector2(sz.x * 0.05, sz.y * 0.20), 0.0, Vector3(sz.x * 0.8, 0.004, 0.004), Toon.STEEL)
 	# tanker jetty: east from the refinery into deep water, the tanker alongside
 	var jz := c.y - sz.y * 0.05
-	var jx0 := c.x + sz.x * 0.5
+	# the jetty runs out to sea from the refinery's seaward side (east; west when mirrored)
+	var ex := -1.0 if layout.mirror else 1.0
+	var jx0 := c.x + sz.x * 0.5 * ex
 	var jx1 := jx0
-	while jx1 < jx0 + 0.09 and _hs(jx1, jz) > -0.006:
-		jx1 += 0.002
-	jx1 += 0.004
+	while absf(jx1 - jx0) < 0.09 and _hs(jx1, jz) > -0.006:
+		jx1 += 0.002 * ex
+	jx1 += 0.004 * ex
 	var sea := IslandTerrain.SEA
 	structures.append({"kind": "jetty", "pos": Vector3((jx0 + jx1) * 0.5, sea + 0.0018, jz), "rot": PI * 0.5,
 		"size": Vector3(0.004, 0.0008, jx1 - jx0), "col": Arch.CONCRETE, "seed": 19,
 		"alive": true, "fragile": true, "sink": 0.0, "ruin": false})
 	placed.append({"kind": "jetty", "pos": Vector3(jx1, sea, jz), "water_ok": true, "sink": 0.0, "ground_min": 0.0})
-	_add_ship("tanker", Vector2(jx1 + 0.022, jz - 0.012), PI * 0.5, Vector3(0.09, 0.006, 0.016))
+	_add_ship("tanker", Vector2(jx1 + 0.022 * ex, jz - 0.012), PI * 0.5, Vector3(0.09, 0.006, 0.016))
 
 
 ## Desalination plant beside the power station: process trains + blue water tanks.
@@ -521,16 +527,16 @@ func _place_army() -> void:
 func _place_ships() -> void:
 	var L := layout
 	_add_ship("cargo", Vector2(L.harbour_x0 + Scale.m(95.0), L.quay_z + Scale.m(13.0)), 0.0, Vector3(0.085, 0.006, 0.015))
-	_add_ship("cargo", Vector2(0.24, 0.33), deg_to_rad(-20.0), Vector3(0.09, 0.006, 0.016))
-	_add_ship("frigate", Vector2(-0.06, 0.34), deg_to_rad(15.0), Vector3(0.06, 0.006, 0.010))
-	_add_ship("frigate", Vector2(-0.07, -0.33), deg_to_rad(170.0), Vector3(0.065, 0.006, 0.011))
-	_add_ship("frigate", Vector2(-0.40, -0.18), deg_to_rad(120.0), Vector3(0.055, 0.006, 0.0095))
+	_add_ship("cargo", L.mx(Vector2(0.24, 0.33)), L.mrot(deg_to_rad(-20.0)), Vector3(0.09, 0.006, 0.016))
+	_add_ship("frigate", L.mx(Vector2(-0.06, 0.34)), L.mrot(deg_to_rad(15.0)), Vector3(0.06, 0.006, 0.010))
+	_add_ship("frigate", L.mx(Vector2(-0.07, -0.33)), L.mrot(deg_to_rad(170.0)), Vector3(0.065, 0.006, 0.011))
+	_add_ship("frigate", L.mx(Vector2(-0.40, -0.18)), L.mrot(deg_to_rad(120.0)), Vector3(0.055, 0.006, 0.0095))
 	var small := [[Vector2(L.pier_x - Scale.m(9.0), L.quay_z + Scale.m(30.0)), deg_to_rad(90), Color(0.95, 0.95, 0.93)],
 		[Vector2(L.pier_x + Scale.m(11.0), L.quay_z + Scale.m(60.0)), deg_to_rad(-90), Color(0.92, 0.35, 0.25)],
-		[Vector2(0.06, 0.29), deg_to_rad(30), Color(0.95, 0.75, 0.30)],
-		[Vector2(-0.30, 0.25), deg_to_rad(-60), Color(0.30, 0.60, 0.95)],
-		[Vector2(0.40, -0.18), deg_to_rad(150), Color(0.55, 0.62, 0.66)],
-		[Vector2(-0.18, -0.30), deg_to_rad(40), Color(0.95, 0.95, 0.93)]]
+		[L.mx(Vector2(0.06, 0.29)), L.mrot(deg_to_rad(30)), Color(0.95, 0.75, 0.30)],
+		[L.mx(Vector2(-0.30, 0.25)), L.mrot(deg_to_rad(-60)), Color(0.30, 0.60, 0.95)],
+		[L.mx(Vector2(0.40, -0.18)), L.mrot(deg_to_rad(150)), Color(0.55, 0.62, 0.66)],
+		[L.mx(Vector2(-0.18, -0.30)), L.mrot(deg_to_rad(40)), Color(0.95, 0.95, 0.93)]]
 	for b in small:
 		_add_ship("boat", b[0], b[1], Vector3(0.016, 0.003, 0.005), b[2])
 

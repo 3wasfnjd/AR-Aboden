@@ -83,6 +83,9 @@ func _ready() -> void:
 	add_child(diorama)
 	island = Island.new()
 	island.name = "Island"
+	for a in args:
+		if a.begins_with("--map="):
+			island.map_id = int(a.trim_prefix("--map="))
 	diorama.add_child(island)
 	phys = PhysicsTest.new()
 	phys.name = "PhysicsTest"
@@ -94,10 +97,13 @@ func _ready() -> void:
 		# build 14: the campaign in VR (the operations room); --mr keeps the old
 		# mixed-reality placement test flow
 		XRGame.campaign_vr = not ("--mr" in args)
+		# test build: every built chapter open (the store build asks Store.owns)
+		Progress.unlock_all = true
 		xr_game = XRGame.new()
 		xr_game.name = "XRGame"
 		add_child(xr_game)
 		xr_game.setup(room, diorama, island, phys)
+		xr_game.map_changed.connect(func(isl: Island) -> void: island = isl)
 		if xr_game.start():
 			print("XR: OpenXR session starting (mixed-reality placement)")
 			return
@@ -117,6 +123,8 @@ func _ready() -> void:
 		_run_stats.call_deferred()
 	elif "--mr-preview" in args:
 		_run_mr_preview.call_deferred()
+	elif "--map-shot" in args:
+		_run_map_shot.call_deferred()
 	elif "--vr-preview" in args:
 		_run_vr_preview.call_deferred()
 
@@ -388,6 +396,7 @@ func _run_vr_preview() -> void:
 	x.name = "XRGamePreview"
 	add_child(x)
 	x.setup(room, diorama, island, phys)
+	x.map_changed.connect(func(isl: Island) -> void: island = isl)
 	x.progress = Progress.new()
 	x.rig.sim = true
 	x.set_mode("vr")
@@ -405,6 +414,8 @@ func _run_vr_preview() -> void:
 		["v_briefing3", Vector3(0.0, 1.35, -2.0), "brief3"],
 		["v_play", Vector3(0.0, 0.8, -1.0), "play"],
 		["v_debrief", Vector3(0.0, 1.35, -2.0), "debrief"],
+		["v_forces", Vector3(0.0, 0.75, -1.0), "forces"],
+		["v_forces2", Vector3(0.0, 0.75, -1.0), "forces2"],
 		["v_nuke1", Vector3(0.0, 0.85, -1.0), "nuke:1.0"],
 		["v_nuke2", Vector3(0.0, 0.85, -1.0), "nuke:3.0"],
 		["v_nuke3", Vector3(0.0, 0.85, -1.0), "nuke:6.0"],
@@ -430,6 +441,16 @@ func _run_vr_preview() -> void:
 				for k in 70:
 					phys.advance(1.0 / 60.0)
 				x._update_board(true)
+			"forces":
+				Progress.unlock_all = true
+				await x.start_stage("c2s5")
+				phys.manual = true
+				for k in 60 * 16:
+					phys.advance(1.0 / 60.0)
+				x._update_board(true)
+			"forces2":
+				for k in 60 * 9:
+					phys.advance(1.0 / 60.0)
 			"debrief":
 				for st in island.props.structures:
 					if st.kind == "radar_sphere":
@@ -462,6 +483,16 @@ func _run_vr_preview() -> void:
 		img.save_png(out.path_join(String(sh[0]) + ".png"))
 		print("vr-preview: ", sh[0])
 		c.queue_free()
+	get_tree().quit()
+
+
+## Top and hero views of the current map (shots/m<id>_top.png, m<id>_hero.png).
+func _run_map_shot() -> void:
+	hud.visible = false
+	for v in [["top", "top"], ["hero", "hero"]]:
+		_apply_preset(v[0])
+		await _frames(6)
+		await _capture("m%d_%s" % [island.map_id, v[1]])
 	get_tree().quit()
 
 

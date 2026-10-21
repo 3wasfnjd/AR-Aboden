@@ -417,6 +417,7 @@ func _initialize() -> void:
 	phys.debris.clear()
 	phys.fx.clear()
 	_campaign_tests(island, phys)
+	await _map2_tests()
 	await _xr_tests(island, phys)
 
 	print("RESULT ", "OK" if failures == 0 else "FAILED (%d)" % failures)
@@ -442,9 +443,11 @@ func _campaign_tests(island: Island, phys: PhysicsTest) -> void:
 			if not Campaign.is_built(s):
 				continue
 			var run := StageRun.new()
+			phys.forces.configure(s)
 			run.start(s, island.props)
+			run.forces = phys.forces
 			var pr := run.progress(island.props)
-			if int(pr[1]) <= 0:
+			if int(pr[1]) <= 0 and not bool(s.get("survive", false)):
 				bad.append("%s: no target on the island" % s.id)
 			if int(c.n) > 0 and (not s.has("brief") or (s.brief as Array).is_empty() or not s.has("won") or not s.has("failed")):
 				bad.append("%s: no briefing / debrief" % s.id)
@@ -452,7 +455,8 @@ func _campaign_tests(island: Island, phys: PhysicsTest) -> void:
 				if not Campaign.TEAM.has(line[0]):
 					bad.append("%s: unknown speaker %s" % [s.id, line[0]])
 	check("campaign: 5 chapters, 5 stages each (9 drills), every built stage has targets and a briefing", bad.is_empty() and Campaign.CHAPTERS.size() == 5, str(bad))
-	check("campaign: chapters 0-1 built and free, 2-4 sold", Campaign.chapter(1).free and Campaign.chapter(1).built and not Campaign.chapter(2).free and not Campaign.chapter(4).free)
+	phys.forces.clear()
+	check("campaign: chapters 0-1 free, 2-4 sold; chapters 0-2 built (chapter 2 on Crescent Island)", Campaign.chapter(1).free and Campaign.chapter(1).built and Campaign.chapter(2).built and int(Campaign.chapter(2).map) == 2 and not Campaign.chapter(2).free and not Campaign.chapter(4).free)
 
 	# progress: order, the purchase gate, unlock_all
 	var pg := Progress.new()
@@ -461,7 +465,7 @@ func _campaign_tests(island: Island, phys: PhysicsTest) -> void:
 	pg.best["c1s1"] = 2
 	ok_order = ok_order and pg.stage_state(c1[1]) == "open" and pg.next_stage() == "c1s2"
 	var c2 := Campaign.stages_of(2)
-	var gate := pg.stage_state(c2[0]) == "soon" and not pg.owns(2) and pg.owns(1) and pg.owns(0)
+	var gate := pg.stage_state(c2[0]) == "buy" and pg.stage_state(Campaign.stages_of(3)[0]) == "soon" and not pg.owns(2) and pg.owns(1) and pg.owns(0)
 	Progress.unlock_all = true
 	gate = gate and pg.owns(3) and pg.stage_state(c1[4]) == "open"
 	Progress.unlock_all = false
@@ -556,6 +560,98 @@ func _campaign_tests(island: Island, phys: PhysicsTest) -> void:
 	res.clear()
 	phys.reset_island()
 	check("no launchers left: no more enemy missiles", none)
+	# --- build 18: the Viper's mobile forces ---------------------------------------
+	phys.reset_island()
+	var fo := phys.forces
+	fo.configure({"forces": {"tank": 2, "apc": 1, "spaa": 1, "mlauncher": 1, "fighter": 2, "air": 6.0}})
+	phys.resistance.configure({"sam": false, "coastal": 12.0})
+	var p0s: Array = []
+	for u in fo.units:
+		p0s.append(u.p)
+	var dmg := [0.0]
+	var on_dmg := func(_p: Vector3, d: float) -> void: dmg[0] += d
+	fo.ship_damaged.connect(on_dmg)
+	var hits_f := [0]
+	var on_hf := func(_p: Vector3) -> void: hits_f[0] += 1
+	phys.resistance.ship_hit.connect(on_hf)
+	var took_off := false
+	var on_land_ok := true
+	for f in 72 * 40:
+		phys.advance(1.0 / 72.0)
+		for u in fo.units:
+			if u.kind == "fighter" and u.state != "parked":
+				took_off = true
+			if u.kind in EnemyForces.ARMOR and absf((u.p as Vector3).y - island.surface_at(u.p.x, u.p.z)) > 1e-4:
+				on_land_ok = false
+	var moved := 0
+	for k in fo.units.size():
+		if fo.units[k].kind in EnemyForces.ARMOR and (fo.units[k].p as Vector3).distance_to(p0s[k]) > 0.01:
+			moved += 1
+	fo.ship_damaged.disconnect(on_dmg)
+	phys.resistance.ship_hit.disconnect(on_hf)
+	check("enemy armour patrols on the ground (%d of 5 moved), tanks shell the ship (%.0f damage), fighters take off, launchers and jets fire missiles (%d hits)" % [moved, dmg[0], hits_f[0]],
+		moved >= 4 and dmg[0] > 0.0 and took_off and hits_f[0] >= 1 and on_land_ok)
+	# our anti-air missile homes on an airborne fighter and aa_downs it
+	var aa_downs := [0]
+	var on_aa_down := func(_p: Vector3) -> void: aa_downs[0] += 1
+	fo.fighter_down.connect(on_aa_down)
+	var air := fo.airborne()
+	var fired_aa := false
+	for f in 72 * 20:
+		if not fired_aa and not fo.airborne().is_empty():
+			fired_aa = fo.fire_aa(island.ship.launch_point("aa"))
+		phys.advance(1.0 / 72.0)
+		if aa_downs[0] > 0:
+			break
+	fo.fighter_down.disconnect(on_aa_down)
+	var none_aa := false
+	for u in fo.units:
+		if u.kind == "fighter":
+			u.state = "parked"
+	none_aa = not fo.fire_aa(Vector3.ZERO)
+	check("anti-air missile: homes on a fighter in the air and downs it; nothing in the air, no launch", fired_aa and aa_downs[0] == 1 and none_aa, "air %d" % air.size())
+	# a blast kills the tank under it, leaving a wreck
+	var tank: Dictionary = {}
+	for u in fo.units:
+		if u.kind == "tank" and u.alive:
+			tank = u
+	var tp: Vector3 = tank.p
+	fo.on_blast(tp, 0.01)
+	check("a blast on a tank destroys it", not tank.alive and fo.kills.get("tank", 0) >= 1)
+	# the mobile anti-aircraft gun shoots at a slow drone passing over it
+	fo.configure({"forces": {"spaa": 1}})
+	var sp: Vector3 = fo.units[0].p
+	var shot0 := phys.resistance.shots_down
+	for k in 8:
+		var dt_ := Vector3(sp.x + 0.03, 0.0, sp.z + 0.01)
+		dt_.y = island.surface_at(dt_.x, dt_.z)
+		phys.fire(dt_, Vector3.INF, "drone")
+		for f in 72 * 9:
+			phys.advance(1.0 / 72.0)
+			if not phys.flying:
+				break
+	check("mobile anti-aircraft gun shoots down some drones passing over it (%d of 8)" % (phys.resistance.shots_down - shot0), phys.resistance.shots_down - shot0 >= 1)
+	fo.clear()
+	phys.resistance.clear()
+	phys.reset_island()
+	# survive and protect rules
+	var rs := StageRun.new()
+	rs.start(Campaign.get_stage("c2s5"), island.props)
+	rs.step(10.0, island.props)
+	var mid := rs.running
+	rs.step(200.0, island.props)
+	var rp := StageRun.new()
+	rp.start(Campaign.get_stage("c2s4"), island.props)
+	for stc in island.props.structures:
+		if stc.kind == "desal":
+			stc.alive = false
+			break
+	rp.step(0.1, island.props)
+	for stc in island.props.structures:
+		if stc.kind == "desal":
+			stc.alive = true
+	check("survive stage won by holding out; protect stage fails if the desalination plant is hit", mid and rs.result == "won" and rp.result == "failed" and rp.fail_reason == "protect")
+
 	# the nuclear cloud rises to the top of the dome and stays under the glass
 	phys.fx.clear()
 	var np0 := Vector3(0.05, 0.0, 0.0)
@@ -597,6 +693,35 @@ func _campaign_tests(island: Island, phys: PhysicsTest) -> void:
 		far_s = maxf(far_s, Vector2((q as Vector3).x - stgt.x, (q as Vector3).z - stgt.z).length())
 	check("drone swarm: 6 drones, 6 small blasts within %.0f mm of the target (%d)" % [far_s * 1000.0, phys.impact_count - imp_s], phys.impact_count - imp_s == 6 and far_s < 0.035 and WeaponTable.IDS.has("swarm"))
 	phys.reset_island()
+
+
+## Crescent Island (map 2): builds, mirrored plan, the battleship in deep water, every
+## chapter-2 objective present.
+func _map2_tests() -> void:
+	var m2 := Island.new()
+	m2.map_id = 2
+	root.add_child(m2)
+	await process_frame
+	var sp2 := m2.ship.position
+	var deep := m2.terrain.height_at(sp2.x, sp2.z) < IslandTerrain.SEA - 0.006
+	var m2p := PhysicsTest.new()
+	root.add_child(m2p)
+	m2p.setup(m2)
+	m2p.manual = true
+	var miss: Array = []
+	for s in Campaign.stages_of(2):
+		m2p.forces.configure(s)
+		var r2 := StageRun.new()
+		r2.start(s, m2.props)
+		r2.forces = m2p.forces
+		if int(r2.progress(m2.props)[1]) <= 0 and not bool(s.get("survive", false)):
+			miss.append(s.id)
+	var town2 := m2.layout.town_center
+	check("map 2 (Crescent Island): mirrored plan (town at x %.2f), %d structures, ship in deep water, every chapter-2 objective on it %s" % [town2.x, m2.props.structures.size(), miss],
+		m2.layout.mirror and town2.x < 0.0 and m2.props.structures.size() > 250 and deep and miss.is_empty())
+	m2p.queue_free()
+	m2.queue_free()
+	await process_frame
 
 
 func pulses_of(x: XRGame) -> int:
@@ -1125,6 +1250,17 @@ func _xr_tests(island: Island, phys: PhysicsTest) -> void:
 	qp.show_marker(far, false, "artillery")
 	check("aiming ring turns yellow with civilians inside the blast (town %d), stays orange over the radar" % qp.last_marker_civilians, warn and qp.marker.material_override != qp._mat_warn)
 	qp.hide_preview()
+	# a chapter-2 stage builds Crescent Island in place of the first island, then plays
+	Progress.unlock_all = true
+	xg3.start_stage("c2s1")
+	for k in 4:
+		await process_frame
+	var isl2: Island = xg3.island
+	check("chapter 2 stage: the screen says LOADING, Crescent Island replaces the island on the table, the convoy is out",
+		isl2.map_id == 2 and isl2.get_parent() == qd and qp.island == isl2 and xg3.flow == "playing" and qp.forces.alive(["apc", "tank"]) == 5 and xg3.run.progress(isl2.props)[1] == 5,
+		"map %d flow %s parent %s phys %s alive %d prog %s" % [isl2.map_id, xg3.flow, isl2.get_parent() == qd, qp.island == isl2, qp.forces.alive(["apc", "tank"]), xg3.run.progress(isl2.props)])
+	xg3.back_to_campaign()
+	Progress.unlock_all = false
 	xg3.rig.sim = false
 	xg3.queue_free()
 	room3.queue_free()

@@ -46,9 +46,18 @@ static func _arrow() -> Mesh:
 	return st.commit()
 
 
-## Mark the objective of `run` on `props`.
-func setup_run(run: StageRun, props: IslandProps) -> void:
+var forces: EnemyForces
+var force_kinds: Array = []
+
+
+## Mark the objective of `run` on `props` (and the enemy units it names).
+func setup_run(run: StageRun, props: IslandProps, f: EnemyForces = null) -> void:
 	targets.clear()
+	forces = f
+	force_kinds = []
+	for k in run.stage.get("kinds", []):
+		if k in EnemyForces.KINDS:
+			force_kinds.append(k)
 	for st in props.structures:
 		if run.is_target(String(st.kind)):
 			targets.append(st)
@@ -57,6 +66,7 @@ func setup_run(run: StageRun, props: IslandProps) -> void:
 
 func clear_all() -> void:
 	targets.clear()
+	force_kinds = []
 	multimesh.visible_instance_count = 0
 
 
@@ -74,6 +84,14 @@ func refresh(dt: float) -> void:
 		var b := Basis(Vector3.UP, _t * 1.5 + n).scaled(Vector3.ONE * SIZE)
 		multimesh.set_instance_transform(n, Transform3D(b, p + Vector3(0, LIFT + bob, 0)))
 		n += 1
+	if forces and not force_kinds.is_empty():
+		for u in forces.units:
+			if not u.alive or not (u.kind in force_kinds) or n >= MAX:
+				continue
+			var q: Vector3 = u.p
+			var b2 := Basis(Vector3.UP, _t * 1.5 + n).scaled(Vector3.ONE * SIZE * 0.8)
+			multimesh.set_instance_transform(n, Transform3D(b2, q + Vector3(0, 0.018 + 0.003 * sin(_t * 2.4 + n), 0)))
+			n += 1
 	multimesh.visible_instance_count = n
 
 

@@ -49,12 +49,13 @@ const DESC := {
 	"antiship": "يطير ملاصقًا لسطح البحر · قوي على السفن",
 	"jet": "تقلع من البارجة وتضرب الهدف بأربع قنابل ثم تعود (الرحلة تطول)",
 	"swarm": "6 مسيّرات صغيرة تتوزع على الهدف · دقيقة · انفجارات صغيرة",
+	"aa": "يلاحق أقرب طائرة معادية في الجو ويسقطها · ما يحتاج تصويب",
 	"nuke": "تجربة نووية · يدمر كل شيء في دائرة واسعة",
 }
 const CODES := {"ballistic": "BM-1  BALLISTIC", "cruise": "CM-2  CRUISE", "artillery": "AR-3  ARTILLERY",
 	"mlrs": "RS-4  MLRS x8", "cluster": "CL-5  CLUSTER", "hypersonic": "HG-6  HYPERSONIC",
 	"bunker": "BB-7  BUNKER BUSTER", "drone": "UV-8  KAMIKAZE DRONE", "antiship": "AS-9  ANTI-SHIP",
-	"jet": "FJ-11  STRIKE JET", "swarm": "SW-12  DRONE SWARM x6", "nuke": "N-10  NUCLEAR TEST"}
+	"jet": "FJ-11  STRIKE JET", "swarm": "SW-12  DRONE SWARM x6", "aa": "AA-13  ANTI-AIR", "nuke": "N-10  NUCLEAR TEST"}
 
 var buttons: Array[Dictionary] = []   # {id, rect: Rect2 (panel-local, metres), bg, mat, kind}
 var hover := ""
@@ -299,6 +300,13 @@ func _icon(id: String) -> MeshInstance3D:
 				tri.call(Vector2(0, s * 0.2), Vector2(cos(a1) * s * 0.5, sin(a1) * s * 0.85 + s * 0.2), Vector2(cos(a0) * s * 0.5, sin(a0) * s * 0.85 + s * 0.2))
 			tri.call(Vector2(-s * 0.18, -s * 0.5), Vector2(-s * 0.6, -s * 1.2), Vector2(s * 0.6, -s * 1.2))
 			tri.call(Vector2(-s * 0.18, -s * 0.5), Vector2(s * 0.6, -s * 1.2), Vector2(s * 0.18, -s * 0.5))
+		"aa":
+			# a missile climbing at a jet silhouette
+			tri.call(Vector2(-s * 0.2, s * 1.4), Vector2(-s * 0.45, s * 0.6), Vector2(s * 0.05, s * 0.6))
+			tri.call(Vector2(-s * 0.45, s * 0.6), Vector2(-s * 0.45, -s * 1.2), Vector2(s * 0.05, s * 0.6))
+			tri.call(Vector2(s * 0.05, s * 0.6), Vector2(-s * 0.45, -s * 1.2), Vector2(s * 0.05, -s * 1.2))
+			tri.call(Vector2(s * 1.5, s * 1.2), Vector2(s * 0.6, s * 0.9), Vector2(s * 0.75, s * 1.45))
+			tri.call(Vector2(s * 1.5, s * 1.2), Vector2(s * 0.9, s * 0.7), Vector2(s * 1.0, s * 1.15))
 		"swarm":
 			# three small deltas in formation
 			for c in [Vector2(s * 0.7, s * 0.5), Vector2(-s * 0.5, s * 0.9), Vector2(-s * 0.3, -s * 0.7)]:

@@ -3,7 +3,9 @@ extends Node3D
 ## Builds the whole diorama: terrain -> props (stamps AO) -> terrain mesh ->
 ## water -> base. Exposes the queries the physics test needs.
 
-var layout := IslandLayout.new()
+## Which map to build (IslandLayout.for_map); set before adding to the tree.
+var map_id := 1
+var layout: IslandLayout
 var terrain: IslandTerrain
 var props: IslandProps
 var water: IslandWater
@@ -20,6 +22,7 @@ func _ready() -> void:
 
 func build() -> void:
 	var t0 := Time.get_ticks_msec()
+	layout = IslandLayout.for_map(map_id)
 	terrain = IslandTerrain.new()
 	terrain.name = "Terrain"
 	add_child(terrain)
@@ -44,6 +47,7 @@ func build() -> void:
 	life.build(self)
 	ship = PlayerShip.new()
 	add_child(ship)
+	ship.pos = layout.ship_pos
 	ship.build()
 	dome = GlassDome.new()
 	add_child(dome)

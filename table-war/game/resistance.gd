@@ -220,7 +220,14 @@ func fire_coastal() -> bool:
 	if sites.is_empty():
 		return false
 	var s: Array = sites[rng.randi() % sites.size()]
-	var from: Vector3 = (s[1] as Vector3) + Vector3(0, 0.006, 0)
+	return launch_at_ship((s[1] as Vector3) + Vector3(0, 0.006, 0))
+
+
+## An anti-ship missile from `from` (a coastal site, a mobile launcher, a fighter) at the
+## battleship. False if there is no ship or too many are already flying.
+func launch_at_ship(from: Vector3) -> bool:
+	if phys.island.ship == null or _missiles.size() >= MAX_MISSILES:
+		return false
 	var ship: PlayerShip = phys.island.ship
 	var to := ship.transform * Vector3(rng.randf_range(-0.04, 0.04), PlayerShip.FB + 0.002, 0.0)
 	var w := WeaponTable.get_weapon("antiship")

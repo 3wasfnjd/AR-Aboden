@@ -11,7 +11,8 @@ extends RefCounted
 ##   2 stars   1-2 casualties
 ##   1 star    3 or more (below the fail limit)
 ## The stage FAILS when casualties reach civ_fail (default Campaign.CIV_FAIL), when the
-## time runs out, or when the battleship's hull reaches 0.
+## time runs out, when the battleship's hull reaches 0, or when a structure it must
+## protect ("protect": kinds) is destroyed. A "survive" stage is won by holding out.
 
 const CIVIL := ["house", "villa", "midrise", "skyscraper", "mall", "stadium"]
 const CIVIL_BOATS := ["boat"]
@@ -32,6 +33,9 @@ var enemy_hits := 0
 var _civ_struct0 := 0
 var _life0 := 0
 var civ_life := 0                # people / cars killed since the start (set by the caller)
+## The Viper's mobile forces (EnemyForces), counted by objectives that name their kinds
+## (tank, apc, spaa, mlauncher, fighter).
+var forces: EnemyForces
 
 
 func start(s: Dictionary, props: IslandProps, life_alive := 0) -> void:
@@ -80,7 +84,9 @@ func progress(props: IslandProps) -> Array:
 	var tot := 0
 	for st in props.structures:
 		var ok := false
-		if stage.has("kinds") and st.kind in stage.kinds:
+		# a kind named by the enemy forces (tank, apc...) means the moving units, not a
+		# parked structure of the same name
+		if stage.has("kinds") and st.kind in stage.kinds and not (st.kind in EnemyForces.KINDS):
 			ok = true
 		if stage.has("cats") and IslandProps.TARGETS.has(st.kind) and IslandProps.TARGETS[st.kind][0] in stage.cats:
 			ok = true
@@ -88,11 +94,30 @@ func progress(props: IslandProps) -> Array:
 			tot += 1
 			if not st.alive:
 				hit += 1
+	if forces and stage.has("kinds"):
+		var fk: Array = []
+		for k in stage.kinds:
+			if k in EnemyForces.KINDS:
+				fk.append(k)
+		if not fk.is_empty():
+			var n := forces.count(fk)
+			tot += n
+			hit += n - forces.alive(fk)
 	return [hit, tot]
 
 
+## Structures that must survive the stage (option "protect": kinds) are all standing.
+func protected_ok(props: IslandProps) -> bool:
+	if not stage.has("protect"):
+		return true
+	for st in props.structures:
+		if st.kind in stage.protect and not st.alive:
+			return false
+	return true
+
+
 func is_target(kind: String) -> bool:
-	if stage.has("kinds") and kind in stage.kinds:
+	if stage.has("kinds") and kind in stage.kinds and not (kind in EnemyForces.KINDS):
 		return true
 	return stage.has("cats") and IslandProps.TARGETS.has(kind) and IslandProps.TARGETS[kind][0] in stage.cats
 
@@ -128,6 +153,13 @@ func step(dt: float, props: IslandProps) -> bool:
 		return _finish(false, "civilians", civ)
 	if hull <= 0.0:
 		return _finish(false, "ship", civ)
+	if not protected_ok(props):
+		return _finish(false, "protect", civ)
+	if bool(stage.get("survive", false)):
+		# hold out: won when the clock runs out with the ship afloat
+		if time_left <= 0.0:
+			return _finish(true, "", civ)
+		return false
 	var pr := progress(props)
 	if int(pr[1]) > 0 and int(pr[0]) >= int(pr[1]):
 		return _finish(true, "", civ)

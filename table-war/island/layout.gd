@@ -4,6 +4,14 @@ extends RefCounted
 ## origin = slab centre). Terrain shaping (pads, road grading) and prop
 ## placement both read from here so they always agree.
 
+## Which map (build 18): 1 = Sabkha Island (the original plan), 2 = Crescent Island (the
+## plan mirrored east-west: base, town, refinery and harbour swap sides; new land: a
+## north-east peninsula and an islet; a higher ridge). for_map(id) builds one.
+var map_id := 1
+var mirror := false
+## The player's battleship (island-local x, z), in deep water behind the mountain.
+var ship_pos := Vector2(0.17, -0.365)
+
 # Land blobs: (cx, cz, rx, rz). Island mask = smooth union of ellipses + noise.
 var blobs: Array[Vector4] = [
 	Vector4(0.02, 0.02, 0.36, 0.22),    # main body
@@ -133,11 +141,11 @@ func _init() -> void:
 	roads.append(PackedVector2Array([Vector2(0.255, 0.094), Vector2(0.262, 0.118), Vector2(0.27, 0.141)]))
 	# build 3: a full toy city with a street grid (absolute table coordinates); the old
 	# town roads stop at the city edge, the grid takes over inside
-	town_center = CITY_C
+	town_center = city_c
 	town_radius = CITY_R
 	var kept: Array[PackedVector2Array] = []
 	for r in roads:
-		kept.append_array(_clip_outside(r, CITY_C, CITY_R * 0.97))
+		kept.append_array(_clip_outside(r, city_c, CITY_R * 0.97))
 	roads = kept
 	for k in range(-5, 6):
 		for axis in 2:
@@ -145,8 +153,8 @@ func _init() -> void:
 			var half := sqrt(maxf(CITY_R * CITY_R * 1.02 - off * off, 0.0))
 			if half < 0.03:
 				continue
-			var a := CITY_C + (Vector2(off, -half) if axis == 0 else Vector2(-half, off))
-			var b := CITY_C + (Vector2(off, half) if axis == 0 else Vector2(half, off))
+			var a := city_c + (Vector2(off, -half) if axis == 0 else Vector2(-half, off))
+			var b := city_c + (Vector2(off, half) if axis == 0 else Vector2(half, off))
 			roads.append(PackedVector2Array([a, a.lerp(b, 0.5), b]))
 	# refinery -> main road, desalination plant spur, army camp road
 	roads.append(PackedVector2Array([Vector2(0.30, 0.067), Vector2(0.32, 0.07)]))
@@ -168,7 +176,7 @@ var sandbar_b := Vector2(-0.235, 0.30)
 var plant_center := Vector2(0.272, 0.150)
 var plant_size := Vector2(0.074, 0.044)
 # build 3: toy city, oil refinery (east cape), desalination plant, army camp (north)
-const CITY_C := Vector2(0.07, 0.055)
+var city_c := Vector2(0.07, 0.055)
 const CITY_R := 0.125
 const CITY_PITCH := 0.03          # street grid: 3 cm blocks
 var refinery_center := Vector2(0.335, 0.026)
@@ -184,6 +192,106 @@ var tracks: Array[PackedVector2Array] = [
 	PackedVector2Array([Vector2(0.12, 0.03), Vector2(0.16, -0.02), Vector2(0.22, -0.05), Vector2(0.27, -0.045), Vector2(0.31, -0.02)]),
 	PackedVector2Array([Vector2(0.34, 0.06), Vector2(0.36, 0.11), Vector2(0.33, 0.15)]),
 ]
+
+
+static func for_map(id: int) -> IslandLayout:
+	var L := IslandLayout.new()
+	if id == 2:
+		L.map_id = 2
+		L.mirror_x()
+		L.blobs.append(Vector4(0.27, -0.25, 0.11, 0.055))   # north-east peninsula
+		L.blobs.append(Vector4(0.36, 0.29, 0.045, 0.032))   # south-east islet
+		L.ridge_peak = 0.058
+	return L
+
+
+## x of a plan point on this map (mirrored maps flip east-west).
+func mx(p: Vector2) -> Vector2:
+	return Vector2(-p.x, p.y) if mirror else p
+
+
+## A heading (rotation about +y) on this map.
+func mrot(a: float) -> float:
+	return PI - a if mirror else a
+
+
+## East-west mirror of the whole plan (every feature, road and zone).
+func mirror_x() -> void:
+	mirror = true
+	var f2 := func(v: Vector2) -> Vector2: return Vector2(-v.x, v.y)
+	for k in blobs.size():
+		blobs[k] = Vector4(-blobs[k].x, blobs[k].y, blobs[k].z, blobs[k].w)
+	for k in knolls.size():
+		knolls[k] = Vector4(-knolls[k].x, knolls[k].y, knolls[k].z, knolls[k].w)
+	for k in groves.size():
+		groves[k] = Vector3(-groves[k].x, groves[k].y, groves[k].z)
+	ridge = _mirror_line(ridge)
+	lagoon = Vector4(-lagoon.x, lagoon.y, lagoon.z, lagoon.w)
+	channel_a = f2.call(channel_a)
+	channel_b = f2.call(channel_b)
+	runway_center = f2.call(runway_center)
+	runway_angle = -runway_angle
+	apron_center = f2.call(apron_center)
+	silo_center = f2.call(silo_center)
+	radar_pos = f2.call(radar_pos)
+	town_center = f2.call(town_center)
+	city_c = f2.call(city_c)
+	var hx0 := harbour_x0
+	harbour_x0 = -harbour_x1
+	harbour_x1 = -hx0
+	pier_x = -pier_x
+	fort_pos = f2.call(fort_pos)
+	lighthouse_pos = f2.call(lighthouse_pos)
+	sabkha_center = f2.call(sabkha_center)
+	sandbar_a = f2.call(sandbar_a)
+	sandbar_b = f2.call(sandbar_b)
+	plant_center = f2.call(plant_center)
+	refinery_center = f2.call(refinery_center)
+	desal_center = f2.call(desal_center)
+	army_center = f2.call(army_center)
+	ship_pos = f2.call(ship_pos)
+	for r in roads.size():
+		roads[r] = _mirror_line(roads[r])
+	for w in wadis.size():
+		wadis[w] = _mirror_line(wadis[w])
+	for t in tracks.size():
+		tracks[t] = _mirror_line(tracks[t])
+	_road_samples.clear()
+
+
+static func _mirror_line(pts: PackedVector2Array) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	for p in pts:
+		out.append(Vector2(-p.x, p.y))
+	return out
+
+
+## Patrol routes of the Viper's ground forces (build 18), island-local polylines on land:
+## round the army camp, along the air base taxiway, and the west roads.
+func military_paths() -> Array[PackedVector2Array]:
+	var out: Array[PackedVector2Array] = []
+	var c := army_center
+	var h := army_size * 0.5 + Vector2(0.008, 0.008)
+	out.append(PackedVector2Array([c + Vector2(-h.x, -h.y), c + Vector2(h.x, -h.y), c + Vector2(h.x, h.y), c + Vector2(-h.x, h.y), c + Vector2(-h.x, -h.y)]))
+	var f := base_frame()
+	out.append(PackedVector2Array([base_world(-runway_len * 0.45, taxi_offset), base_world(runway_len * 0.45, taxi_offset)]))
+	out.append(PackedVector2Array([base_world(-runway_len * 0.4, f.lat1 * 0.7), base_world(runway_len * 0.35, f.lat1 * 0.7)]))
+	for r in roads:
+		if r.size() >= 2 and r[0].x < -0.08 and r[0].distance_to(town_center) > town_radius * 1.1:
+			out.append(r)
+	return out
+
+
+## Parking spots of the enemy fighters on the apron: Vector3(x, heading yaw, z).
+func fighter_spots() -> Array:
+	var out: Array = []
+	var rd := runway_dir()
+	var north := Vector2(rd.y, -rd.x)
+	var yaw := atan2(-rd.y, rd.x)
+	for k in 4:
+		var p := apron_center + rd * (-0.03 + k * 0.02) - north * 0.004
+		out.append(Vector3(p.x, yaw, p.y))
+	return out
 
 
 ## Base perimeter (runway frame): along [-a0, a1], lateral north [s0, s1]

@@ -13,6 +13,8 @@ extends MeshInstance3D
 ##   deck    strike jets (flight deck aft; the parked jets show how many are aboard)
 
 const POS := Vector2(0.17, -0.365)
+## Where it lies on this map (IslandLayout.ship_pos; POS on the original map).
+var pos := POS
 const YAW := 0.0
 const L := 0.17
 const B := 0.028
@@ -30,7 +32,7 @@ const LAUNCHERS := {
 }
 const WEAPON_LAUNCHER := {
 	"ballistic": "vls", "hypersonic": "vls", "cluster": "vls", "bunker": "vls",
-	"cruise": "box", "antiship": "box", "artillery": "gun", "mlrs": "pod", "drone": "ramp", "swarm": "ramp", "nuke": "silo", "jet": "deck",
+	"cruise": "box", "antiship": "box", "artillery": "gun", "mlrs": "pod", "drone": "ramp", "swarm": "ramp", "aa": "vls", "nuke": "silo", "jet": "deck",
 }
 
 const HULL := Color(0.52, 0.57, 0.63)
@@ -90,7 +92,7 @@ func build() -> void:
 	mb.box(Vector3(0.05, FB - 0.0018, B * 0.5 + 0.0002), Vector3(0.012, 0.0022, 0.0002), Color(0.95, 0.95, 0.93))
 	mesh = mb.commit(null, MeshBuilder.vc_material(0.6))
 	cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	transform = Transform3D(Basis(Vector3.UP, YAW), Vector3(POS.x, IslandTerrain.SEA, POS.y))
+	transform = Transform3D(Basis(Vector3.UP, YAW), Vector3(pos.x, IslandTerrain.SEA, pos.y))
 	# the two strike jets parked on the flight deck
 	var w := WeaponTable.get_weapon("jet")
 	var jm := MeshBuilder.new()

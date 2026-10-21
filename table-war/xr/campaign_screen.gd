@@ -109,6 +109,19 @@ func show_debrief(d: Dictionary) -> void:
 	_build()
 
 
+## "Loading the map": shown while another island is built for the next chapter.
+func show_loading(map_name: String) -> void:
+	page = "loading"
+	for c in root.get_children():
+		c.free()
+	buttons.clear()
+	_rect(Rect2(Vector2.ZERO, Vector2(TEX)), BG)
+	_frame(Rect2(8, 8, TEX.x - 16, TEX.y - 16), Color(FRAME, 0.6), 3)
+	_label("جاري تجهيز الخريطة · LOADING MAP", 60, TEXT, Rect2(60, 330, TEX.x - 120, 90))
+	_label(map_name, 52, AMBER, Rect2(60, 450, TEX.x - 120, 80))
+	_redraw()
+
+
 func show_pause() -> void:
 	page = "pause"
 	_build()
@@ -277,7 +290,7 @@ func _page_debrief() -> void:
 	_label("%s · %s" % [s.get("ar", ""), s.get("en", "")], 40, TEXT, Rect2(60, 132, TEX.x - 120, 60))
 	var n := int(debrief.get("stars", 0))
 	_stars(n, 3, Vector2(TEX.x * 0.5, 280), 62.0)
-	var why := {"time": "انتهى الوقت · Out of time", "civilians": "خسائر مدنية كثيرة · Too many civilian casualties", "ship": "البارجة تضررت · The battleship was hit too hard"}
+	var why := {"time": "انتهى الوقت · Out of time", "civilians": "خسائر مدنية كثيرة · Too many civilian casualties", "ship": "البارجة تضررت · The battleship was hit too hard", "protect": "دمّرت منشأة لازم تبقى · A protected site was destroyed"}
 	if not won:
 		_label(String(why.get(debrief.get("reason", ""), "")), 36, RED, Rect2(60, 360, TEX.x - 120, 50))
 	var rows := [

@@ -35,6 +35,8 @@ var fx: FxSystem
 var sfx: SfxBank
 ## The Viper's air defence and coastal launchers (game/resistance.gd).
 var resistance: Resistance
+## The Viper's tanks, APCs, mobile AA, mobile launchers and fighters (game/enemy_forces.gd).
+var forces: EnemyForces
 var _serial := 0
 
 var slow_motion := false
@@ -102,6 +104,10 @@ func setup(isl: Island) -> void:
 	resistance.name = "Resistance"
 	add_child(resistance)
 	resistance.setup(self)
+	forces = EnemyForces.new()
+	forces.name = "EnemyForces"
+	add_child(forces)
+	forces.setup(self)
 	for k in MAX_FLIGHTS:
 		_pool.append(_make_shell_node(k))
 	shell = _pool[0].node
@@ -131,6 +137,26 @@ func setup(isl: Island) -> void:
 	add_child(pmi)
 	_build_marker()
 	_build_wet_marks()
+
+
+## Switch to another island (a new map): everything that reads the island follows.
+func set_island(isl: Island) -> void:
+	reset_island_state()
+	island = isl
+	debris.terrain = isl.terrain
+	debris.props = isl.props
+
+
+## Shots, salvos, debris, smoke and the enemy gone (no island damage reset).
+func reset_island_state() -> void:
+	resistance.clear()
+	forces.clear()
+	_pending.clear()
+	while not flights.is_empty():
+		_end_flight(0)
+	hide_preview()
+	debris.clear()
+	fx.clear()
 
 
 func _make_shell_node(k: int) -> Dictionary:
@@ -421,6 +447,7 @@ func advance(dt: float) -> void:
 	for _i in steps:
 		_step_flights(h)      # shells need the small step (exact impact points)
 	resistance.step(dt)
+	forces.step(dt)
 	# debris and smoke step once per frame: half the GDScript cost of the 120 Hz
 	# substeps at 72 fps (long frames still split, so a step never exceeds 1/50 s)
 	var ds := maxi(1, int(ceil(dt / 0.02)))
@@ -584,6 +611,7 @@ func _impact(p: Vector3, w: Dictionary) -> void:
 	var frags := island.props.blast(p, BLAST_R * b)
 	if island.life:
 		island.life.on_blast(p, BLAST_R * b)
+	forces.on_blast(p, BLAST_R * b)
 	for f in frags:
 		debris.spawn(f.pos, f.basis, f.half, f.vel, f.ang, f.col, 1)
 	var burnt := island.props.on_crater(p, cr)
@@ -635,6 +663,7 @@ func _nuke(p: Vector3, w: Dictionary) -> void:
 	island.props.on_crater(p, r * 0.8)
 	if island.life:
 		island.life.on_blast(ps, r)
+	forces.on_blast(ps, r)
 	debris.wake_near(ps, r)
 	impacted.emit(ps, last_impact_kind)
 
@@ -692,6 +721,7 @@ func _step_marks(dt: float) -> void:
 ## "Reset island": craters, buildings, vegetation, roads back; debris, smoke, shots gone.
 func reset_island() -> void:
 	resistance.clear()
+	forces.clear()
 	_pending.clear()
 	while not flights.is_empty():
 		_end_flight(0)
