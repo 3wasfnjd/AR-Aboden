@@ -135,6 +135,10 @@ func _ready() -> void:
 		diorama.add_child(ocean)
 		ocean.build()
 		_open_sea(island)
+		# the HUD scales with the screen (a phone's canvas is in device pixels)
+		get_tree().root.content_scale_mode = Window.CONTENT_SCALE_MODE_CANVAS_ITEMS
+		get_tree().root.content_scale_aspect = Window.CONTENT_SCALE_ASPECT_EXPAND
+		get_tree().root.content_scale_size = Vector2i(1280, 720)
 		web_hud = WebHud.new()
 		web_hud.name = "WebHud"
 		add_child(web_hud)

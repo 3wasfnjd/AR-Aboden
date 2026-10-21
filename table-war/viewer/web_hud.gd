@@ -24,6 +24,8 @@ const KEYS := [KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_6, KEY_7, KEY_8, KEY_9, KE
 const SHORT := {"ballistic": "باليستي", "cruise": "كروز", "artillery": "مدفعية", "mlrs": "راجمة", "cluster": "عنقودي",
 	"hypersonic": "فرط صوتي", "bunker": "خارق", "drone": "مسيّرة", "antiship": "مضاد سفن", "jet": "طائرة", "swarm": "سرب",
 	"aa": "دفاع جوي", "nuke": "نووي"}
+const LIST_W := 250.0             # the weapon list's width
+const ROW_H := 40.0
 const REPAIR := 1.0               # % hull per second: the crew repairs the battleship in free play
 const FORCES := {"tank": 2, "apc": 2, "spaa": 2, "mlauncher": 2, "fighter": 3, "air": 25.0}
 
@@ -121,12 +123,12 @@ func _button(parent: Control, t: String, cb: Callable) -> Button:
 	b.text = t
 	if _font:
 		b.add_theme_font_override("font", _font)
-	b.add_theme_font_size_override("font_size", 18)
+	b.add_theme_font_size_override("font_size", 22)
 	b.add_theme_color_override("font_color", TEXT)
 	b.add_theme_stylebox_override("normal", _style(BG, Color(FRAME, 0.5)))
 	b.add_theme_stylebox_override("hover", _style(Color(0.08, 0.18, 0.25, 0.9), FRAME))
 	b.add_theme_stylebox_override("pressed", _style(Color(0.10, 0.25, 0.32, 0.95), FRAME))
-	b.custom_minimum_size = Vector2(150, 44)
+	b.custom_minimum_size = Vector2(200, 52)
 	b.focus_mode = Control.FOCUS_NONE
 	b.pressed.connect(cb)
 	parent.add_child(b)
@@ -150,14 +152,14 @@ func _build() -> void:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 14)
 	top.add_child(row)
-	var title := _label(row, "حرب البارجة · لعب حر", 22, TEXT, HORIZONTAL_ALIGNMENT_RIGHT)
+	var title := _label(row, "حرب البارجة · لعب حر", 28, TEXT, HORIZONTAL_ALIGNMENT_RIGHT)
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_top = _label(row, "", 18, DIM)
+	_top = _label(row, "", 22, DIM)
 	_top.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var hb := VBoxContainer.new()
 	hb.custom_minimum_size = Vector2(190, 0)
 	row.add_child(hb)
-	_hull_lbl = _label(hb, "البارجة 100%", 16, GREEN)
+	_hull_lbl = _label(hb, "البارجة 100%", 20, GREEN)
 	var bar_bg := ColorRect.new()
 	bar_bg.color = Color(0.15, 0.2, 0.24)
 	bar_bg.custom_minimum_size = Vector2(190, 8)
@@ -173,7 +175,7 @@ func _build() -> void:
 	side.add_theme_constant_override("separation", 8)
 	side.set_anchors_preset(Control.PRESET_CENTER_LEFT)
 	side.offset_left = 10
-	side.offset_top = -150
+	side.offset_top = -190
 	root.add_child(side)
 	_button(side, "جزيرة السبخة", func() -> void: map_requested.emit(1))
 	_button(side, "جزيرة الهلال", func() -> void: map_requested.emit(2))
@@ -182,54 +184,69 @@ func _build() -> void:
 	_btn_slow = _button(side, "حركة بطيئة", toggle_slow)
 	_btn_cam = _button(side, "الكاميرا: حرة", toggle_cam)
 	# message line
-	_msg = _label(root, "", 24, AMBER)
+	_msg = _label(root, "", 30, AMBER)
 	_msg.set_anchors_preset(Control.PRESET_CENTER_TOP)
-	_msg.offset_top = 70
+	_msg.offset_top = 84
 	_msg.offset_left = -400
 	_msg.offset_right = 400
-	# weapon bar (right to left)
-	var bar := HBoxContainer.new()
-	bar.layout_direction = Control.LAYOUT_DIRECTION_RTL
-	bar.add_theme_constant_override("separation", 6)
-	bar.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
-	bar.offset_left = 10
-	bar.offset_right = -10
-	bar.offset_top = -96
-	bar.offset_bottom = -8
-	bar.alignment = BoxContainer.ALIGNMENT_CENTER
-	root.add_child(bar)
+	# weapon list (right edge): one row per weapon, the name, the key and the ammo,
+	# a thin reload bar under it; scrolls on a short screen
+	var panel := PanelContainer.new()
+	panel.add_theme_stylebox_override("panel", _style(BG, Color(FRAME, 0.35)))
+	panel.set_anchors_preset(Control.PRESET_RIGHT_WIDE)
+	panel.offset_left = -LIST_W - 10
+	panel.offset_right = -10
+	panel.offset_top = 74
+	panel.offset_bottom = -36
+	root.add_child(panel)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 6)
+	panel.add_child(col)
+	_label(col, "الأسلحة · Weapons", 22, FRAME)
+	var scroll := ScrollContainer.new()
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	col.add_child(scroll)
+	var list := VBoxContainer.new()
+	list.add_theme_constant_override("separation", 3)
+	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(list)
 	for i in WeaponTable.IDS.size():
 		var id: String = WeaponTable.IDS[i]
 		var w := WeaponTable.get_weapon(id)
 		var card := Button.new()
 		card.focus_mode = Control.FOCUS_NONE
-		card.layout_direction = Control.LAYOUT_DIRECTION_LTR   # the bar runs right to left, a card's own layout does not
-		card.custom_minimum_size = Vector2(92, 86)
+		card.custom_minimum_size = Vector2(0, ROW_H)
 		card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		card.pressed.connect(select.bind(id))
-		bar.add_child(card)
-		var nm := _label(card, String(SHORT.get(id, w.name_ar)), 17, TEXT)
-		nm.set_anchors_preset(Control.PRESET_TOP_WIDE)
-		nm.offset_top = 14
-		nm.offset_bottom = 46
-		var am := _label(card, "", 15, AMBER)
-		am.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
-		am.offset_top = -34
-		am.offset_bottom = -10
+		list.add_child(card)
+		var nm := _label(card, String(SHORT.get(id, w.name_ar)), 22, TEXT, HORIZONTAL_ALIGNMENT_RIGHT)
+		nm.set_anchors_preset(Control.PRESET_FULL_RECT)
+		nm.offset_right = -12
+		nm.offset_bottom = -5
+		var am := _label(card, "", 20, AMBER, HORIZONTAL_ALIGNMENT_LEFT)
+		am.set_anchors_preset(Control.PRESET_FULL_RECT)
+		am.offset_left = 40
+		am.offset_bottom = -5
+		var key := _label(card, ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "-", "=", "\\"][i] if i < 13 else "", 15, DIM, HORIZONTAL_ALIGNMENT_LEFT)
+		key.set_anchors_preset(Control.PRESET_FULL_RECT)
+		key.offset_left = 12
+		key.offset_bottom = -5
 		var cb := ColorRect.new()
 		cb.color = Color(FRAME, 0.7)
 		cb.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		cb.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
+		cb.offset_left = 8
+		cb.offset_right = -8
 		cb.offset_top = -6
-		cb.offset_bottom = -2
+		cb.offset_bottom = -3
 		card.add_child(cb)
-		var key := _label(card, "%s" % ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "-", "=", "\\"][i] if i < 13 else "", 12, DIM, HORIZONTAL_ALIGNMENT_LEFT)
-		key.position = Vector2(6, 2)
 		_cards[id] = {"panel": card, "ammo": am, "bar": cb}
-	var help := _label(root, "اضغط على الجزيرة للإطلاق · اسحب للتدوير · عجلة/إصبعين للتقريب · Tap the island to fire, drag to orbit", 14, DIM)
+	var help := _label(root, "اضغط على الجزيرة للإطلاق · اسحب للتدوير · إصبعين للتقريب", 18, DIM)
 	help.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
-	help.offset_top = -122
-	help.offset_bottom = -100
+	help.offset_right = -LIST_W - 20
+	help.offset_top = -38
+	help.offset_bottom = -8
 
 
 func select(id: String) -> void:
