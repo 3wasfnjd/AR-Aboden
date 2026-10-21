@@ -1,5 +1,5 @@
 shader_type spatial;
-render_mode blend_add, unshaded, depth_draw_never, cull_disabled, skip_vertex_transform, shadows_disabled;
+render_mode blend_add, unshaded, depth_draw_never, cull_disabled, skip_vertex_transform, shadows_disabled, fog_disabled;
 #include "res://fx/puff.gdshaderinc"
 
 void fragment() {

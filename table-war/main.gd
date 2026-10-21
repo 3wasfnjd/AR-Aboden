@@ -291,6 +291,21 @@ func _run_web_shot() -> void:
 		web_hud._process(1.0 / 60.0)
 	await _frames(4)
 	await _capture("w_cam_blast")
+	# the nuke in the open sea (no square edges round the cloud)
+	web_hud.toggle_cam()
+	cam.chase_blend = 0.0
+	_apply_preset("hero")
+	var tn := Vector3(0.1, 0, 0.05)
+	tn.y = island.surface_at(tn.x, tn.z)
+	web_hud.select("nuke")
+	web_hud.try_fire(tn)
+	while not phys.flights.is_empty():
+		phys.advance(1.0 / 60.0)
+	for f in 60 * 4:
+		phys.advance(1.0 / 60.0)
+		web_hud._process(1.0 / 60.0)
+	await _frames(4)
+	await _capture("w_nuke")
 	get_tree().quit()
 
 
