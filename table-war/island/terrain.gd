@@ -629,7 +629,9 @@ func crater(center: Vector3, radius: float, depth: float) -> Array[Vector2i]:
 
 ## Scorch a wide area without changing the heights (the nuclear test): the colour fades
 ## from black at the centre to the rim; the touched chunk meshes are rebuilt.
-func scorch_area(center: Vector3, radius: float) -> void:
+## `dry`: the heat also withers the green (grass and scrub turn to dry sand colour)
+## over the whole radius, fading out only at its edge.
+func scorch_area(center: Vector3, radius: float, strength := 1.0, dry := false) -> void:
 	var i0 := clampi(int(floor((center.x - radius - ox) / CELL)), 0, NX)
 	var i1 := clampi(int(ceil((center.x + radius - ox) / CELL)), 0, NX)
 	var j0 := clampi(int(floor((center.z - radius - oz) / CELL)), 0, NZ)
@@ -640,7 +642,9 @@ func scorch_area(center: Vector3, radius: float) -> void:
 			var v := vpos(i, j)
 			var d := Vector2(v.x - center.x, v.z - center.z).length() / radius
 			if d < 1.0 and v.y > SEA:
-				scorch[k] = maxf(scorch[k], clampf(1.15 - d, 0.0, 1.0))
+				scorch[k] = maxf(scorch[k], clampf(1.15 - d, 0.0, 1.0) * strength)
+				if dry:
+					lush[k] *= smoothstep(0.8, 1.0, d)
 	var nci := NX / CX
 	var ncj := NZ / CZ
 	for cj in range(clampi(j0 / CZ, 0, ncj - 1), clampi(j1 / CZ, 0, ncj - 1) + 1):
@@ -678,12 +682,14 @@ func pending_rebuilds() -> int:
 
 var _hts0 := PackedFloat32Array()
 var _scorch0 := PackedFloat32Array()
+var _lush0 := PackedFloat32Array()
 
 
 ## Remember the undamaged surface (after the props stamped their AO).
 func snapshot() -> void:
 	_hts0 = hts.duplicate()
 	_scorch0 = scorch.duplicate()
+	_lush0 = lush.duplicate()
 
 
 ## Every crater undone: heights, scorch, meshes and the water depth texture.
@@ -692,6 +698,8 @@ func reset_damage() -> void:
 		return
 	hts = _hts0.duplicate()
 	scorch = _scorch0.duplicate()
+	if not _lush0.is_empty():
+		lush = _lush0.duplicate()
 	_pending_chunks.clear()
 	build_meshes()
 	_rebuild_depth_image(0, 0, NX, NZ)

@@ -40,8 +40,9 @@ var forces: EnemyForces
 var _serial := 0
 ## Open sea (web): the nuke's shock wave runs on past the fireball's radius, out to
 ## NUKE_WAVE_K times it in NUKE_WAVE_T seconds, and flattens everything in its path:
-## every building, ship and boat is blown apart (the pieces thrown outward), trees are
-## stripped, people, vehicles and units killed, fires left burning in the ruins.
+## every building, ship and boat is blown apart (the pieces thrown outward), trees burnt
+## near the fireball and knocked flat further out (bent beyond the wave's end), people,
+## vehicles and units killed, fires left burning in the ruins.
 static var nuke_wave := false
 const NUKE_WAVE_K := 2.6
 const NUKE_WAVE_T := 3.0
@@ -694,7 +695,7 @@ func _step_shocks(dt: float) -> void:
 		var cur := r0 + (r1 - r0) * (1.0 - pow(1.0 - k, 1.6))
 		var p: Vector3 = w.p
 		var down := island.props.blast_ring(p, float(w.cur), cur, r0, r1, _rng, 1.0, 1.0, 6)
-		island.props.strip_vegetation(p, float(w.cur), cur)
+		island.props.blast_vegetation(p, float(w.cur), cur, r0, r1, _rng)
 		for e in down:
 			var st: Dictionary = e.st
 			for f in e.frags:
@@ -720,6 +721,9 @@ func _step_shocks(dt: float) -> void:
 				fx.puff(at, d * 0.03 + Vector3(0, 0.004, 0), 0.01, 0.03, _rng.randf_range(2.0, 3.0), Color(0.78, 0.70, 0.60, 0.6), 0, 0.002, 1.5)
 		w.cur = cur
 		if k >= 1.0:
+			island.props.bend_vegetation(p, r1, r1 * 1.35, _rng)
+			# the heat dried the grass and scrub all over the wave's area
+			island.terrain.scorch_area(p, r1 * 1.15, 0.45, true)
 			shocks.remove_at(i)
 			continue
 		i += 1

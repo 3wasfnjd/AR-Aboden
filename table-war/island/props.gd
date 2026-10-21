@@ -85,9 +85,13 @@ func reset_damage() -> void:
 		var sp: Dictionary = species[nm]
 		var xfs: Array = sp.xf
 		var orig: Array = _snap.veg[nm]
+		var c0: Array = sp.col0
+		var cs: Array = sp.cols
 		for k in xfs.size():
 			xfs[k] = orig[k]
 			_set_veg_xf(sp, k, orig[k])
+			if cs[k] != c0[k]:
+				_set_veg_col(sp, k, c0[k])
 		(sp.alive as PackedByteArray).fill(1)
 	craters.clear()
 	_crater_grid.clear()
@@ -1174,20 +1178,66 @@ func _splits(n: int, total: float, r: RandomNumberGenerator) -> PackedFloat32Arr
 	return a
 
 
-## A shock wave passing from `d0` to `d1` from `center`: the trees and bushes in that
-## band are flattened (gone), no crater.
-func strip_vegetation(center: Vector3, d0: float, d1: float) -> void:
+## A nuclear shock wave passing from `d0` to `d1` from `center` (its whole run `r0` to
+## `r1`): near the fireball the trees burn away; further out they are knocked flat,
+## lying away from the blast, and charred; bushes are flattened, grass burnt off.
+## Rocks stay.
+func blast_vegetation(center: Vector3, d0: float, d1: float, r0: float, r1: float, r: RandomNumberGenerator) -> void:
+	var burn_r := lerpf(r0, r1, 0.4)
 	for name in species:
+		if name == "rock":
+			continue
 		var sp: Dictionary = species[name]
 		var xfs: Array = sp.xf
 		for k in xfs.size():
 			if sp.alive[k] == 0:
 				continue
 			var xf: Transform3D = xfs[k]
-			var d := Vector2(xf.origin.x - center.x, xf.origin.z - center.z).length()
-			if d > d0 and d <= d1:
-				sp.alive[k] = 0
-				_set_veg_xf(sp, k, Transform3D(Basis().scaled(Vector3.ONE * 1e-5), xf.origin))
+			var o := xf.origin
+			var d := Vector2(o.x - center.x, o.z - center.z).length()
+			if d <= d0 or d > d1:
+				continue
+			sp.alive[k] = 0
+			if d < burn_r or name == "tuft":
+				_set_veg_xf(sp, k, Transform3D(Basis().scaled(Vector3.ONE * 1e-5), o))
+				continue
+			var out := Vector3(o.x - center.x, 0.0, o.z - center.z).normalized()
+			var lay: Transform3D
+			if name == "shrub":
+				lay = Transform3D(xf.basis.scaled(Vector3(1.2, 0.35, 1.2)), o)
+			else:
+				var axis := Vector3.UP.cross(out).normalized()
+				lay = Transform3D(Basis(axis, r.randf_range(1.25, 1.5)) * xf.basis, o)
+			xfs[k] = lay
+			_set_veg_xf(sp, k, lay)
+			var c: Color = (sp.cols as Array)[k]
+			_set_veg_col(sp, k, c.lerp(Color(0.16, 0.12, 0.08), r.randf_range(0.6, 0.85)))
+
+
+## Beyond the wave's end (`r_in` to `r_out`): trees bent away from the blast and
+## scorched, less the further out.
+func bend_vegetation(center: Vector3, r_in: float, r_out: float, r: RandomNumberGenerator) -> void:
+	for name in species:
+		if name == "rock" or name == "tuft":
+			continue
+		var sp: Dictionary = species[name]
+		var xfs: Array = sp.xf
+		for k in xfs.size():
+			if sp.alive[k] == 0:
+				continue
+			var xf: Transform3D = xfs[k]
+			var o := xf.origin
+			var d := Vector2(o.x - center.x, o.z - center.z).length()
+			if d <= r_in or d > r_out:
+				continue
+			var f := 1.0 - (d - r_in) / (r_out - r_in)
+			var out := Vector3(o.x - center.x, 0.0, o.z - center.z).normalized()
+			var axis := Vector3.UP.cross(out).normalized()
+			var bent := Transform3D(Basis(axis, f * r.randf_range(0.3, 0.55)) * xf.basis, o)
+			xfs[k] = bent
+			_set_veg_xf(sp, k, bent)
+			var c: Color = (sp.cols as Array)[k]
+			_set_veg_col(sp, k, c.lerp(Color(0.40, 0.30, 0.14), f * 0.55))
 
 
 ## Called after a crater: remove vegetation inside, re-snap the rest, re-drape roads.
@@ -1880,7 +1930,8 @@ func _make_species(name: String, hi: Mesh, lo: Mesh, xfs: Array[Transform3D], co
 	var alive := PackedByteArray()
 	alive.resize(xfs.size())
 	alive.fill(1)
-	species[name] = {"xf": xfs, "alive": alive, "tile": tile_of, "local": local, "hi": mm_hi, "lo": mm_lo, "mesh_hi": hi, "mesh_lo": lo}
+	species[name] = {"xf": xfs, "alive": alive, "tile": tile_of, "local": local, "hi": mm_hi, "lo": mm_lo, "mesh_hi": hi, "mesh_lo": lo,
+		"cols": cols.duplicate(), "col0": cols.duplicate()}
 
 
 func _set_veg_xf(sp: Dictionary, k: int, xf: Transform3D) -> void:
@@ -1890,6 +1941,16 @@ func _set_veg_xf(sp: Dictionary, k: int, xf: Transform3D) -> void:
 	var lo: MultiMesh = sp.lo[t] if (sp.lo as Array).size() > t else null
 	if lo:
 		lo.set_instance_transform(i, xf)
+
+
+func _set_veg_col(sp: Dictionary, k: int, c: Color) -> void:
+	(sp.cols as Array)[k] = c
+	var t: int = sp.tile[k]
+	var i: int = sp.local[k]
+	(sp.hi[t] as MultiMesh).set_instance_color(i, c)
+	var lo: MultiMesh = sp.lo[t] if (sp.lo as Array).size() > t else null
+	if lo:
+		lo.set_instance_color(i, c)
 
 
 func _veg_ok(p: Vector2, min_hs: float, min_ny: float, clear_r: float) -> bool:

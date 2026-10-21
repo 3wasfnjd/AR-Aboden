@@ -320,6 +320,9 @@ func _run_web_shot() -> void:
 	cam.set_view(cam.target, -25.0, 30.0, 1.6)
 	await _frames(4)
 	await _capture("w_nuke3")
+	cam.set_view(tn + Vector3(-0.22, 0.0, 0.02), -25.0, 48.0, 0.32)
+	await _frames(4)
+	await _capture("w_nuke4")
 	get_tree().quit()
 
 
