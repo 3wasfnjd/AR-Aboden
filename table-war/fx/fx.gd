@@ -163,8 +163,8 @@ func _step_fires(dt: float) -> void:
 			var o := Vector3(rng.randf_range(-0.003, 0.003), 0.0, rng.randf_range(-0.003, 0.003)) * sz
 			puff(p + o + Vector3(0, 0.002, 0), Vector3(0, 0.01, 0), 0.003 * sz * fade, 0.007 * sz * fade, rng.randf_range(0.5, 0.8),
 				Color(1.0, rng.randf_range(0.45, 0.65), 0.15), 1, 0.006, 1.0)
-			puff(p + o + Vector3(0, 0.006, 0), Vector3(rng.randf_range(-0.002, 0.002), 0.012, 0), 0.005 * sz, 0.02 * sz, rng.randf_range(3.0, 4.5),
-				Color(0.16, 0.14, 0.13, 0.75 * fade), 0, 0.004, 0.4)
+			puff(p + o + Vector3(0, 0.006, 0), Vector3(rng.randf_range(-0.002, 0.002), 0.02, 0), 0.004 * sz, 0.014 * sz, rng.randf_range(3.0, 4.0),
+				Color(0.24, 0.22, 0.21, 0.55 * fade), 0, 0.008, 0.4)
 		i += 1
 
 

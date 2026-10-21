@@ -39,11 +39,12 @@ var resistance: Resistance
 var forces: EnemyForces
 var _serial := 0
 ## Open sea (web): the nuke's shock wave runs on past the fireball's radius, out to
-## NUKE_WAVE_K times it in NUKE_WAVE_T seconds, knocking down most buildings near and
-## fewer far out, killing people and vehicles, setting fires in the ruins.
+## NUKE_WAVE_K times it in NUKE_WAVE_T seconds, and flattens everything in its path:
+## every building, ship and boat is blown apart (the pieces thrown outward), trees are
+## stripped, people, vehicles and units killed, fires left burning in the ruins.
 static var nuke_wave := false
-const NUKE_WAVE_K := 2.2
-const NUKE_WAVE_T := 2.6
+const NUKE_WAVE_K := 2.6
+const NUKE_WAVE_T := 3.0
 var shocks: Array[Dictionary] = []    # {p, r0, r1, t, cur}
 
 var slow_motion := false
@@ -667,7 +668,7 @@ func _nuke(p: Vector3, w: Dictionary) -> void:
 	sfx.play("thump", ps, 1.5)
 	if island.terrain.height_at(p.x, p.z) > IslandTerrain.SEA:
 		island.terrain.crater(p, 0.034, 0.012)
-	island.terrain.scorch_area(p, r * (1.5 if nuke_wave else 0.85))
+	island.terrain.scorch_area(p, r * (1.8 if nuke_wave else 0.85))
 	if nuke_wave:
 		shocks.append({"p": ps, "r0": r, "r1": r * NUKE_WAVE_K, "t": 0.0, "cur": r, "dust": 0.0})
 	var frags := island.props.blast(ps, r, 10)
@@ -692,11 +693,15 @@ func _step_shocks(dt: float) -> void:
 		# fast at first, slowing as it spreads
 		var cur := r0 + (r1 - r0) * (1.0 - pow(1.0 - k, 1.6))
 		var p: Vector3 = w.p
-		var down := island.props.blast_ring(p, float(w.cur), cur, r0, r1, _rng)
+		var down := island.props.blast_ring(p, float(w.cur), cur, r0, r1, _rng, 1.0, 1.0, 6)
+		island.props.strip_vegetation(p, float(w.cur), cur)
 		for e in down:
 			var st: Dictionary = e.st
 			for f in e.frags:
-				debris.spawn(f.pos, f.basis, f.half, f.vel, f.ang, f.col, 1)
+				# thrown outward with the wave, harder near the fireball
+				var out := Vector3(float(f.pos.x) - p.x, 0.0, float(f.pos.z) - p.z).normalized()
+				var push := lerpf(0.35, 0.12, k)
+				debris.spawn(f.pos, f.basis, f.half, f.vel * 1.4 + out * push + Vector3(0, push * 0.4, 0), f.ang * 1.5, f.col, 1)
 			if _rng.randf() < 0.4:
 				fx.fire_at(st.pos, 25.0, clampf(float((st.size as Vector3).x) / 0.012, 0.6, 1.6))
 		if island.life:

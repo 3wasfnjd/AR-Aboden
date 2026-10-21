@@ -1174,6 +1174,22 @@ func _splits(n: int, total: float, r: RandomNumberGenerator) -> PackedFloat32Arr
 	return a
 
 
+## A shock wave passing from `d0` to `d1` from `center`: the trees and bushes in that
+## band are flattened (gone), no crater.
+func strip_vegetation(center: Vector3, d0: float, d1: float) -> void:
+	for name in species:
+		var sp: Dictionary = species[name]
+		var xfs: Array = sp.xf
+		for k in xfs.size():
+			if sp.alive[k] == 0:
+				continue
+			var xf: Transform3D = xfs[k]
+			var d := Vector2(xf.origin.x - center.x, xf.origin.z - center.z).length()
+			if d > d0 and d <= d1:
+				sp.alive[k] = 0
+				_set_veg_xf(sp, k, Transform3D(Basis().scaled(Vector3.ONE * 1e-5), xf.origin))
+
+
 ## Called after a crater: remove vegetation inside, re-snap the rest, re-drape roads.
 func on_crater(center: Vector3, radius: float) -> Array[Dictionary]:
 	var burnt: Array[Dictionary] = []
