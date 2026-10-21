@@ -9,6 +9,7 @@ render_mode cull_back, diffuse_lambert, specular_disabled;
 uniform float floor_h = 0.0028;    // toy storey (Toon.STOREY)
 uniform float col_pitch = 0.0030;  // window bays
 uniform vec3 glass : source_color = vec3(0.24, 0.36, 0.52);
+global uniform float tw_night;      // 1 = night (web): about half the windows lit warm
 
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 
@@ -19,6 +20,7 @@ float band(float f, float a, float b, float w) {
 void fragment() {
 	vec3 base = pow(COLOR.rgb, vec3(2.2));
 	vec3 col = base;
+	vec3 lit = vec3(0.0);
 	if (UV.y > -0.5 && UV2.x > 0.0) {
 		float wl = UV2.x;
 		float hh = UV2.y;
@@ -40,9 +42,13 @@ void fragment() {
 		float fade = 1.0 - smoothstep(0.22, 0.45, max(fy, fx));
 		vec3 avg = mix(base, glass, 0.22 * step(0.0, yy));
 		col = mix(avg, mix(base, g, win), fade);
+		// night: warm lit windows (each pane on or off), a faint glow where the grid is too fine
+		float on = step(0.45, fract(h * 7.31));
+		vec3 warm = mix(vec3(1.0, 0.72, 0.38), vec3(0.85, 0.90, 1.0), step(0.8, fract(h * 3.7)));
+		lit = tw_night * warm * mix(0.35 * step(0.0, yy) * step(yy, hh), win * on * 1.6, fade);
 	}
 	ALBEDO = col;
 	ROUGHNESS = 0.75;
 	SPECULAR = 0.25;
-	EMISSION = base * (1.0 - COLOR.a) * 4.0;
+	EMISSION = base * (1.0 - COLOR.a) * 4.0 + lit;
 }

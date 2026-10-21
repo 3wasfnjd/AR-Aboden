@@ -144,6 +144,8 @@ func _ready() -> void:
 		web_hud.name = "WebHud"
 		add_child(web_hud)
 		web_hud.cam = cam
+		web_hud.room = room
+		web_hud.ocean = ocean
 		web_hud.setup(phys)
 		web_hud.map_requested.connect(_switch_map)
 		if "--web-shot" in args:
@@ -331,6 +333,28 @@ func _run_web_shot() -> void:
 	cam.set_view(tn + Vector3(-0.22, 0.0, 0.02), -25.0, 48.0, 0.32)
 	await _frames(4)
 	await _capture("w_nuke4")
+	# night: the reset island under the moon, then a strike in the dark
+	web_hud.reset()
+	web_hud.toggle_night()
+	_apply_preset("hero")
+	for f in 30:
+		phys.advance(1.0 / 60.0)
+		web_hud._process(1.0 / 60.0)
+	await _frames(6)
+	await _capture("w_night")
+	var tnight := Vector3(0.05, 0, 0.0)
+	tnight.y = island.surface_at(tnight.x, tnight.z)
+	web_hud.select("ballistic")
+	web_hud.cooldown["ballistic"] = 0.0
+	web_hud.ammo["ballistic"] = 6
+	web_hud.try_fire(tnight)
+	while not phys.flights.is_empty():
+		phys.advance(1.0 / 60.0)
+	for f in 20:
+		phys.advance(1.0 / 60.0)
+	cam.set_view(tnight, -25.0, 35.0, 0.45)
+	await _frames(4)
+	await _capture("w_night2")
 	get_tree().quit()
 
 

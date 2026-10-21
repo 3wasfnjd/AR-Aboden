@@ -68,6 +68,7 @@ var _opt_map: Array
 var _opt_enemy: Array
 var _opt_cam: Array
 var _opt_slow: Array
+var _opt_night: Array
 ## The HUD sets the window's scaling itself (the web build); off for desktop previews.
 var web_scaling := true
 var map_id := 1
@@ -75,6 +76,9 @@ var map_id := 1
 ## just behind and above the newest shot; after the impact it holds on the blast a moment,
 ## then glides back to the orbit until the next launch.
 var cam: OrbitCamera
+var room: Room
+var ocean: Ocean
+var night := false
 var missile_cam := false
 var _btn_menu: Button
 var _btn_weapons: Button
@@ -318,6 +322,9 @@ func _build() -> void:
 	_opt_cam = _choice(mc, "الكاميرا", "حرة", "فوق الصاروخ", func(i: int) -> void:
 		if (i == 1) != missile_cam:
 			toggle_cam())
+	_opt_night = _choice(mc, "الوقت", "نهار", "ليل", func(i: int) -> void:
+		if (i == 1) != night:
+			toggle_night())
 	_opt_slow = _choice(mc, "السرعة", "عادية", "بطيئة", func(i: int) -> void:
 		if (i == 1) != phys.slow_motion:
 			toggle_slow())
@@ -447,6 +454,8 @@ func _refresh_menu() -> void:
 	_paint(_opt_enemy[1], not enemies_on)
 	_paint(_opt_cam[0], not missile_cam)
 	_paint(_opt_cam[1], missile_cam)
+	_paint(_opt_night[0], not night)
+	_paint(_opt_night[1], night)
 	_paint(_opt_slow[0], not phys.slow_motion)
 	_paint(_opt_slow[1], phys.slow_motion)
 
@@ -518,6 +527,17 @@ func toggle_menu() -> void:
 func toggle_weapons() -> void:
 	_weapons.visible = not _weapons.visible
 	_menu.visible = false
+
+
+func toggle_night() -> void:
+	night = not night
+	if room:
+		room.set_night(night)
+	if ocean and ocean.mesh:
+		var om := ocean.mesh.surface_get_material(0) as StandardMaterial3D
+		if om:
+			om.albedo_color = Color(0.42, 0.46, 0.58) if night else Color.WHITE   # the open sea under the moon
+	_refresh_menu()
 
 
 func toggle_cam() -> void:

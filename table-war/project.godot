@@ -60,6 +60,10 @@ tw_eye={
 "type": "vec3",
 "value": Vector3(0, 0.8, 0.9)
 }
+tw_night={
+"type": "float",
+"value": 0.0
+}
 tw_lod_scale={
 "type": "float",
 "value": 1.0

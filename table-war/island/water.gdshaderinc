@@ -18,6 +18,7 @@ uniform vec3 seabed : source_color = vec3(0.74, 0.70, 0.56);   // opaque variant
 // Island-local position: the diorama can be moved / turned / scaled in the room (XR),
 // tw_island_inv (world -> diorama) keeps every pattern glued to the model.
 global uniform mat4 tw_island_inv;
+global uniform float tw_night;
 varying vec3 wp;
 varying float edge_fade;
 
@@ -96,7 +97,8 @@ void fragment() {
 	col = mix(col, col_foam, foam);
 	alpha = max(alpha, foam * 0.95);
 
-	// sparkle on the deeper water
+	// night (web): the sea darkens with the sky (the open ocean around matches it)
+	col *= mix(1.0, 0.62, tw_night);
 #ifdef WATER_OPAQUE
 	// Quest: no blending (no overdraw, no sorting): the seabed seen through shallow
 	// water is approximated by the baked shallow-sand colour.

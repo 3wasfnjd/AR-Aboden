@@ -76,6 +76,10 @@ func set_ops() -> void:
 
 ## The light of each map: 1 = midday, 2 = late afternoon (low warm sun, warmer ambient).
 func set_map_light(map_id: int) -> void:
+	_map = map_id
+	if night:
+		set_night(true)
+		return
 	if map_id == 2:
 		sun.rotation = Vector3(deg_to_rad(-24.0), deg_to_rad(-120.0), 0)
 		sun.light_color = Color(1.0, 0.80, 0.58)
@@ -105,6 +109,96 @@ func set_ocean() -> void:
 	env.fog_light_color = Color(0.74, 0.84, 0.94)
 	env.fog_density = 0.04
 	env.fog_sky_affect = 0.0
+
+
+## Web night (build 24): moonlight, a dark sky with stars and the moon, darker fog;
+## the city's windows light up (structure shader, global tw_night). Off: back to the
+## open-sea day. The map's own light is re-applied after it (set_map_light).
+var night := false
+var _sky_night: Node3D
+
+
+func set_night(on: bool) -> void:
+	night = on
+	RenderingServer.global_shader_parameter_set("tw_night", 1.0 if on else 0.0)
+	var sm := env.sky.sky_material as ProceduralSkyMaterial
+	if on:
+		sm.sky_top_color = Color(0.010, 0.018, 0.05)
+		sm.sky_horizon_color = Color(0.05, 0.08, 0.16)
+		sm.ground_horizon_color = Color(0.03, 0.05, 0.10)
+		sm.ground_bottom_color = Color(0.01, 0.02, 0.04)
+		sm.sun_angle_max = 0.0
+		env.ambient_light_energy = 0.9
+		env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+		env.ambient_light_color = Color(0.16, 0.20, 0.32)
+		env.fog_light_color = Color(0.04, 0.06, 0.12)
+		env.fog_density = 0.05
+		sun.rotation = Vector3(deg_to_rad(-55.0), deg_to_rad(140.0), 0)
+		sun.light_color = Color(0.62, 0.72, 1.0)
+		sun.light_energy = 0.32
+		if _fill_e < 0.0:
+			_fill_e = fill.light_energy
+		fill.light_energy = 0.0
+	else:
+		set_ocean()
+		sm.sun_angle_max = 30.0
+		if _fill_e >= 0.0:
+			fill.light_energy = _fill_e
+		env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
+		env.ambient_light_energy = 0.6
+		set_map_light(_map)
+	if _sky_night == null:
+		_sky_night = _make_night_sky()
+		add_child(_sky_night)
+	_sky_night.visible = on
+
+
+var _fill_e := -1.0
+var _map := 1
+
+
+## Stars (tiny unshaded dots on a far dome) and the moon.
+func _make_night_sky() -> Node3D:
+	var root := Node3D.new()
+	root.name = "NightSky"
+	var mb := MeshBuilder.new()
+	var r := RandomNumberGenerator.new()
+	r.seed = 77
+	for k in 900:
+		var az := r.randf() * TAU
+		var el := asin(r.randf_range(0.04, 1.0))
+		var d := Vector3(cos(el) * cos(az), sin(el), cos(el) * sin(az))
+		var p := d * 45.0
+		var s := r.randf_range(0.04, 0.11) * (2.0 if r.randf() < 0.05 else 1.0)
+		var t1 := d.cross(Vector3.UP).normalized()
+		if t1.length() < 0.1:
+			t1 = Vector3.RIGHT
+		var t2 := d.cross(t1).normalized()
+		var c := Color(1, 1, 1).lerp(Color(0.75, 0.85, 1.0), r.randf())
+		mb.tri_out(p + t1 * s, p - t1 * s + t2 * s, p - t1 * s - t2 * s, c, -d)
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.vertex_color_use_as_albedo = true
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	mat.disable_fog = true
+	var stars := MeshInstance3D.new()
+	stars.mesh = mb.commit(null, mat)
+	stars.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	root.add_child(stars)
+	var moon := MeshInstance3D.new()
+	var q := SphereMesh.new()
+	q.radius = 1.4
+	q.height = 2.8
+	moon.mesh = q
+	var mm := StandardMaterial3D.new()
+	mm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mm.albedo_color = Color(0.95, 0.95, 0.88)
+	mm.disable_fog = true
+	moon.material_override = mm
+	var md := Vector3(-0.45, 0.55, 0.70).normalized()
+	moon.position = md * 44.0
+	root.add_child(moon)
+	return root
 
 
 func apply_quest() -> void:
