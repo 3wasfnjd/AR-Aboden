@@ -21,14 +21,14 @@ const RED := Color(1.0, 0.36, 0.28)
 const GREEN := Color(0.45, 1.0, 0.55)
 const KEYS := [KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_6, KEY_7, KEY_8, KEY_9, KEY_0, KEY_MINUS, KEY_EQUAL, KEY_BACKSLASH]
 ## The free-play enemy: every kind, fighters taking off every 25 s.
-const SHORT := {"ballistic": "باليستي", "cruise": "كروز", "artillery": "مدفعية", "mlrs": "راجمة", "cluster": "عنقودي",
-	"hypersonic": "فرط صوتي", "bunker": "خارق", "drone": "مسيّرة", "antiship": "مضاد سفن", "jet": "طائرة", "swarm": "سرب",
-	"aa": "دفاع جوي", "nuke": "نووي", "atgm": "مضاد دروع", "glide": "انزلاقية", "torpedo": "طوربيد", "heli": "مروحية"}
+const SHORT := {"ballistic": "باليستي", "cruise": "كروز", "artillery": "مدفعية", "mlrs": "راجمة صواريخ", "cluster": "عنقودي",
+	"hypersonic": "فرط صوتي", "bunker": "خارقة تحصينات", "drone": "مسيّرة انتحارية", "antiship": "مضاد للسفن", "jet": "مقاتلة", "swarm": "سرب مسيّرات",
+	"aa": "دفاع جوي", "nuke": "قنبلة نووية", "atgm": "مضاد للدروع", "glide": "قنابل انزلاقية", "torpedo": "طوربيد", "heli": "مروحية"}
 ## A real weapon of each kind (shown under its name).
 const REAL := {"ballistic": "Iskander", "cruise": "Tomahawk", "hypersonic": "Kinzhal",
-	"artillery": "M777 155mm", "mlrs": "HIMARS", "cluster": "ATACMS", "bunker": "GBU-57",
+	"artillery": "M777", "mlrs": "HIMARS", "cluster": "ATACMS", "bunker": "GBU-57",
 	"glide": "GBU-39", "jet": "F-15E", "heli": "AH-64 Apache", "drone": "Shahed-136",
-	"swarm": "أسراب Lancet", "atgm": "Javelin", "antiship": "Harpoon", "torpedo": "Mk 48",
+	"swarm": "Lancet", "atgm": "Javelin", "antiship": "Harpoon", "torpedo": "Mk 48",
 	"aa": "Patriot", "nuke": "B61"}
 const GOLD := Color(0.886, 0.714, 0.361)
 const PANEL := Color(0.035, 0.06, 0.09, 0.96)
@@ -109,12 +109,12 @@ func setup(p: PhysicsTest) -> void:
 	_build()
 	phys.forces.ship_damaged.connect(func(_q: Vector3, d: float) -> void: _hit(d))
 	phys.resistance.ship_hit.connect(func(_q: Vector3) -> void: _hit(StageRun.HIT_DAMAGE))
-	phys.resistance.intercepted.connect(func(_q: Vector3, _w: String) -> void: flash("أُسقط صاروخك · Shot down", AMBER))
-	phys.forces.fighter_down.connect(func(_q: Vector3) -> void: flash("أسقطت طائرة معادية · Jet down", GREEN))
+	phys.resistance.intercepted.connect(func(_q: Vector3, _w: String) -> void: flash("تم اعتراض صاروخك", AMBER))
+	phys.forces.fighter_down.connect(func(_q: Vector3) -> void: flash("أسقطت طائرة معادية", GREEN))
 	phys.sortie_landed.connect(func(wid: String) -> void: ammo[wid] = mini(int(ammo[wid]) + 1, int(WeaponTable.get_weapon(wid).ammo)))
 	# an aircraft shot down: a replacement lands on the deck a while later
 	phys.jet_lost.connect(func(wid: String) -> void:
-		flash("أُسقطت طائرتك · بديلة خلال 25 ثانية", RED)
+		flash("سقطت طائرتك · تصل بديلة خلال 25 ثانية", RED)
 		get_tree().create_timer(25.0).timeout.connect(func() -> void:
 			ammo[wid] = mini(int(ammo[wid]) + 1, int(WeaponTable.get_weapon(wid).ammo))))
 	start_enemy()
@@ -322,21 +322,21 @@ func _build() -> void:
 	_opt_map = _choice(mc, "الخريطة", "جزيرة السبخة", "جزيرة الهلال", func(i: int) -> void:
 		_menu.visible = false
 		map_requested.emit(i + 1))
-	_opt_enemy = _choice(mc, "القوات المعادية", "تعمل", "متوقفة", func(i: int) -> void:
+	_opt_enemy = _choice(mc, "القوات المعادية", "تشغيل", "إيقاف", func(i: int) -> void:
 		if (i == 0) != enemies_on:
 			toggle_enemy())
-	_opt_cam = _choice(mc, "الكاميرا", "حرة", "فوق الصاروخ", func(i: int) -> void:
+	_opt_cam = _choice(mc, "الكاميرا", "حرة", "تتبّع الصاروخ", func(i: int) -> void:
 		if (i == 1) != missile_cam:
 			toggle_cam())
-	_opt_night = _choice(mc, "الوقت", "نهار", "ليل", set_time_mode, "دورة")
+	_opt_night = _choice(mc, "الوقت", "نهار", "ليل", set_time_mode, "تلقائي")
 	_opt_slow = _choice(mc, "السرعة", "عادية", "بطيئة", func(i: int) -> void:
 		if (i == 1) != phys.slow_motion:
 			toggle_slow())
-	var rs := _button(mc, "إعادة الجزيرة من جديد", func() -> void:
+	var rs := _button(mc, "إعادة بناء الجزيرة", func() -> void:
 		_menu.visible = false
 		reset())
 	_paint(rs, false, Color(RED, 0.7))
-	_help = _label(mc, "اضغط على الجزيرة للإطلاق · اسحب للتدوير · إصبعين للتقريب", FONT - 3, DIM)
+	_help = _label(mc, "المس الهدف للإطلاق · اسحب لتدوير الكاميرا · قرّب بإصبعين", FONT - 3, DIM)
 	# the weapons, centred: a grid of cards (name, ammo, a reload bar)
 	var wm := _modal(root, "الأسلحة")
 	_weapons = wm[0]
@@ -368,22 +368,26 @@ func _build() -> void:
 		ic.offset_top = 7
 		ic.offset_bottom = -9
 		card.add_child(ic)
-		var nm := _label(card, String(SHORT.get(id, w.name_ar)), FONT - 1, TEXT, HORIZONTAL_ALIGNMENT_RIGHT)
+		var nm := _label(card, String(SHORT.get(id, w.name_ar)), FONT - 2, TEXT, HORIZONTAL_ALIGNMENT_RIGHT)
 		nm.set_anchors_preset(Control.PRESET_FULL_RECT)
 		nm.offset_right = -42
 		nm.offset_top = 2
 		nm.offset_bottom = -CARD_H * 0.42
 		nm.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+		nm.offset_left = 6
+		nm.clip_text = true
 		var rl := _label(card, String(REAL.get(id, "")), FONT - 5, DIM, HORIZONTAL_ALIGNMENT_RIGHT)
 		rl.set_anchors_preset(Control.PRESET_FULL_RECT)
 		rl.offset_right = -42
 		rl.offset_top = CARD_H * 0.55
 		rl.offset_bottom = -6
 		rl.vertical_alignment = VERTICAL_ALIGNMENT_TOP
-		var am := _label(card, "", FONT, GOLD, HORIZONTAL_ALIGNMENT_LEFT)
+		var am := _label(card, "", FONT - 2, GOLD, HORIZONTAL_ALIGNMENT_LEFT)
 		am.set_anchors_preset(Control.PRESET_FULL_RECT)
 		am.offset_left = 10
-		am.offset_bottom = -4
+		am.offset_top = CARD_H * 0.5
+		am.offset_bottom = -6
+		am.vertical_alignment = VERTICAL_ALIGNMENT_TOP
 		var cb := ColorRect.new()
 		cb.color = Color(FRAME, 0.55)
 		cb.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -475,7 +479,7 @@ func select(id: String) -> void:
 	if _btn_icon:
 		_btn_icon.texture = _icon(id)
 	if id == "aa":
-		flash("صاروخ الدفاع الجوي يلاحق أقرب طائرة: اضغط في أي مكان", DIM)
+		flash("الصاروخ الاعتراضي يلاحق أقرب طائرة معادية · المس أي مكان للإطلاق", DIM)
 
 
 func flash(t: String, c := AMBER) -> void:
@@ -490,11 +494,11 @@ func try_fire(tgt: Vector3) -> bool:
 		return false
 	var w := WeaponTable.get_weapon(weapon)
 	if float(cooldown[weapon]) > 0.0 or int(ammo[weapon]) <= 0:
-		flash("السلاح يعيد التعبئة · Reloading", DIM)
+		flash("جارٍ إعادة التلقيم", DIM)
 		return false
 	if weapon == "aa":
 		if not phys.forces.fire_aa(phys.default_origin("aa")):
-			flash("ما فيه طائرة معادية في الجو · No enemy jet in the air", DIM)
+			flash("لا توجد طائرات معادية في الجو", DIM)
 			return false
 	else:
 		phys.fire(tgt, Vector3.INF, weapon)
@@ -509,7 +513,7 @@ func _hit(dmg: float) -> void:
 	hull = maxf(hull - dmg, 0.0)
 	if hull <= 0.0:
 		sunk_t = 4.0
-		flash("البارجة غرقت! نبدأ من جديد · The battleship is sunk", RED)
+		flash("غرقت البارجة! تبدأ جولة جديدة", RED)
 
 
 func toggle_enemy() -> void:
@@ -671,7 +675,7 @@ func _process(delta: float) -> void:
 	_btn_weapons.text = "%s  ·  %d      " % [String(SHORT.get(weapon, weapon)), int(ammo[weapon])]
 	var d := phys.island.props.destruction()
 	var left := phys.forces.alive(EnemyForces.KINDS)
-	_top.text = "تدمير %d%%  ·  قوات معادية %d" % [int(d.pct), left]
+	_top.text = "التدمير %d%%  ·  قوات العدو %d" % [int(d.pct), left]
 	_hull_lbl.text = "البارجة %d%%" % int(hull)
 	_hull_lbl.add_theme_color_override("font_color", GREEN if hull >= 50 else (AMBER if hull > 25 else RED))
 	_hull_bar.size.x = HULL_W * hull / 100.0
