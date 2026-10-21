@@ -12,4 +12,6 @@ rm -f "$OUT"/index.pck-*
 # the loading page: the game's poster (tools/web/splash.png) fills the screen while the
 # engine and the game data download (CSS in the preset's html/head_include)
 cp tools/web/splash.png "$OUT/index.png"
+# the browser tab and the home-screen name: the game's web title (the APK keeps its own)
+sed -i 's|<title>[^<]*</title>|<title>BATTLESHIP · البارجة الحربية</title>|' "$OUT/index.html"
 ls -la "$OUT"
