@@ -24,9 +24,14 @@ const KEYS := [KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_6, KEY_7, KEY_8, KEY_9, KE
 const SHORT := {"ballistic": "باليستي", "cruise": "كروز", "artillery": "مدفعية", "mlrs": "راجمة", "cluster": "عنقودي",
 	"hypersonic": "فرط صوتي", "bunker": "خارق", "drone": "مسيّرة", "antiship": "مضاد سفن", "jet": "طائرة", "swarm": "سرب",
 	"aa": "دفاع جوي", "nuke": "نووي"}
-const LIST_W := 250.0             # the weapon list's width
-const ROW_H := 38.0
-const BTN_H := 58.0
+## Sizes in the HUD's virtual screen (see _layout): a phone's finger and eye.
+const FONT := 17
+const ROW_H := 40.0
+const BTN_H := 46.0
+const BTN_W := 210.0
+const MENU_W := 340.0
+const CARD_W := 142.0
+const HULL_W := 110.0
 const REPAIR := 1.0               # % hull per second: the crew repairs the battleship in free play
 const FORCES := {"tank": 2, "apc": 2, "spaa": 2, "mlauncher": 2, "fighter": 3, "air": 25.0}
 
@@ -45,15 +50,20 @@ var _hull_bar: ColorRect
 var _hull_lbl: Label
 var _msg: Label
 var _msg_t := 0.0
-var _btn_enemy: Button
-var _btn_slow: Button
+var _root: Control
+var _grid: GridContainer
+var _opt_map: Array
+var _opt_enemy: Array
+var _opt_cam: Array
+var _opt_slow: Array
+## The HUD sets the window's scaling itself (the web build); off for desktop previews.
+var web_scaling := true
 var map_id := 1
 ## Missile camera: a button switches the view between the free orbit and a camera riding
 ## just behind and above the newest shot; after the impact it holds on the blast a moment,
 ## then glides back to the orbit until the next launch.
 var cam: OrbitCamera
 var missile_cam := false
-var _btn_cam: Button
 var _btn_menu: Button
 var _btn_weapons: Button
 var _menu: Control
@@ -70,7 +80,7 @@ const CHASE_HOLD := 2.2            # seconds on the blast after the impact
 
 func setup(p: PhysicsTest) -> void:
 	phys = p
-	_font = XRGame.ui_font()
+	_font = _screen_font()
 	for id in WeaponTable.IDS:
 		ammo[id] = int(WeaponTable.get_weapon(id).ammo)
 		cooldown[id] = 0.0
@@ -83,6 +93,26 @@ func setup(p: PhysicsTest) -> void:
 	phys.sortie_landed.connect(func(wid: String) -> void: ammo[wid] = mini(int(ammo[wid]) + 1, int(WeaponTable.get_weapon(wid).ammo)))
 	start_enemy()
 	select(weapon)
+
+
+## Plain (bitmap) Cairo for the flat screen: the headset's MSDF glyphs left speckled
+## edges on the phone's scaled canvas; the window's oversampling keeps these sharp.
+static func _screen_font() -> Font:
+	var latin: FontFile = load("res://assets/fonts/cairo-latin-500-normal.woff2")
+	var arabic: FontFile = load("res://assets/fonts/cairo-arabic-500-normal.woff2")
+	if latin == null:
+		return null
+	var f := latin.duplicate() as FontFile
+	f.multichannel_signed_distance_field = false
+	f.antialiasing = TextServer.FONT_ANTIALIASING_GRAY
+	f.hinting = TextServer.HINTING_LIGHT
+	if arabic:
+		var ar := arabic.duplicate() as FontFile
+		ar.multichannel_signed_distance_field = false
+		ar.antialiasing = TextServer.FONT_ANTIALIASING_GRAY
+		ar.hinting = TextServer.HINTING_LIGHT
+		f.fallbacks = [ar]
+	return f
 
 
 ## The Viper's forces and defences on (free play), or a quiet island.
@@ -105,8 +135,7 @@ func _label(parent: Control, t: String, size: int, c: Color, align := HORIZONTAL
 		l.add_theme_font_override("font", _font)
 	l.add_theme_font_size_override("font_size", size)
 	l.add_theme_color_override("font_color", c)
-	l.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.7))
-	l.add_theme_constant_override("outline_size", 4)
+	l.add_theme_constant_override("outline_size", 0)
 	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	parent.add_child(l)
 	return l
@@ -123,21 +152,79 @@ func _style(bg: Color, border: Color, w := 2) -> StyleBoxFlat:
 	return sb
 
 
-func _button(parent: Control, t: String, cb: Callable) -> Button:
+func _button(parent: Control, t: String, cb: Callable, size := FONT) -> Button:
 	var b := Button.new()
 	b.text = t
 	if _font:
 		b.add_theme_font_override("font", _font)
-	b.add_theme_font_size_override("font_size", 22)
+	b.add_theme_font_size_override("font_size", size)
 	b.add_theme_color_override("font_color", TEXT)
-	b.add_theme_stylebox_override("normal", _style(BG, Color(FRAME, 0.5)))
-	b.add_theme_stylebox_override("hover", _style(Color(0.08, 0.18, 0.25, 0.9), FRAME))
-	b.add_theme_stylebox_override("pressed", _style(Color(0.10, 0.25, 0.32, 0.95), FRAME))
-	b.custom_minimum_size = Vector2(200, 52)
+	b.add_theme_color_override("font_hover_color", TEXT)
+	b.add_theme_color_override("font_pressed_color", TEXT)
+	_paint(b, false)
+	b.custom_minimum_size = Vector2(0, ROW_H)
 	b.focus_mode = Control.FOCUS_NONE
 	b.pressed.connect(cb)
 	parent.add_child(b)
 	return b
+
+
+## A button's look: `on` = the chosen option (amber frame, lit), else plain.
+func _paint(b: Button, on: bool, edge := Color(0, 0, 0, 0)) -> void:
+	var bc := edge if edge.a > 0.0 else (AMBER if on else Color(FRAME, 0.45))
+	var bg := Color(0.12, 0.26, 0.34, 0.95) if on else BG
+	b.add_theme_stylebox_override("normal", _style(bg, bc, 3 if on else 2))
+	b.add_theme_stylebox_override("hover", _style(bg, bc, 3 if on else 2))
+	b.add_theme_stylebox_override("pressed", _style(Color(0.14, 0.32, 0.40, 0.95), FRAME, 3))
+
+
+## A row of the settings: its name, then two options side by side.
+func _choice(parent: Control, title: String, a: String, b: String, cb: Callable) -> Array:
+	var row := HBoxContainer.new()
+	row.layout_direction = Control.LAYOUT_DIRECTION_RTL
+	row.add_theme_constant_override("separation", 6)
+	parent.add_child(row)
+	var l := _label(row, title, FONT, DIM, HORIZONTAL_ALIGNMENT_RIGHT)
+	l.custom_minimum_size = Vector2(104, 0)
+	var ba := _button(row, a, cb.bind(0))
+	var bb := _button(row, b, cb.bind(1))
+	ba.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	bb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	return [ba, bb]
+
+
+## A full-screen dimmed layer with a centred panel; a tap outside the panel closes it.
+func _modal(root: Control, title: String) -> Array:
+	var dim := ColorRect.new()
+	dim.color = Color(0, 0, 0, 0.45)
+	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	dim.mouse_filter = Control.MOUSE_FILTER_STOP
+	dim.visible = false
+	root.add_child(dim)
+	dim.gui_input.connect(func(e: InputEvent) -> void:
+		if (e is InputEventMouseButton and (e as InputEventMouseButton).pressed) or (e is InputEventScreenTouch and (e as InputEventScreenTouch).pressed):
+			dim.visible = false)
+	var cc := CenterContainer.new()
+	cc.set_anchors_preset(Control.PRESET_FULL_RECT)
+	cc.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	dim.add_child(cc)
+	var panel := PanelContainer.new()
+	var sb := _style(Color(0.04, 0.08, 0.12, 0.96), Color(FRAME, 0.6), 2)
+	sb.set_content_margin_all(10)
+	panel.add_theme_stylebox_override("panel", sb)
+	panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	cc.add_child(panel)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 6)
+	panel.add_child(col)
+	var head := HBoxContainer.new()
+	head.layout_direction = Control.LAYOUT_DIRECTION_RTL
+	col.add_child(head)
+	var t := _label(head, title, FONT + 3, FRAME, HORIZONTAL_ALIGNMENT_RIGHT)
+	t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var x := _button(head, "إغلاق", func() -> void: dim.visible = false, FONT - 1)
+	x.custom_minimum_size = Vector2(72, ROW_H - 6)
+	return [dim, col, panel]
 
 
 func _build() -> void:
@@ -145,126 +232,97 @@ func _build() -> void:
 	root.set_anchors_preset(Control.PRESET_FULL_RECT)
 	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(root)
-	# top bar
+	_root = root
+	# top bar: destruction and enemies (right), the battleship's hull (left)
 	var top := PanelContainer.new()
 	top.add_theme_stylebox_override("panel", _style(BG, Color(FRAME, 0.35)))
 	top.set_anchors_preset(Control.PRESET_TOP_WIDE)
-	top.offset_left = 10
-	top.offset_right = -10
-	top.offset_top = 8
+	top.offset_left = 6
+	top.offset_right = -6
+	top.offset_top = 6
 	top.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(top)
 	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 14)
+	row.add_theme_constant_override("separation", 10)
 	top.add_child(row)
-	var title := _label(row, "حرب البارجة · لعب حر", 28, TEXT, HORIZONTAL_ALIGNMENT_RIGHT)
-	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_top = _label(row, "", 22, DIM)
-	_top.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var hb := VBoxContainer.new()
-	hb.custom_minimum_size = Vector2(190, 0)
+	hb.add_theme_constant_override("separation", 1)
 	row.add_child(hb)
-	_hull_lbl = _label(hb, "البارجة 100%", 20, GREEN)
+	_hull_lbl = _label(hb, "البارجة 100%", FONT - 2, GREEN)
 	var bar_bg := ColorRect.new()
 	bar_bg.color = Color(0.15, 0.2, 0.24)
-	bar_bg.custom_minimum_size = Vector2(190, 8)
+	bar_bg.custom_minimum_size = Vector2(HULL_W, 6)
 	bar_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hb.add_child(bar_bg)
 	_hull_bar = ColorRect.new()
 	_hull_bar.color = GREEN
-	_hull_bar.size = Vector2(190, 8)
+	_hull_bar.size = Vector2(HULL_W, 6)
 	_hull_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	bar_bg.add_child(_hull_bar)
-	# two buttons at the bottom: the menu (left) and the weapons (right); each opens its list
-	_btn_menu = _button(root, "القائمة", toggle_menu)
-	_btn_menu.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
-	_btn_menu.offset_left = 10
-	_btn_menu.offset_right = 10 + LIST_W
-	_btn_menu.offset_top = -10 - BTN_H
-	_btn_menu.offset_bottom = -10
-	_btn_weapons = _button(root, "", toggle_weapons)
-	_btn_weapons.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
-	_btn_weapons.offset_left = -10 - LIST_W
-	_btn_weapons.offset_right = -10
-	_btn_weapons.offset_top = -10 - BTN_H
-	_btn_weapons.offset_bottom = -10
-	# the menu list, above its button
-	var side := VBoxContainer.new()
-	side.add_theme_constant_override("separation", 8)
-	side.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
-	side.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	side.offset_left = 10
-	side.offset_right = 10 + LIST_W
-	side.offset_bottom = -20 - BTN_H
-	side.offset_top = -20 - BTN_H
-	side.visible = false
-	root.add_child(side)
-	_menu = side
-	_button(side, "جزيرة السبخة", func() -> void:
-		side.visible = false
-		map_requested.emit(1))
-	_button(side, "جزيرة الهلال", func() -> void:
-		side.visible = false
-		map_requested.emit(2))
-	_btn_enemy = _button(side, "القوات المعادية: تعمل", toggle_enemy)
-	_button(side, "إعادة الجزيرة", func() -> void:
-		side.visible = false
+	_top = _label(row, "", FONT - 1, TEXT, HORIZONTAL_ALIGNMENT_RIGHT)
+	_top.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	# message line under the bar
+	_msg = _label(root, "", FONT, AMBER)
+	_msg.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
+	_msg.add_theme_constant_override("outline_size", 5)
+	_msg.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	_msg.offset_top = 50
+	_msg.offset_bottom = 96
+	_msg.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	# two buttons at the bottom: the settings (left) and the weapons (right)
+	_btn_menu = _button(root, "الإعدادات", toggle_menu, FONT + 1)
+	_btn_weapons = _button(root, "", toggle_weapons, FONT + 1)
+	for b in [_btn_menu, _btn_weapons]:
+		(b as Button).add_theme_constant_override("outline_size", 0)
+	# the settings, centred
+	var m := _modal(root, "الإعدادات")
+	_menu = m[0]
+	var mc: VBoxContainer = m[1]
+	(m[2] as Control).custom_minimum_size = Vector2(MENU_W, 0)
+	_opt_map = _choice(mc, "الخريطة", "جزيرة السبخة", "جزيرة الهلال", func(i: int) -> void:
+		_menu.visible = false
+		map_requested.emit(i + 1))
+	_opt_enemy = _choice(mc, "القوات المعادية", "تعمل", "متوقفة", func(i: int) -> void:
+		if (i == 0) != enemies_on:
+			toggle_enemy())
+	_opt_cam = _choice(mc, "الكاميرا", "حرة", "فوق الصاروخ", func(i: int) -> void:
+		if (i == 1) != missile_cam:
+			toggle_cam())
+	_opt_slow = _choice(mc, "السرعة", "عادية", "بطيئة", func(i: int) -> void:
+		if (i == 1) != phys.slow_motion:
+			toggle_slow())
+	var rs := _button(mc, "إعادة الجزيرة من جديد", func() -> void:
+		_menu.visible = false
 		reset())
-	_btn_slow = _button(side, "حركة بطيئة", toggle_slow)
-	_btn_cam = _button(side, "الكاميرا: حرة", toggle_cam)
-	# message line
-	_msg = _label(root, "", 30, AMBER)
-	_msg.set_anchors_preset(Control.PRESET_CENTER_TOP)
-	_msg.offset_top = 84
-	_msg.offset_left = -400
-	_msg.offset_right = 400
-	# weapon list (right edge): one row per weapon, the name, the key and the ammo,
-	# a thin reload bar under it; scrolls on a short screen
-	var panel := PanelContainer.new()
-	panel.add_theme_stylebox_override("panel", _style(BG, Color(FRAME, 0.35)))
-	panel.set_anchors_preset(Control.PRESET_RIGHT_WIDE)
-	panel.offset_left = -LIST_W - 10
-	panel.offset_right = -10
-	panel.offset_top = 74
-	panel.offset_bottom = -20 - BTN_H
-	panel.visible = false
-	root.add_child(panel)
-	_weapons = panel
-	var col := VBoxContainer.new()
-	col.add_theme_constant_override("separation", 6)
-	panel.add_child(col)
-	_label(col, "الأسلحة · Weapons", 22, FRAME)
-	var scroll := ScrollContainer.new()
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	col.add_child(scroll)
-	var list := VBoxContainer.new()
-	list.add_theme_constant_override("separation", 2)
-	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	scroll.add_child(list)
+	_paint(rs, false, Color(RED, 0.7))
+	_label(mc, "اضغط على الجزيرة للإطلاق · اسحب للتدوير · إصبعين للتقريب", FONT - 3, DIM)
+	# the weapons, centred: a grid of cards (name, ammo, a reload bar)
+	var wm := _modal(root, "الأسلحة")
+	_weapons = wm[0]
+	var wc: VBoxContainer = wm[1]
+	_grid = GridContainer.new()
+	_grid.layout_direction = Control.LAYOUT_DIRECTION_RTL
+	_grid.add_theme_constant_override("h_separation", 6)
+	_grid.add_theme_constant_override("v_separation", 6)
+	wc.add_child(_grid)
 	for i in WeaponTable.IDS.size():
 		var id: String = WeaponTable.IDS[i]
 		var w := WeaponTable.get_weapon(id)
 		var card := Button.new()
 		card.focus_mode = Control.FOCUS_NONE
-		card.custom_minimum_size = Vector2(0, ROW_H)
-		card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		card.custom_minimum_size = Vector2(CARD_W, ROW_H + 4)
 		card.pressed.connect(func() -> void:
 			select(id)
 			_weapons.visible = false)
-		list.add_child(card)
-		var nm := _label(card, String(SHORT.get(id, w.name_ar)), 22, TEXT, HORIZONTAL_ALIGNMENT_RIGHT)
+		_grid.add_child(card)
+		var nm := _label(card, String(SHORT.get(id, w.name_ar)), FONT, TEXT, HORIZONTAL_ALIGNMENT_RIGHT)
 		nm.set_anchors_preset(Control.PRESET_FULL_RECT)
-		nm.offset_right = -12
-		nm.offset_bottom = -5
-		var am := _label(card, "", 20, AMBER, HORIZONTAL_ALIGNMENT_LEFT)
+		nm.offset_right = -10
+		nm.offset_bottom = -4
+		var am := _label(card, "", FONT, AMBER, HORIZONTAL_ALIGNMENT_LEFT)
 		am.set_anchors_preset(Control.PRESET_FULL_RECT)
-		am.offset_left = 40
-		am.offset_bottom = -5
-		var key := _label(card, ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "-", "=", "\\"][i] if i < 13 else "", 15, DIM, HORIZONTAL_ALIGNMENT_LEFT)
-		key.set_anchors_preset(Control.PRESET_FULL_RECT)
-		key.offset_left = 12
-		key.offset_bottom = -5
+		am.offset_left = 10
+		am.offset_bottom = -4
 		var cb := ColorRect.new()
 		cb.color = Color(FRAME, 0.7)
 		cb.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -275,12 +333,48 @@ func _build() -> void:
 		cb.offset_bottom = -3
 		card.add_child(cb)
 		_cards[id] = {"panel": card, "ammo": am, "bar": cb}
-	var help := _label(root, "اضغط على الجزيرة للإطلاق · اسحب للتدوير · إصبعين للتقريب", 18, DIM)
-	help.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
-	help.offset_left = LIST_W + 20
-	help.offset_right = -LIST_W - 20
-	help.offset_top = -10 - BTN_H
-	help.offset_bottom = -10
+	get_tree().root.size_changed.connect(_layout)
+	_layout()
+
+
+## Phone first: the HUD is laid out in a small virtual screen (640 x 360 landscape,
+## 360 x 640 portrait) that the window scales up, so text and buttons keep a finger's
+## size on any phone. Portrait: the weapon grid gets 2 columns, the 3D view keeps its
+## width (the island stays whole).
+func _layout() -> void:
+	var win := get_tree().root
+	var real := Vector2(win.size)
+	var portrait := real.y > real.x
+	if web_scaling:
+		win.content_scale_mode = Window.CONTENT_SCALE_MODE_CANVAS_ITEMS
+		win.content_scale_aspect = Window.CONTENT_SCALE_ASPECT_EXPAND
+		win.content_scale_size = Vector2i(360, 640) if portrait else Vector2i(640, 360)
+	if cam:
+		cam.keep_aspect = Camera3D.KEEP_WIDTH if portrait else Camera3D.KEEP_HEIGHT
+	_grid.columns = 2 if portrait else 3
+	var vw := _root.get_viewport_rect().size.x if is_inside_tree() else 640.0
+	var bw := minf(BTN_W, (vw - 18.0) * 0.5)
+	_btn_menu.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+	_btn_menu.offset_left = 6
+	_btn_menu.offset_right = 6 + bw
+	_btn_menu.offset_top = -8 - BTN_H
+	_btn_menu.offset_bottom = -8
+	_btn_weapons.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	_btn_weapons.offset_left = -6 - bw
+	_btn_weapons.offset_right = -6
+	_btn_weapons.offset_top = -8 - BTN_H
+	_btn_weapons.offset_bottom = -8
+
+
+func _refresh_menu() -> void:
+	_paint(_opt_map[0], map_id == 1)
+	_paint(_opt_map[1], map_id == 2)
+	_paint(_opt_enemy[0], enemies_on)
+	_paint(_opt_enemy[1], not enemies_on)
+	_paint(_opt_cam[0], not missile_cam)
+	_paint(_opt_cam[1], missile_cam)
+	_paint(_opt_slow[0], not phys.slow_motion)
+	_paint(_opt_slow[1], phys.slow_motion)
 
 
 func select(id: String) -> void:
@@ -289,10 +383,7 @@ func select(id: String) -> void:
 	for k in _cards:
 		var p: Button = _cards[k].panel
 		var on := String(k) == id
-		var bc := RED if k == "nuke" else (AMBER if on else Color(FRAME, 0.35))
-		p.add_theme_stylebox_override("normal", _style(Color(0.10, 0.22, 0.30, 0.92) if on else BG, bc, 3 if on else 2))
-		p.add_theme_stylebox_override("hover", _style(Color(0.10, 0.22, 0.30, 0.92), FRAME, 3))
-		p.add_theme_stylebox_override("pressed", _style(Color(0.12, 0.28, 0.36, 0.95), FRAME, 3))
+		_paint(p, on, RED if k == "nuke" and not on else Color(0, 0, 0, 0))
 	if id == "aa":
 		flash("صاروخ الدفاع الجوي يلاحق أقرب طائرة: اضغط في أي مكان", DIM)
 
@@ -333,18 +424,19 @@ func _hit(dmg: float) -> void:
 
 func toggle_enemy() -> void:
 	enemies_on = not enemies_on
-	_btn_enemy.text = "القوات المعادية: تعمل" if enemies_on else "القوات المعادية: متوقفة"
 	start_enemy()
+	_refresh_menu()
 
 
 func toggle_slow() -> void:
 	phys.set_slow_motion(not phys.slow_motion)
-	_btn_slow.text = "سرعة عادية" if phys.slow_motion else "حركة بطيئة"
+	_refresh_menu()
 
 
 func toggle_menu() -> void:
 	_menu.visible = not _menu.visible
 	_weapons.visible = false
+	_refresh_menu()
 
 
 func toggle_weapons() -> void:
@@ -354,7 +446,7 @@ func toggle_weapons() -> void:
 
 func toggle_cam() -> void:
 	missile_cam = not missile_cam
-	_btn_cam.text = "الكاميرا: فوق الصاروخ" if missile_cam else "الكاميرا: حرة"
+	_refresh_menu()
 	_chase_serial = -1
 	_chase_hold = 0.0
 
@@ -453,13 +545,13 @@ func _process(delta: float) -> void:
 		(c.ammo as Label).add_theme_color_override("font_color", AMBER if int(ammo[id]) > 0 else RED)
 		var f := 1.0 - float(cooldown[id]) / maxf(float(w.cooldown), 0.01)
 		(c.bar as ColorRect).scale.x = clampf(f, 0.0, 1.0)
-	_btn_weapons.text = "الأسلحة: %s  ·  %d" % [String(SHORT.get(weapon, weapon)), int(ammo[weapon])]
+	_btn_weapons.text = "%s  ·  %d" % [String(SHORT.get(weapon, weapon)), int(ammo[weapon])]
 	var d := phys.island.props.destruction()
 	var left := phys.forces.alive(EnemyForces.KINDS)
-	_top.text = "تدمير الجزيرة %d%%   ·   قوات معادية %d   ·   %s" % [int(d.pct), left, Campaign.map_name(map_id)]
+	_top.text = "تدمير %d%%  ·  قوات معادية %d" % [int(d.pct), left]
 	_hull_lbl.text = "البارجة %d%%" % int(hull)
 	_hull_lbl.add_theme_color_override("font_color", GREEN if hull >= 50 else (AMBER if hull > 25 else RED))
-	_hull_bar.size.x = 190.0 * hull / 100.0
+	_hull_bar.size.x = HULL_W * hull / 100.0
 	_hull_bar.color = GREEN if hull >= 50 else (AMBER if hull > 25 else RED)
 	if sunk_t <= 0.0 and hull < 100.0:
 		hull = minf(hull + REPAIR * dt, 100.0)
