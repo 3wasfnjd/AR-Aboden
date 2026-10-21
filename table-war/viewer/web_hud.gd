@@ -25,11 +25,11 @@ const SHORT := {"ballistic": "باليستي", "cruise": "كروز", "artillery"
 	"hypersonic": "فرط صوتي", "bunker": "خارق", "drone": "مسيّرة", "antiship": "مضاد سفن", "jet": "طائرة", "swarm": "سرب",
 	"aa": "دفاع جوي", "nuke": "نووي", "atgm": "مضاد دروع", "glide": "انزلاقية", "torpedo": "طوربيد", "heli": "مروحية"}
 ## A real weapon of each kind (shown under its name).
-const REAL := {"ballistic": "مثل Iskander", "cruise": "مثل Tomahawk", "hypersonic": "مثل Kinzhal",
-	"artillery": "مثل M777 155mm", "mlrs": "مثل HIMARS", "cluster": "مثل ATACMS", "bunker": "مثل GBU-57",
-	"glide": "مثل GBU-39", "jet": "مثل F-15E", "heli": "مثل AH-64 Apache", "drone": "مثل Shahed-136",
-	"swarm": "مثل أسراب Lancet", "atgm": "مثل Javelin", "antiship": "مثل Harpoon", "torpedo": "مثل Mk 48",
-	"aa": "مثل Patriot", "nuke": "مثل B61"}
+const REAL := {"ballistic": "Iskander", "cruise": "Tomahawk", "hypersonic": "Kinzhal",
+	"artillery": "M777 155mm", "mlrs": "HIMARS", "cluster": "ATACMS", "bunker": "GBU-57",
+	"glide": "GBU-39", "jet": "F-15E", "heli": "AH-64 Apache", "drone": "Shahed-136",
+	"swarm": "أسراب Lancet", "atgm": "Javelin", "antiship": "Harpoon", "torpedo": "Mk 48",
+	"aa": "Patriot", "nuke": "B61"}
 const GOLD := Color(0.886, 0.714, 0.361)
 const PANEL := Color(0.035, 0.06, 0.09, 0.96)
 const LINE := Color(0.30, 0.85, 1.0, 0.22)
