@@ -95,6 +95,8 @@ signal impacted(point: Vector3, kind: String)
 signal sortie_landed(wid: String)
 ## A strike jet was shot down.
 signal jet_lost(wid: String)
+## A reconnaissance drone looks down from `p` (island-local) over `r` this frame.
+signal recon_scan(p: Vector3, r: float)
 
 
 func setup(isl: Island) -> void:
@@ -225,9 +227,9 @@ func _shell_mesh(w: Dictionary) -> Mesh:
 		return _meshes[id]
 	var jetlike := bool(w.get("jet", false))
 	if bool(w.get("wings", false)):
-		var span := 1.5 if id in ["drone", "swarm"] else (0.75 if jetlike else 0.9)
+		var span := 1.5 if id in ["drone", "swarm"] else (1.9 if id == "recon" else (0.75 if jetlike else 0.9))
 		mb.box(Vector3(0, L * 0.45, 0), Vector3(L * span, L * 0.12, r * 0.4), w.col)   # wings
-	if jetlike:
+	if jetlike and id != "recon":
 		mb.box(Vector3(0, L * 0.08, r * 1.3), Vector3(L * 0.05, L * 0.18, r * 1.8), (w.col as Color).darkened(0.15))   # tail fin
 		mb.box(Vector3(0, L * 0.06, 0), Vector3(L * 0.36, L * 0.08, r * 0.3), w.col)   # tailplane
 		mb.box(Vector3(0, L * 0.72, r * 0.8), Vector3(r * 0.9, L * 0.12, r * 0.6), Color(0.25, 0.35, 0.45))   # canopy
@@ -520,6 +522,8 @@ func _step_flights(dt: float) -> void:
 			(f.slot.node as Node3D).position = p
 			_orient(f)
 			_trail(f, p, dt)
+			if bool((f.w as Dictionary).get("recon", false)) and t > float(pl.T) * 0.12 and t < float(pl.T) * 0.9:
+				recon_scan.emit(p, float(f.w.scan_r))
 			i += 1
 			continue
 		var s := surface(p.x, p.z)

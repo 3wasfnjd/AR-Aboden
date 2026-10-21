@@ -30,7 +30,7 @@ const INTERCEPT := {
 	"ballistic": 0.35, "cruise": 0.6, "artillery": 0.0, "mlrs": 0.2, "cluster": 0.35, "hypersonic": 0.08,
 	"bunker": 0.35, "drone": 0.75, "swarm": 0.6, "antiship": 0.4, "jet": 0.4, "nuke": 0.3, "submunition": 0.0, "jetbomb": 0.0,
 	# the web build's extra weapons
-	"atgm": 0.0, "torpedo": 0.0, "heli": 0.35, "glide": 0.3, "gbomb": 0.25, "bunkerbomb": 0.1, "hrocket": 0.0,
+	"recon": 0.3, "atgm": 0.0, "torpedo": 0.0, "heli": 0.35, "glide": 0.3, "gbomb": 0.25, "bunkerbomb": 0.1, "hrocket": 0.0,
 }
 const MAX_MISSILES := 6
 

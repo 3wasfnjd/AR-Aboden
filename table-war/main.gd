@@ -333,6 +333,25 @@ func _run_web_shot() -> void:
 	cam.set_view(tn + Vector3(-0.22, 0.0, 0.02), -25.0, 48.0, 0.32)
 	await _frames(4)
 	await _capture("w_nuke4")
+	# the reconnaissance drone over the air base, the enemy forces on, its marks
+	web_hud.reset()
+	if not web_hud.enemies_on:
+		web_hud.toggle_enemy()
+	var tr := Vector3(-0.28, 0, 0.0)
+	tr.y = island.surface_at(tr.x, tr.z)
+	web_hud.select("recon")
+	phys.resistance.clear()   # the shot needs the drone over the base (no SAM roll)
+	print("RECON fired ", web_hud.try_fire(tr), " flights ", phys.flights.size())
+	for f in 60 * 9:
+		phys.advance(1.0 / 60.0)
+		web_hud._process(1.0 / 60.0)
+	web_hud._recon_msg_t = 0.0
+	web_hud._recon_new = 3
+	web_hud._process(1.0 / 60.0)
+	cam.set_view(tr, -25.0, 50.0, 0.42)
+	await _frames(4)
+	await _capture("w_recon")
+	print("RECON spotted ", web_hud.recon.count())
 	# night: the reset island under the moon, then a strike in the dark
 	web_hud.reset()
 	web_hud.toggle_night()

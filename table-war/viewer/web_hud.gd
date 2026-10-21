@@ -23,13 +23,13 @@ const KEYS := [KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_6, KEY_7, KEY_8, KEY_9, KE
 ## The free-play enemy: every kind, fighters taking off every 25 s.
 const SHORT := {"ballistic": "باليستي", "cruise": "كروز", "artillery": "مدفعية", "mlrs": "راجمة صواريخ", "cluster": "عنقودي",
 	"hypersonic": "فرط صوتي", "bunker": "خارقة تحصينات", "drone": "مسيّرة انتحارية", "antiship": "مضاد للسفن", "jet": "مقاتلة", "swarm": "سرب مسيّرات",
-	"aa": "دفاع جوي", "nuke": "قنبلة نووية", "atgm": "مضاد للدروع", "glide": "قنابل انزلاقية", "torpedo": "طوربيد", "heli": "مروحية"}
+	"aa": "دفاع جوي", "nuke": "قنبلة نووية", "atgm": "مضاد للدروع", "glide": "قنابل انزلاقية", "torpedo": "طوربيد", "heli": "مروحية", "recon": "استطلاع"}
 ## A real weapon of each kind (shown under its name).
 const REAL := {"ballistic": "Iskander", "cruise": "Tomahawk", "hypersonic": "Kinzhal",
 	"artillery": "M777", "mlrs": "HIMARS", "cluster": "ATACMS", "bunker": "GBU-57",
 	"glide": "GBU-39", "jet": "F-15E", "heli": "AH-64 Apache", "drone": "Shahed-136",
 	"swarm": "Lancet", "atgm": "Javelin", "antiship": "Harpoon", "torpedo": "Mk 48",
-	"aa": "Patriot", "nuke": "B61"}
+	"aa": "Patriot", "nuke": "B61", "recon": "ScanEagle"}
 const GOLD := Color(0.886, 0.714, 0.361)
 const PANEL := Color(0.035, 0.06, 0.09, 0.96)
 const LINE := Color(0.30, 0.85, 1.0, 0.22)
@@ -62,6 +62,9 @@ var _msg: Label
 var _msg_t := 0.0
 var _root: Control
 var _btn_icon: TextureRect
+var recon: ReconMarks
+var _recon_new := 0
+var _recon_msg_t := 0.0
 var _help: Label
 var _icons := {}
 var _grid: GridContainer
@@ -117,6 +120,13 @@ func setup(p: PhysicsTest) -> void:
 		flash("سقطت طائرتك · تصل بديلة خلال 25 ثانية", RED)
 		get_tree().create_timer(25.0).timeout.connect(func() -> void:
 			ammo[wid] = mini(int(ammo[wid]) + 1, int(WeaponTable.get_weapon(wid).ammo))))
+	# the reconnaissance drone's marks over what it spots
+	recon = ReconMarks.new()
+	phys.get_parent().add_child(recon)
+	phys.recon_scan.connect(func(p: Vector3, r: float) -> void:
+		var n := recon.scan(p, r, phys.island.props, phys.forces)
+		if n > 0:
+			_recon_new += n)
 	start_enemy()
 	select(weapon)
 
@@ -305,7 +315,10 @@ func _build() -> void:
 	_msg = _label(root, "", FONT, AMBER)
 	_msg.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
 	_msg.add_theme_constant_override("outline_size", 5)
-	_msg.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	_msg.anchor_left = 0.0
+	_msg.anchor_right = 1.0
+	_msg.offset_left = 20
+	_msg.offset_right = -20
 	_msg.offset_top = 50
 	_msg.offset_bottom = 96
 	_msg.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -478,6 +491,8 @@ func select(id: String) -> void:
 		_paint(p, on, RED if k == "nuke" and not on else Color(0, 0, 0, 0))
 	if _btn_icon:
 		_btn_icon.texture = _icon(id)
+	if id == "recon":
+		flash("المس المنطقة اللي تبي تستكشفها · تحلّق فوقها وتعلّم أهداف العدو", DIM)
 	if id == "aa":
 		flash("الصاروخ الاعتراضي يلاحق أقرب طائرة معادية · المس أي مكان للإطلاق", DIM)
 
@@ -632,6 +647,8 @@ func _step_cam(dt: float) -> void:
 
 
 func reset() -> void:
+	if recon:
+		recon.clear_all()
 	phys.reset_island()
 	for id in WeaponTable.ids():
 		ammo[id] = int(WeaponTable.get_weapon(id).ammo)
@@ -656,6 +673,13 @@ func _process(delta: float) -> void:
 		return
 	var dt := minf(delta, 0.05)
 	_step_cam(dt)
+	if recon:
+		recon.refresh(dt, phys.surface)
+		_recon_msg_t -= dt
+		if _recon_new > 0 and _recon_msg_t <= 0.0:
+			flash("رصدت طائرة الاستطلاع %d أهداف جديدة · المجموع %d" % [_recon_new, recon.count()], GOLD)
+			_recon_new = 0
+			_recon_msg_t = 2.0
 	if time_mode == 2 and room:
 		hour = fmod(hour + dt * 24.0 / CYCLE_S, 24.0)
 		_apply_hour()

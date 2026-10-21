@@ -132,6 +132,14 @@ const WEAPONS := {
 		"length": 0.0042, "radius": 0.0008, "col": Color(0.92, 0.92, 0.90),
 	},
 	# --- the web build's extra weapons (WEB_IDS) and what they release ---------------
+	"recon": {
+		"id": "recon", "name_ar": "طائرة استطلاع مسيّرة", "name_en": "Reconnaissance drone",
+		"arc": "sortie", "speed": 0.10, "cruise_alt": 0.11, "bombs": 0, "orbit": 0.07, "spread": 0.0,
+		"recon": true, "scan_r": 0.075, "blast": 0.0, "ejecta": 0,
+		"cooldown": 2.0, "ammo": 1, "reload": 0.0, "glow": false, "wings": true, "jet": true,
+		"trail": 0.12, "trail_col": Color(0.9, 0.9, 0.9, 0.15),
+		"length": 0.0030, "radius": 0.0004, "col": Color(0.78, 0.80, 0.82),
+	},
 	"atgm": {
 		"id": "atgm", "name_ar": "صاروخ مضاد للدروع", "name_en": "Anti-tank missile",
 		"arc": "lofted", "flight": [1.3, 1.6], "blast": 0.32, "ejecta": 6, "anti_armor": true,
@@ -202,7 +210,7 @@ const WEAPONS := {
 ## New: anti-tank missile (top attack, kills armour), glide bombs (a jet releases them
 ## far out, they glide in), torpedo (runs under water to a ship), attack helicopter
 ## (low and slow, a rocket volley from stand-off range).
-const WEB_IDS := ["ballistic", "cruise", "hypersonic", "artillery", "mlrs", "cluster", "bunker", "glide", "jet", "heli",
+const WEB_IDS := ["recon", "ballistic", "cruise", "hypersonic", "artillery", "mlrs", "cluster", "bunker", "glide", "jet", "heli",
 	"drone", "swarm", "atgm", "antiship", "torpedo", "aa", "nuke"]
 const WEB_OVERRIDE := {
 	"hypersonic": {

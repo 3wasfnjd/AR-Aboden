@@ -83,6 +83,19 @@ static func _plan_sortie(w: Dictionary, from: Vector3, to: Vector3, surface: Cal
 		from - fwd * 0.07 + Vector3(0, 0.015, 0),
 		from + Vector3(0, 0.001, 0),
 	]
+	# reconnaissance: two wide circles round the target at cruise height before home
+	var orbit := float(w.get("orbit", 0.0))
+	if orbit > 0.0:
+		var c := Vector3(to.x, cruise_y, to.z)
+		var a0 := atan2(-dir.z, -dir.x)
+		var ring: Array[Vector3] = []
+		for q in 17:
+			var a := a0 + TAU * q / 8.0
+			ring.append(c + Vector3(cos(a), 0, sin(a)) * orbit)
+		var nk: Array[Vector3] = [key[0], key[1], key[2], key[3], key[4]]
+		nk.append_array(ring)
+		nk.append_array([key[7], key[8], key[9], key[10]])
+		key = nk
 	var pts := PackedVector3Array()
 	var release_i := 0
 	for k in key.size() - 1:

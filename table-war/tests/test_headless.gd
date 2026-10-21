@@ -69,6 +69,27 @@ func _web_weapon_tests(island: Island, phys: PhysicsTest) -> void:
 		var w := WeaponTable.get_weapon(wid)
 		check("web %s: %d hits near the target, back on the deck" % [wid, phys.impact_count - n0],
 			phys.impact_count - n0 == int(w.bombs) and landed == [wid] and Vector2(phys.last_impact.x - tg.x, phys.last_impact.z - tg.z).length() < 0.03)
+	# reconnaissance drone: circles the target and reports the enemy sites under it
+	var spots := []
+	var on_scan := func(p: Vector3, r: float) -> void: spots.append(p)
+	phys.recon_scan.connect(on_scan)
+	var rmarks := ReconMarks.new()
+	var air_base := Vector3(-0.28, 0.0, 0.0)
+	air_base.y = island.surface_at(air_base.x, air_base.z)
+	var landed_r := []
+	var cbr := func(w: String) -> void: landed_r.append(w)
+	phys.sortie_landed.connect(cbr)
+	phys.fire(air_base, Vector3.INF, "recon")
+	var sr := 0
+	while phys.flying and sr < 9000:
+		phys.advance(1.0 / 60.0)
+		sr += 1
+		if not spots.is_empty():
+			rmarks.scan(spots[spots.size() - 1], 0.075, island.props, phys.forces)
+	phys.recon_scan.disconnect(on_scan)
+	phys.sortie_landed.disconnect(cbr)
+	check("web recon drone: circles the target, marks %d enemy sites, lands back" % rmarks.count(), rmarks.count() >= 3 and landed_r == ["recon"] and spots.size() > 100)
+	rmarks.free()
 	# anti-tank missile: a tank a little off the aim point is still killed (top attack)
 	phys.forces.configure({"forces": {"tank": 1}})
 	var tank: Dictionary = phys.forces.units[0]
