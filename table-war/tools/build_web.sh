@@ -9,4 +9,7 @@ mkdir -p "$OUT"
 rm -f "$OUT"/index.*
 "$GODOT" --headless --xr-mode off --path . --export-release "Web" "$OUT/index.html"
 rm -f "$OUT"/index.pck-*
+# the loading page: the game's poster (tools/web/splash.png) fills the screen while the
+# engine and the game data download (CSS in the preset's html/head_include)
+cp tools/web/splash.png "$OUT/index.png"
 ls -la "$OUT"
